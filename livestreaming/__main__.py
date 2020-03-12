@@ -35,11 +35,20 @@ def main() -> None:
         logging.warning('Development mode is enabled. You should enable this mode only during development!')
 
     # Hand over to node code
-    if settings.args.mode == 'manager':
+    if settings.args.mode == 'broker':
+        from livestreaming.broker import start
+        start()
+    elif settings.args.mode == 'content':
+        from livestreaming.content import start
+        start()
+    elif settings.args.mode == 'encoder':
+        from livestreaming.encoder import start
+        start()
+    elif settings.args.mode == 'manager':
         from livestreaming.manager import start
         start()
     else:
-        print("Mode must manager, encoder, content or broker")
+        print("Mode must be manager, encoder, content or broker")
         sys.exit(2)
 
 
