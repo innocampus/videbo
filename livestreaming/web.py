@@ -117,6 +117,10 @@ def register_route_with_cors(routes: web.RouteTableDef, allow_methods: Union[str
     return decorator
 
 
+def json_response(data: JSONBaseModel, status=200) -> web.Response:
+    return web.Response(text=data.json(), status=status, content_type='application/json')
+
+
 # exceptions
 class NoJSONModelFoundError(Exception):
     pass
