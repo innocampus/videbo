@@ -2,16 +2,19 @@ import argparse
 import configparser
 import logging
 import sys
+
 from . import settings
 
 
 def main() -> None:
+    """main entry point for all nodes"""
     # log level
     logging.basicConfig(level=logging.INFO)
 
     # get CLI arguments
     parser = argparse.ArgumentParser()
     parser.add_argument('--config', help='path to config file', default=None)
+    parser.add_argument('--http-port', help='http api port', default=0, type=int)
     parser.add_argument('mode', help='which server part to start')
     settings.args = parser.parse_args()
 
@@ -22,16 +25,9 @@ def main() -> None:
     settings.config.read(filename)
 
     # get all config options that are useful for all nodes
-    try:
-        settings.internal_api_secret = settings.config.get('general', 'api_secret')
-        settings.lms_api_secret = settings.config.get('lms', 'api_secret')
-        settings.dev_mode = settings.config.get('general', 'dev_mode')
+    settings.load()
 
-    except configparser.NoOptionError as e:
-        print("Missing option in file " + filename + ": " + str(e))
-        sys.exit(1)
-
-    if settings.dev_mode:
+    if settings.general.dev_mode:
         logging.warning('Development mode is enabled. You should enable this mode only during development!')
 
     # Hand over to node code

@@ -56,7 +56,7 @@ def extract_jwt_from_request(request: web.Request) -> str:
 
 def internal_jwt_decode(encoded: str) -> Dict:
     """Decode JSON Web token using the internal secret."""
-    return jwt.decode(encoded, settings.internal_api_secret, algorithms=JWT_ALGORITHM, issuer=JWT_ISS_INTERNAL)
+    return jwt.decode(encoded, settings.general.internal_api_secret, algorithms=JWT_ALGORITHM, issuer=JWT_ISS_INTERNAL)
 
 
 def internal_jwt_encode(data: Dict, expiry: int = 300) -> str:
@@ -66,12 +66,12 @@ def internal_jwt_encode(data: Dict, expiry: int = 300) -> str:
     headers = {
         'kid': JWT_ISS_INTERNAL
     }
-    return jwt.encode(data, settings.internal_api_secret, algorithm=JWT_ALGORITHM, headers=headers).decode('ascii')
+    return jwt.encode(data, settings.general.internal_api_secret, algorithm=JWT_ALGORITHM, headers=headers).decode('ascii')
 
 
 def external_jwt_decode(encoded: str) -> Dict:
     """Decode JSON Web token using the external/lms secret."""
-    return jwt.decode(encoded, settings.lms_api_secret, algorithms=JWT_ALGORITHM, issuer=JWT_ISS_EXTERNAL)
+    return jwt.decode(encoded, settings.lms.api_secret, algorithms=JWT_ALGORITHM, issuer=JWT_ISS_EXTERNAL)
 
 
 def external_jwt_encode(data: Dict, expiry: int = 300) -> str:
@@ -81,7 +81,7 @@ def external_jwt_encode(data: Dict, expiry: int = 300) -> str:
     headers = {
         'kid': JWT_ISS_EXTERNAL
     }
-    return jwt.encode(data, settings.lms_api_secret, algorithm=JWT_ALGORITHM, headers=headers).decode('ascii')
+    return jwt.encode(data, settings.lms.api_secret, algorithm=JWT_ALGORITHM, headers=headers).decode('ascii')
 
 
 def check_jwt_auth_save_data(request: web.Request, min_role_level: int, model: Type['BaseJWTData']) -> bool:
