@@ -69,14 +69,14 @@ class Settings:
     def get_config(self, section: str, option: str) -> str:
         try:
             return self.config.get(section, option)
-        except configparser.NoOptionError as e:
+        except (configparser.NoOptionError, configparser.NoSectionError) as e:
             print("Missing option in config file " + str(e))
             sys.exit(3)
 
     def get_config_bool(self, section: str, option: str) -> bool:
         try:
             return self.config.getboolean(section, option)
-        except configparser.NoOptionError as e:
+        except (configparser.NoOptionError, configparser.NoSectionError) as e:
             print("Missing option in config file " + str(e))
             sys.exit(3)
 
