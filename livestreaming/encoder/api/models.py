@@ -21,4 +21,4 @@ class StreamState(Enum):
     STREAMING = 2 # streamer connected and streaming started
     STOPPED = 3
     ERROR = 100
-
+    UNKNOWN = 200

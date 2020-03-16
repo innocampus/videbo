@@ -6,7 +6,7 @@ import logging
 from aiohttp import web
 from aiohttp.web_exceptions import HTTPUnauthorized
 from time import time
-from typing import Dict, Type, Optional
+from typing import Dict, Type, Optional, Union
 
 from livestreaming import settings
 
@@ -59,10 +59,16 @@ def internal_jwt_decode(encoded: str) -> Dict:
     return jwt.decode(encoded, settings.general.internal_api_secret, algorithms=JWT_ALGORITHM, issuer=JWT_ISS_INTERNAL)
 
 
-def internal_jwt_encode(data: Dict, expiry: int = 300) -> str:
+def internal_jwt_encode(data: Union[Dict, 'BaseJWTData'], expiry: int = 300) -> str:
     """Encode data to JSON Web token using the internal secret."""
-    data['exp'] = int(time()) + expiry
-    data['iss'] = JWT_ISS_INTERNAL
+    if isinstance(data, dict):
+        data['exp'] = int(time()) + expiry
+        data['iss'] = JWT_ISS_INTERNAL
+    elif isinstance(data, BaseJWTData):
+        data.exp = int(time()) + expiry
+        data.iss = JWT_ISS_INTERNAL
+        data = data.dict()
+
     headers = {
         'kid': JWT_ISS_INTERNAL
     }

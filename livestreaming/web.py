@@ -3,16 +3,20 @@ import inspect
 import logging
 import pydantic
 from json import JSONDecodeError
-from typing import Optional, Type, List, Union
-from aiohttp import web
+from typing import Optional, Type, List, Union, Any, Tuple
+from aiohttp import web, ClientResponse, ClientSession, ClientError
 from aiohttp.web_exceptions import HTTPException, HTTPBadRequest
+from livestreaming.auth import BaseJWTData, internal_jwt_encode
 
 web_logger = logging.getLogger('livestreaming-web')
 
 
 def start_web_server(port: int, routes):
+    HTTPClient.create_client_session()
+
     app = web.Application()
     app.add_routes(routes)
+    app.on_shutdown.append(HTTPClient.close_all)
     web.run_app(app, port=port)
 
 
@@ -121,10 +125,80 @@ def json_response(data: JSONBaseModel, status=200) -> web.Response:
     return web.Response(text=data.json(), status=status, content_type='application/json')
 
 
+class HTTPClient:
+    session: ClientSession
+
+    @classmethod
+    def create_client_session(cls):
+        cls.session = ClientSession() # TODO use TCPConnector and use limit_per_host option
+
+    @classmethod
+    async def close_all(cls, app: web.Application):
+        await cls.session.close()
+
+    @classmethod
+    async def internal_request(cls, method: str, url: str, jwt_data: Optional[BaseJWTData] = None,
+                               json_data: Optional[JSONBaseModel] = None,
+                               expected_return_type: Optional[Type[JSONBaseModel]] = None) -> Tuple[int, Any]:
+        """Do an internal HTTP request, i.e. a request to another node with a JWT using the internal secret.
+
+        You may transmit json data and specify the expected return type."""
+
+        headers = {}
+        data = None
+        if jwt_data:
+            jwt = internal_jwt_encode(jwt_data)
+            headers['Authorization'] = "Bearer " + jwt
+        if json_data:
+            headers['Content-Type'] = 'application/json'
+            data = json_data.json()
+
+        try:
+            async with cls.session.request(method, url, data=data, headers=headers) as response:
+                if response.content_type == 'application/json':
+                    json = await response.json()
+                    if expected_return_type:
+                        return response.status, expected_return_type.parse_obj(json)
+                    else:
+                        return response.status, json
+                elif expected_return_type:
+                    web_logger.warning("Got unexpected data while internal web request")
+                    raise HTTPResponseError()
+                else:
+                    some_data = await response.read()
+                    return response.status, some_data
+        except (ClientError, UnicodeDecodeError, pydantic.ValidationError, JSONDecodeError) as error:
+            web_logger.warning("Error while internal web request: " + str(error))
+            raise HTTPResponseError()
+
+
+async def read_data_from_response(response: ClientResponse, max_bytes: int) -> bytes:
+    """Read up to max_bytes of data in memory. Be carefull with max_bytes."""
+    read_bytes = 0
+    blocks = []
+    while True:
+        block = await response.content.readany()
+        if not block:
+            break
+        read_bytes += len(block)
+        if read_bytes > max_bytes:
+            raise ResponseTooManyDataError()
+        blocks.append(block)
+    return b''.join(blocks)
+
+
 # exceptions
 class NoJSONModelFoundError(Exception):
     pass
 
 
 class TooManyJSONModelsError(Exception):
+    pass
+
+
+class ResponseTooManyDataError(Exception):
+    pass
+
+
+class HTTPResponseError(Exception):
     pass

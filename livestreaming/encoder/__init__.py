@@ -1,5 +1,5 @@
 import logging
-from pathlib import PurePath
+from pathlib import PurePath, Path
 
 from livestreaming import settings
 from livestreaming.settings import SettingsSectionBase
@@ -21,6 +21,10 @@ logger = logging.getLogger('livestreaming-encoder')
 def start() -> None:
     from .api.routes import routes
     encoder_settings.load()
+
+    # ensure temp dir exists
+    temp_dir = Path(encoder_settings.hls_temp_dir)
+    temp_dir.mkdir(parents=True, exist_ok=True)
 
     if settings.general.dev_mode:
         routes.static("/data/hls", encoder_settings.hls_temp_dir)
