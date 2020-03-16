@@ -18,7 +18,8 @@ class NewStreamReturn(JSONBaseModel):
 class StreamState(Enum):
     NOT_YET_STARTED = 0
     WAITING_FOR_CONNECTION = 1 # streamer did not yet connect to open port
-    STREAMING = 2 # streamer connected and streaming started
-    STOPPED = 3
+    BUFFERING = 2 # streamer connected, but waiting now until there is enough data (first segments have been written)
+    STREAMING = 3 # streaming started, content node may fetch data from encoder and clients may connect to content node
+    STOPPED = 4 # streamer stopped broadcasting, wait until manager tells to clean up
     ERROR = 100
     UNKNOWN = 200
