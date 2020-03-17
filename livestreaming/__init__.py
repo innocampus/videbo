@@ -1,6 +1,7 @@
 import argparse
 import logging
 import sys
+from pathlib import Path
 from .settings import Settings
 
 
@@ -22,10 +23,16 @@ def load_general_settings(cli_only_config: bool = False) -> None:
     settings.args = parser.parse_args()
 
     # read config file
-    filename = settings.args.config
-    if filename is None:
-        filename = settings.topdir + "/config.ini"
-    settings.config.read(filename)
+    if settings.args.config is not None:
+        config_file = Path(settings.args.config)
+    else:
+        config_file = Path(settings.topdir + "/config.ini")
+
+    if not config_file.is_file():
+        print(f"Config file does not exist: {config_file}")
+        sys.exit(3)
+
+    settings.config.read(config_file)
 
     # get all config options that are useful for all nodes
     settings.load()
