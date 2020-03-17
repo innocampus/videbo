@@ -1,23 +1,47 @@
-from aiohttp.web import Request, Response, RouteTableDef
-from aiohttp.web_exceptions import HTTPNotAcceptable
+from asyncio import get_event_loop
+from aiohttp.web import Request, Response, RouteTableDef, FileResponse
+from aiohttp.web_exceptions import HTTPNotAcceptable, HTTPSeeOther, HTTPNotFound
+from pathlib import Path
+from livestreaming import settings
 from livestreaming.auth import Role, BaseJWTData, ensure_jwt_data_and_role
-from livestreaming.web import json_response, ensure_json_body
+from livestreaming.web import json_response, ensure_json_body, register_route_with_cors
 from livestreaming.content.streams_fetcher import stream_fetcher_collection, StreamFetcher, AlreadyFetchingStreamError
-from livestreaming.content import logger
+from livestreaming.content import logger, content_settings
 from .models import StartStreamDistributionInfo
 
 routes = RouteTableDef()
 
 
-@routes.get(r'/api/content/playlist/{stream_id:\d}.m3u8')
+@register_route_with_cors(routes, "GET", r"/api/content/playlist/{stream_id:\d}.m3u8")
 #@ensure_jwt_data_and_role(Role.client)
 async def get_playlist(request: Request):
     """Manager requests encoder to open a port and start a new stream to HLS encoding."""
     stream_id = int(request.match_info['stream_id'])
     # TODO check if id equals id given in JWT
 
+    import random
+    if random.randint(0, 4) == 2:
+        url = f"http://localhost:9040/api/broker/redirect/{stream_id}.m3u8?{request.query_string}"
+        raise HTTPSeeOther(location=url)
+
     stream = stream_fetcher_collection.get_fetcher_by_id(stream_id)
     return Response(body=stream.current_playlist, content_type='application/x-mpegURL')
+
+
+@register_route_with_cors(routes, "GET", r"/data/hls/{stream_id:\d}/{file:[a-z0-9]+\.ts}")
+async def get_segment(request: Request):
+    """Serving segments for development purposes."""
+    if not settings.general.dev_mode:
+        raise HTTPNotFound()
+
+    stream_id = int(request.match_info['stream_id'])
+    file = request.match_info['file']
+    path = Path(content_settings.hls_temp_dir, str(stream_id), file)
+    if not (await get_event_loop().run_in_executor(None, path.is_file)):
+        logger.error('File does not exist: %s', path)
+        return HTTPNotFound()
+
+    return FileResponse(path)
 
 
 @routes.post(r'/api/content/stream/start/{stream_id:\d}')

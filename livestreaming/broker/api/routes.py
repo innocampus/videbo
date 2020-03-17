@@ -51,7 +51,7 @@ async def redirect(request: Request, data: BrokerRedirectJWTData):
             if penalty < least_penalty:
                 best_node = node
                 least_penalty = penalty
-    url = f"https://{best_node}/{playlist}?{request.query_string}"
+    url = f"http://{best_node}/api/content/playlist/{stream_id}.m3u8?{request.query_string}"
     grid.increment_clients(host=best_node)
     raise HTTPSeeOther(location=url)
 

@@ -24,7 +24,4 @@ def start() -> None:
     temp_dir = Path(content_settings.hls_temp_dir)
     temp_dir.mkdir(parents=True, exist_ok=True)
 
-    if settings.general.dev_mode:
-        routes.static("/data/hls", content_settings.hls_temp_dir)
-
     start_web_server(content_settings.http_port, routes)

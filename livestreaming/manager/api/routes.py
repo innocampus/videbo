@@ -17,6 +17,7 @@ async def new_stream(request: Request, jwt_data: BaseJWTData):
         await stream.tell_encoder()
         await asyncio.sleep(30)
         await stream.tell_content()
+        await stream_collection.tell_broker()
 
         new_stream_data = LMSNewStreamCreated(stream_id=stream.stream_id, streamer_url=stream.encoder_streamer_url,
                                               streamer_username=stream.username, streamer_password=stream.password,
