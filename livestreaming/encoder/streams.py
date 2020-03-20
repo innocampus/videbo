@@ -2,6 +2,8 @@ import asyncio
 import functools
 import shlex
 import string
+import socket
+import errno
 from random import choice
 from pathlib import Path
 from time import time
@@ -13,7 +15,24 @@ from . import logger
 
 
 def get_unused_port() -> int:
-    return 9011 # TODO
+    for ports in encoder_settings.rtmp_ports.split(","):
+        port_split = ports.split("-")
+        if len(port_split) > 1:
+            ports = range(int(port_split[0]), int(port_split[1])+1)
+        else:
+            ports = [int(port_split[0])]
+        for port in ports:
+            with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+                try:
+                    s.bind(("127.0.0.1", port))
+                except socket.error as e:
+                    if e.errno == errno.EADDRINUSE:
+                        # expected case in runtime: port may be taken
+                        pass
+                    else:
+                        raise e
+                return port
+    raise PortsInUseException()
 
 
 class FFmpeg:
@@ -134,6 +153,10 @@ class StreamCollection:
 
 
 class StreamIdAlreadyExistsError(Exception):
+    pass
+
+
+class PortsInUseException(Exception):
     pass
 
 

@@ -13,6 +13,7 @@ class EncoderSettings(SettingsSectionBase):
     binary_ffprobe: str
     hls_temp_dir: PurePath
     passwd_length: int
+    rtmp_ports: str
 
 
 encoder_settings = EncoderSettings()
