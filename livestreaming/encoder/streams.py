@@ -1,10 +1,13 @@
 import asyncio
 import functools
 import shlex
+import string
+from random import choice
 from pathlib import Path
 from time import time
 from typing import Dict, Optional
 from livestreaming.encoder import encoder_settings
+from livestreaming import settings
 from .api.models import StreamState
 from . import logger
 
@@ -59,7 +62,11 @@ class Stream:
         if passw:
             self.password: str = passw
         else:
-            self.password: str = 'random' # TODO
+            if settings.general.dev_mode:
+                self.password: str = 'developer'
+            else:
+                base_characters = string.ascii_letters + string.digits
+                self.password = ''.join(choice(base_characters) for _ in range(encoder_settings.passwd_length))
 
     def start(self):
         # Run everything in an own task.

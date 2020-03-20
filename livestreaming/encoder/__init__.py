@@ -12,6 +12,7 @@ class EncoderSettings(SettingsSectionBase):
     binary_ffmpeg: str
     binary_ffprobe: str
     hls_temp_dir: PurePath
+    passwd_length: int
 
 
 encoder_settings = EncoderSettings()
