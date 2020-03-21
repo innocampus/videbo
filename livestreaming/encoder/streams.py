@@ -1,21 +1,30 @@
 import asyncio
 import functools
 import shlex
-import string
 import socket
 import errno
-from random import choice
+from enum import Enum
 from pathlib import Path
 from time import time
-from typing import Dict, Optional
+from typing import Optional
+from livestreaming.streams import StreamState
 from livestreaming.encoder import encoder_settings
-from livestreaming import settings
-from .api.models import StreamState
+from livestreaming.streams import Stream
+from livestreaming.streams import StreamCollection
 from . import logger
 
 
-def get_unused_port() -> int:
-    for ports in encoder_settings.rtmp_ports.split(","):
+class PortType(Enum):
+    INTERNAL = 0
+    PUBLIC = 1
+
+
+def get_unused_port(port_type: PortType) -> int:
+    if port_type == PortType.INTERNAL:
+        raw_ports = encoder_settings.rtmp_internal_ports
+    else:
+        raw_ports = encoder_settings.rtmp_public_ports
+    for ports in raw_ports.split(","):
         port_split = ports.split("-")
         if len(port_split) > 1:
             ports = range(int(port_split[0]), int(port_split[1])+1)
@@ -39,53 +48,60 @@ class FFmpeg:
     """
     FFmpeg and converting to HLS playlist and segments.
     """
-    def __init__(self, stream: 'Stream'):
-        self.stream: 'Stream' = stream
-        self.process: Optional[asyncio.subprocess.Process] = None
+    def __init__(self, stream: 'EncoderStream'):
+        self.stream: 'EncoderStream' = stream
+        self.ffmpeg_process: Optional[asyncio.subprocess.Process] = None
+        self.socat_process: Optional[asyncio.subprocess.Process] = None
 
     async def start(self):
         program = encoder_settings.binary_ffmpeg
-        url = self.stream.get_url(True)
+        url = self.stream.get_url()
         args = (f"-listen 1 -i {url} -c:v libx264 -crf 21 -preset "
                 f"veryfast -c:a aac -b:a 128k -ac 2 -f hls -hls_time 3 -hls_playlist_type event stream.m3u8")
 
-        self.process = await asyncio.create_subprocess_exec(program, *shlex.split(args), stdout=asyncio.subprocess.DEVNULL,
-                stderr=asyncio.subprocess.DEVNULL, cwd=self.stream.dir)
+        self.ffmpeg_process = await asyncio.create_subprocess_exec(program, *shlex.split(args),
+                                                                   stdout=asyncio.subprocess.DEVNULL,
+                                                                   stderr=asyncio.subprocess.DEVNULL,
+                                                                   cwd=self.stream.dir)
+
+        if encoder_settings.rtmps_cert:
+            args = f"openssl-listen:{self.stream.public_port},cert={encoder_settings.rtmps_cert},verify=0"
+        else:
+            args = f"tcp-listen:{self.stream.public_port}"
+        if self.stream.ip_range:
+            args += f",range={self.stream.ip_range}"
+        args += f" tcp:localhost:{self.stream.port}"
+
+        self.socat_process = await asyncio.create_subprocess_exec(encoder_settings.binary_socat, *shlex.split(args),
+                                                                  stdout=asyncio.subprocess.DEVNULL,
+                                                                  stderr=asyncio.subprocess.DEVNULL,
+                                                                  cwd=self.stream.dir)
 
     async def wait(self):
-        await self.process.wait()
+        await self.ffmpeg_process.wait()
+        await self.socat_process.wait()
 
     async def stop(self):
-        if self.process:
-            self.process.terminate()
-            try:
-                await asyncio.wait_for(self.process.wait(), 2)
-            except asyncio.TimeoutError:
-                self.process.kill()
-            self.process = None
+        for process_name in ['ffmpeg_process', 'socat_process']:
+            process = getattr(self, process_name, None)
+            if process:
+                process.terminate()
+                try:
+                    await asyncio.wait_for(process.wait(), 2)
+                except asyncio.TimeoutError:
+                    process.kill()
+            setattr(self, process_name, None)
 
 
-class Stream:
-    def __init__(self, stream_id: int, passw: Optional[str] = None):
-        self.stream_id: int = stream_id
-        self.username: str = f"user{stream_id}"
-        self.port: int = get_unused_port()
+class EncoderStream(Stream):
+    def __init__(self, stream_id: int, ip_range: Optional[str] = None):
+        super().__init__(stream_id, ip_range)
+        self.port: int = get_unused_port(port_type=PortType.INTERNAL)
+        self.public_port: int = get_unused_port(port_type=PortType.PUBLIC)
         self.control_task: Optional[asyncio.Task] = None
         self.ffmpeg: Optional[FFmpeg] = None
         self.dir: Optional[Path] = None
-
-        self.state: StreamState
-        self.state_last_update: float
         self._update_state(StreamState.NOT_YET_STARTED)
-
-        if passw:
-            self.password: str = passw
-        else:
-            if settings.general.dev_mode:
-                self.password: str = 'developer'
-            else:
-                base_characters = string.ascii_letters + string.digits
-                self.password = ''.join(choice(base_characters) for _ in range(encoder_settings.passwd_length))
 
     def start(self):
         # Run everything in an own task.
@@ -129,27 +145,19 @@ class Stream:
         self.state = new_state
         self.state_last_update = time()
 
-    def get_url(self, with_auth: bool = False):
-        auth = ''
-        if with_auth:
-            auth = f"{self.username}:{self.password}@"
-        return f"rtmp://{auth}localhost:{self.port}/stream"
+    def get_url(self):
+        return f"rtmp://localhost:{self.public_port}/stream"
 
 
-class StreamCollection:
-    def __init__(self):
-        self.streams: Dict[int, Stream] = {}
+class EncoderStreamCollection(StreamCollection[EncoderStream]):
 
-    def create_new_stream(self, stream_id: int) -> Stream:
+    def create_new_stream(self, stream_id: int, ip_range: Optional[str] = None) -> EncoderStream:
         if stream_id in self.streams:
             raise StreamIdAlreadyExistsError()
 
-        new_stream = Stream(stream_id)
+        new_stream = EncoderStream(stream_id, ip_range)
         self.streams[stream_id] = new_stream
         return new_stream
-
-    def get_stream_by_id(self, stream_id: int) -> Stream:
-        return self.streams[stream_id]
 
 
 class StreamIdAlreadyExistsError(Exception):
@@ -160,4 +168,4 @@ class PortsInUseException(Exception):
     pass
 
 
-stream_collection = StreamCollection()
+stream_collection = EncoderStreamCollection()

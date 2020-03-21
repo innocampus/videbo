@@ -11,9 +11,12 @@ class EncoderSettings(SettingsSectionBase):
     http_port: int
     binary_ffmpeg: str
     binary_ffprobe: str
+    binary_socat: str
     hls_temp_dir: PurePath
     passwd_length: int
-    rtmp_ports: str
+    rtmp_internal_ports: str
+    rtmp_public_ports: str
+    rtmps_cert: str
 
 
 encoder_settings = EncoderSettings()
@@ -31,4 +34,3 @@ def start() -> None:
     if settings.general.dev_mode:
         routes.static("/data/hls", encoder_settings.hls_temp_dir)
     start_web_server(encoder_settings.http_port, routes)
-
