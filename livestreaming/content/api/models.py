@@ -1,5 +1,10 @@
 from typing import Optional
 from livestreaming.web import JSONBaseModel
+from livestreaming.web import BaseJWTData
+
+
+class ContentPlaylistJWTData(BaseJWTData):
+    stream_id: int
 
 
 class StartStreamDistributionInfo(JSONBaseModel):

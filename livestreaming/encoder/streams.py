@@ -60,7 +60,7 @@ class FFmpeg:
 
         self.ffmpeg_process = await asyncio.create_subprocess_exec(program, *shlex.split(args),
                                                                    stdout=asyncio.subprocess.DEVNULL,
-                                                                   stderr=asyncio.subprocess.DEVNULL,
+                                                                   stderr=None,
                                                                    cwd=self.stream.dir)
 
         if encoder_settings.rtmps_cert:
@@ -140,8 +140,14 @@ class EncoderStream(Stream):
         await asyncio.get_event_loop().run_in_executor(None,
                 functools.partial(self.dir.mkdir, parents=True, exist_ok=True))
 
+    def _get_url(self, port: PortType):
+        return f"rtmp://localhost:{self.public_port if port is PortType.PUBLIC else self.port}/stream"
+
     def get_url(self):
-        return f"rtmp://localhost:{self.public_port}/stream"
+        return self._get_url(PortType.INTERNAL)
+
+    def get_public_url(self):
+        return self._get_url(PortType.PUBLIC)
 
 
 class EncoderStreamCollection(StreamCollection[EncoderStream]):

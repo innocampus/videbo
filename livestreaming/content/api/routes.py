@@ -1,23 +1,24 @@
 from asyncio import get_event_loop
 from aiohttp.web import Request, Response, RouteTableDef, FileResponse
-from aiohttp.web_exceptions import HTTPNotAcceptable, HTTPSeeOther, HTTPNotFound
+from aiohttp.web_exceptions import HTTPNotAcceptable, HTTPSeeOther, HTTPNotFound, HTTPForbidden
 from pathlib import Path
 from livestreaming import settings
 from livestreaming.auth import Role, BaseJWTData, ensure_jwt_data_and_role
-from livestreaming.web import json_response, ensure_json_body, register_route_with_cors
+from livestreaming.web import ensure_json_body, register_route_with_cors
 from livestreaming.content.streams_fetcher import stream_fetcher_collection, StreamFetcher, AlreadyFetchingStreamError
 from livestreaming.content import logger, content_settings
-from .models import StartStreamDistributionInfo
+from .models import StartStreamDistributionInfo, ContentPlaylistJWTData
 
 routes = RouteTableDef()
 
 
 @register_route_with_cors(routes, "GET", r"/api/content/playlist/{stream_id:\d}.m3u8")
-#@ensure_jwt_data_and_role(Role.client)
-async def get_playlist(request: Request):
+@ensure_jwt_data_and_role(Role.client)
+async def get_playlist(request: Request, jwt_token: ContentPlaylistJWTData):
     """Manager requests encoder to open a port and start a new stream to HLS encoding."""
     stream_id = int(request.match_info['stream_id'])
-    # TODO check if id equals id given in JWT
+    if stream_id != jwt_token.stream_id:
+        raise HTTPForbidden()
 
     import random
     if random.randint(0, 4) == 2:

@@ -17,7 +17,7 @@ async def new_stream(request: Request, jwt_data: BaseJWTData, json: NewStreamPar
         stream = stream_collection.create_new_stream(stream_id, json.ip_range)
         stream.start()
 
-        new_stream_data = NewStreamCreated(url=stream.get_url())
+        new_stream_data = NewStreamCreated(url=stream.get_public_url())
         return_data = NewStreamReturn(success=True, stream=new_stream_data)
         return json_response(return_data)
     except StreamIdAlreadyExistsError:
