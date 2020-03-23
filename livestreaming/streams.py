@@ -1,4 +1,7 @@
-from typing import Optional, Dict, TypeVar, Generic
+from typing import Optional, Dict, TypeVar, Generic, Union
+from ipaddress import IPv4Network, IPv6Network, ip_network
+from time import time
+from logging import Logger
 from enum import Enum
 
 
@@ -14,18 +17,35 @@ class StreamState(Enum):
 
 class Stream:
     stream_id: int
-    ip_range: Optional[str]
-    state: StreamState = StreamState.UNKNOWN
+    ip_range: Union[IPv6Network, IPv4Network, None] = None
+    _state: StreamState = StreamState.UNKNOWN
     state_last_update: float = 0
 
-    def __init__(self, stream_id: int, ip_range: Optional[str]):
+    def __init__(self, stream_id: int, ip_range: Optional[str], logger: Optional[Logger] = None):
         self.stream_id = stream_id
-        self.ip_range = ip_range
-        if not self._validate_ip_range():
+        try:
+            self.ip_range = ip_network(ip_range)
+        except ValueError as e:
+            if logger and ip_range:
+                logger.warning(e)
             self.ip_range = None
 
-    def _validate_ip_range(self) -> bool:
-        return self.ip_range is not None   # TODO
+    @property
+    def state(self) -> StreamState:
+        return self._state
+
+    @state.setter
+    def state(self, value: StreamState):
+        self._state = value
+        self.state_last_update = time()
+
+    @property
+    def is_restricted(self) -> bool:
+        return self.ip_range is not None
+
+    @property
+    def ip_range_str(self) -> Optional[str]:
+        return str(self.ip_range) if self.is_restricted else None
 
 
 StreamType = TypeVar("StreamType", bound=Stream)

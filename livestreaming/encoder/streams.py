@@ -5,7 +5,6 @@ import socket
 import errno
 from enum import Enum
 from pathlib import Path
-from time import time
 from typing import Optional
 from livestreaming.streams import StreamState
 from livestreaming.encoder import encoder_settings
@@ -95,13 +94,13 @@ class FFmpeg:
 
 class EncoderStream(Stream):
     def __init__(self, stream_id: int, ip_range: Optional[str] = None):
-        super().__init__(stream_id, ip_range)
+        super().__init__(stream_id, ip_range, logger)
         self.port: int = get_unused_port(port_type=PortType.INTERNAL)
         self.public_port: int = get_unused_port(port_type=PortType.PUBLIC)
         self.control_task: Optional[asyncio.Task] = None
         self.ffmpeg: Optional[FFmpeg] = None
         self.dir: Optional[Path] = None
-        self._update_state(StreamState.NOT_YET_STARTED)
+        self.state = StreamState.NOT_YET_STARTED
 
     def start(self):
         # Run everything in an own task.
@@ -113,18 +112,18 @@ class EncoderStream(Stream):
             logger.info(f"Start ffmpeg on port {self.port} for stream id {self.stream_id}")
 
             # Start ffmpeg.
-            self._update_state(StreamState.WAITING_FOR_CONNECTION)
+            self.state = StreamState.WAITING_FOR_CONNECTION
             self.ffmpeg = FFmpeg(self)
             await self.ffmpeg.start()
             await self.ffmpeg.wait()
-            self._update_state(StreamState.STOPPED)
+            self.state = StreamState.STOPPED
 
         except asyncio.CancelledError:
             if self.ffmpeg:
                 await self.ffmpeg.stop()
         except Exception as err:
             logger.error(f"Error in stream controller: {str(err)}")
-            self._update_state(StreamState.ERROR)
+            self.state = StreamState.ERROR
             if self.ffmpeg:
                 await self.ffmpeg.stop()
 
@@ -140,10 +139,6 @@ class EncoderStream(Stream):
         # there might be blocking io, run in another thread
         await asyncio.get_event_loop().run_in_executor(None,
                 functools.partial(self.dir.mkdir, parents=True, exist_ok=True))
-
-    def _update_state(self, new_state: StreamState):
-        self.state = new_state
-        self.state_last_update = time()
 
     def get_url(self):
         return f"rtmp://localhost:{self.public_port}/stream"

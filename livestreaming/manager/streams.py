@@ -1,7 +1,6 @@
 from livestreaming.web import HTTPClient, HTTPResponseError
 from livestreaming.auth import BaseJWTData
 from livestreaming.streams import Stream, StreamCollection
-from livestreaming.broker import broker_settings
 from livestreaming.encoder.api.models import NewStreamReturn, NewStreamParams
 from livestreaming.content.api.models import StartStreamDistributionInfo
 from livestreaming.broker.api.models import BrokerContentNodeModel, BrokerGridModel, BrokerStreamsModel
@@ -11,13 +10,13 @@ from typing import Optional
 
 class ManagerStream(Stream):
     def __init__(self, stream_id: int, ip_range: Optional[str]):
-        super().__init__(stream_id, ip_range)
+        super().__init__(stream_id, ip_range, logger)
         self.encoder_streamer_url: str = ''
 
     async def tell_encoder(self):
         jwt_data = BaseJWTData.construct(role='manager')
         url = f'http://localhost:9010/api/encoder/stream/new/{self.stream_id}'
-        stream_params = NewStreamParams(ip_range=self.ip_range)
+        stream_params = NewStreamParams(ip_range=self.ip_range_str)
 
         try:
             ret: NewStreamReturn
