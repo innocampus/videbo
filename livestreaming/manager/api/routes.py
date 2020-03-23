@@ -22,12 +22,12 @@ async def new_stream(request: Request, jwt_data: BaseJWTData, json: LMSNewStream
         await stream_collection.tell_broker()
 
         new_stream_data = LMSNewStreamCreated(stream_id=stream.stream_id, streamer_url=stream.encoder_streamer_url,
-                                              viewer_broker_url='', ip_restricted=(json.ip_range is not None))
+                                              viewer_broker_url='', ip_restricted=stream.is_restricted)
         return_data = LMSNewStreamReturn(success=True, stream=new_stream_data)
         return json_response(return_data)
     except Exception as e:
-        return_data = LMSNewStreamReturn(success=False, error="some error")
+        error_type = type(e).__name__
+        return_data = LMSNewStreamReturn(success=False, error=error_type)
         file = e.__traceback__.tb_frame.f_code.co_filename
-        logger.error(f"error raised at {file} on line {e.__traceback__.tb_lineno}")
-        raise e
-        # return json_response(return_data, status=500)
+        logger.error(f"{error_type} raised at {file} on line {e.__traceback__.tb_lineno}")
+        return json_response(return_data, status=500)
