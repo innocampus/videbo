@@ -60,7 +60,7 @@ class FFmpeg:
 
         self.ffmpeg_process = await asyncio.create_subprocess_exec(program, *shlex.split(args),
                                                                    stdout=asyncio.subprocess.DEVNULL,
-                                                                   stderr=None,
+                                                                   stderr=asyncio.subprocess.DEVNULL,
                                                                    cwd=self.stream.dir)
 
         if encoder_settings.rtmps_cert:
