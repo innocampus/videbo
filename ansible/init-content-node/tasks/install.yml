@@ -1,0 +1,22 @@
+---
+- name: create venv
+  command:
+    cmd: "python3 -m venv venv"
+    creates: "{{ project_path }}/venv"
+    chdir: "{{ project_path }}"
+
+- name: install python dependencies
+  command:
+    cmd: "{{ project_path }}/venv/bin/pip install -r {{ project_path }}/requirements.txt"
+
+- name: copy systemd unit
+  template:
+    src: "livestreaming-content-node.service.j2"
+    dest: "/etc/systemd/system/livestreaming-content-node.service"
+    mode: 0644
+
+- name: start systemd unit
+  systemd:
+    state: started
+    enabled: true
+    name: livestreaming-content-node

@@ -1,0 +1,16 @@
+---
+- name: create project path
+  file:
+    dest: "{{ project_path }}"
+    mode: '700'
+    state: directory
+
+- name: copy project to node
+  copy:
+    src: "{{ deployment_tar_path }}"
+    dest: "{{ project_path }}"
+
+- name: Extract Project
+  unarchive:
+    src: "{{ project_path }}/livestream_deploy.tar.gz"
+    dest: "{{ project_path }}/"
