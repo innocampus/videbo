@@ -5,7 +5,6 @@ from aiohttp.web import HTTPNotFound
 from aiohttp.web import HTTPServiceUnavailable
 from aiohttp.web import HTTPOk
 from aiohttp.web import RouteTableDef
-from aiohttp.client_exceptions import ClientConnectorError
 from os.path import splitext as path_splitext
 from livestreaming.auth import BaseJWTData
 from livestreaming.auth import ensure_jwt_data_and_role
@@ -42,6 +41,7 @@ async def redirect(request: Request, data: BrokerRedirectJWTData):
         raise HTTPNotFound()
     available_nodes = list(filter(grid.is_available, content_nodes))
     if len(available_nodes) == 0:
+        grid.add_to_wait_queue(stream_id)
         raise HTTPServiceUnavailable(headers={"Retry-After": broker_settings.http_retry_after})
     best_node = available_nodes.pop()
     if not len(available_nodes) == 0:
@@ -58,26 +58,23 @@ async def redirect(request: Request, data: BrokerRedirectJWTData):
 
 @routes.get("/api/broker/state")
 @ensure_jwt_data_and_role(Role.manager)
-async def fetch_state(request: Request, not_used: BaseJWTData):
+async def fetch_state(_: Request, __: BaseJWTData):
     """
-    :param request:
-    :param not_used:
+    :param _: Mandatory for routing
+    :param __: Mandatory for ensure_jwt_data_and_role()
     :raises HTTPOk
     """
-    model = {
-        "streams": grid.get_streams(),
-        "content_nodes": grid.get_content_nodes()
-    }
-    raise HTTPOk(body=f"{model}")
+    raise HTTPOk(body=grid.json_model())
 
 
 @routes.post("/api/broker/streams")
 @ensure_jwt_data_and_role(Role.manager)
 @ensure_json_body()
-async def update_grid(request: Request, not_used: BaseJWTData, model: BrokerGridModel):
+async def update_grid(_: Request, __: BaseJWTData, model: BrokerGridModel):
     """
     Updates grid via web request.
-    :param request:
+    :param _: Mandatory for routing
+    :param __: Mandatory for ensure_jwt_data_and_role()
     :param model:
     :raises HTTPOk
     """

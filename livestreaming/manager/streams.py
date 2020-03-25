@@ -3,7 +3,7 @@ from livestreaming.auth import BaseJWTData
 from livestreaming.streams import Stream, StreamCollection
 from livestreaming.encoder.api.models import NewStreamReturn, NewStreamParams
 from livestreaming.content.api.models import StartStreamDistributionInfo
-from livestreaming.broker.api.models import BrokerContentNodeModel, BrokerGridModel, BrokerStreamsModel
+from livestreaming.broker.api.models import BrokerContentNode, BrokerGridModel, BrokerStreamCollection
 from . import logger
 from typing import Optional
 
@@ -60,12 +60,12 @@ class ManagerStreamCollection(StreamCollection[ManagerStream]):
         jwt_data = BaseJWTData.construct(role='manager')
         url = f'http://localhost:9040/api/broker/streams'
 
-        content_node = BrokerContentNodeModel(clients=0, max_clients=1000, load=0, host='localhost:9020', penalty=1)
+        content_node = BrokerContentNode(clients=0, max_clients=1000, load=0, host='localhost:9020', penalty=1)
         contents = {
             f'localhost:9020': content_node
         }
 
-        streams: BrokerStreamsModel = {
+        streams: BrokerStreamCollection = {
             2: ['localhost:9020']
         }
 
