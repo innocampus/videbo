@@ -33,10 +33,11 @@ def get_unused_port(port_type: PortType) -> int:
             with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
                 try:
                     s.bind(("127.0.0.1", port))
+                    # if port is taken exception will raise
                     return port
                 except socket.error as e:
                     if e.errno == errno.EADDRINUSE:
-                        # expected case in runtime: port may be taken
+                        # expected case at runtime
                         pass
                     else:
                         raise e
