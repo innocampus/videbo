@@ -9,20 +9,21 @@ from hcloud.locations.domain import Location
 
 
 class Node:
-    def __init__(self, name, status, ip, id):
+    def __init__(self, name, status, ip, id, provider):
         self.name = name
         self.status = status
         self.ip = ip
         self.id = id
+        self.provider = provider
 
     def __str__(self):
-        return f"[Node name: {self.name}; status: {self.status}; ip: {self.ip}; id: {self.id}]"
+        return f"[Node name: {self.name}; status: {self.status}; ip: {self.ip}; id: {self.id}, provider: {self.provider}] "
 
 
 class CloudAPI:
-    def __init__(self, token):
+    def __init__(self, manager_settings):
         self.name = ""
-        self.token = token
+        self.manager_settings = manager_settings
 
     def get_all_nodes(self) -> List[Node]:
         return []
@@ -34,10 +35,25 @@ class CloudAPI:
         pass
 
 
+class CombinedCloudAPI(CloudAPI):
+    def __init__(self, manager_settings):
+        super().__init__(manager_settings)
+        self.providers = ""
+        self.provider_apis = {}
+
+    def init_cloud_apis(self):
+        self.providers = list(map(str.strip, self.manager_settings.cloud_providers.split(',')))
+
+        for provider in self.providers:
+            if provider == "hetzner":
+                self.provider_apis["hetzner"] = HetznerAPI(self.manager_settings)
+
+
 class HetznerAPI(CloudAPI):
-    def __init__(self, token):
-        super().__init__(token)
-        self.name = "hetzner"
+    def __init__(self, manager_settings):
+        super().__init__(manager_settings)
+        self.token = self.manager_settings.hetzner_api_token
+        self.provider = "hetzner"
         self.client = Client(token=self.token)
 
     def get_all_locations(self):
@@ -48,7 +64,7 @@ class HetznerAPI(CloudAPI):
             servers = self.client.servers.get_all()
             nodes = []
             for s in servers:
-                nodes.append(Node(s.name, s.status, s.public_net.ipv4.ip, s.id))
+                nodes.append(Node(s.name, s.status, s.public_net.ipv4.ip, s.id, self.provider))
             return nodes
         except APIException:  # handle exceptions
             pass
@@ -65,7 +81,7 @@ class HetznerAPI(CloudAPI):
                                                   location=Location(name="nbg1"),  # allowed locations: fsn1, nbg1, hel1
                                                   ssh_keys=[SSHKey(name="streamingkey")])
             server = response.server
-            return Node(server.name, server.status, server.public_net.ipv4.ip, server.id)
+            return Node(server.name, server.status, server.public_net.ipv4.ip, server.id, self.provider)
         except APIException:  # handle exceptions
             pass
         except ActionFailedException:

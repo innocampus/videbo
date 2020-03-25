@@ -10,6 +10,8 @@ from .node_controller import NodeController
 class ManagerSettings(SettingsSectionBase):
     _section: str = 'manager'
     http_port: int
+    cloud_providers: str
+    hetzner_api_token: str
 
 
 manager_settings = ManagerSettings()
