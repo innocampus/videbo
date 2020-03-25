@@ -27,10 +27,10 @@ class CloudAPI:
     def get_all_nodes(self) -> List[Node]:
         return []
 
-    def create_content_node(self, name) -> Node:
+    def create_node(self, name) -> Node:
         pass
 
-    def delete_content_node(self, name):
+    def delete_node(self, name):
         pass
 
 
@@ -57,7 +57,7 @@ class HetznerAPI(CloudAPI):
         except ActionTimeoutException:
             pass
 
-    def create_content_node(self, name):
+    def create_node(self, name):
         try:
             response = self.client.servers.create(name=name,
                                                   server_type=ServerType("cx11"),
@@ -73,7 +73,7 @@ class HetznerAPI(CloudAPI):
         except ActionTimeoutException:
             pass
 
-    def delete_content_node(self, name):
+    def delete_node(self, name):
         try:
             server = self.client.servers.get_by_name(name)
             server.delete()
