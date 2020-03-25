@@ -4,3 +4,4 @@ pydantic==1.4
 PyJWT==1.7.1
 ipaddress==1.0.23
 hcloud==1.6.3
+inwx-domrobot==3.0.5
