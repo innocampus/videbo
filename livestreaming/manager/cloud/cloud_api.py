@@ -6,6 +6,9 @@ from hcloud.images.domain import Image
 from hcloud.server_types.domain import ServerType
 from hcloud.ssh_keys.domain import SSHKey
 from hcloud.locations.domain import Location
+import pickle
+from random import choice
+import secrets
 
 
 class Node:
@@ -40,6 +43,9 @@ class CombinedCloudAPI(CloudAPI):
         super().__init__(manager_settings)
         self.providers = ""
         self.provider_apis = {}
+        self.random_words = {}
+
+        self.init_cloud_apis()
 
     def init_cloud_apis(self):
         self.providers = list(map(str.strip, self.manager_settings.cloud_providers.split(',')))
@@ -47,6 +53,31 @@ class CombinedCloudAPI(CloudAPI):
         for provider in self.providers:
             if provider == "hetzner":
                 self.provider_apis["hetzner"] = HetznerAPI(self.manager_settings)
+
+        with open('livestreaming/manager/random_word_database.pickle', "rb") as f:
+            self.random_words = pickle.load(f)
+
+    def get_all_nodes(self) -> List[Node]:
+        nodes = []
+        for provider in self.providers:
+            nodes += self.provider_apis[provider].get_all_nodes()
+        return nodes
+
+    def create_node(self, name=False) -> Node:
+        provider = self.__pick_provider_for_node_creation()
+        name = self.pick_node_name()
+        return self.provider_apis[provider].create_node(name)
+
+    def __pick_provider_for_node_creation(self):
+        # TODO: implement logic to pick provider based on utilisation
+        return self.providers[0]
+
+    def pick_node_name(self):
+        hash = secrets.token_hex(4)
+        random_name = f"{choice(self.random_words['adj'])}-{choice(self.random_words['nouns'])}-{hash}"
+        print(random_name)
+        return random_name
+
 
 
 class HetznerAPI(CloudAPI):
