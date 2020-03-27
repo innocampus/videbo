@@ -1,8 +1,9 @@
 from aiohttp.web import Request, RouteTableDef
 from livestreaming.auth import Role, BaseJWTData, ensure_jwt_data_and_role
 from livestreaming.web import json_response, ensure_json_body
-from livestreaming.encoder.streams import stream_collection, StreamIdAlreadyExistsError
-from .models import NewStreamCreated, NewStreamReturn, NewStreamParams
+from livestreaming.encoder import encoder_settings
+from livestreaming.encoder.streams import stream_collection, StreamIdAlreadyExistsError, EncoderStream
+from .models import NewStreamCreated, NewStreamReturn, NewStreamParams, EncoderStreamStatus, EncoderStatus
 
 routes = RouteTableDef()
 
@@ -25,3 +26,16 @@ async def new_stream(request: Request, jwt_data: BaseJWTData, json: NewStreamPar
         return json_response(return_data, status=409)
 
 
+@routes.get(r'/api/encoder/state')
+@ensure_jwt_data_and_role(Role.manager)
+async def new_stream(request: Request, jwt_data: BaseJWTData):
+    streams_status = []
+    stream: EncoderStream
+    for stream in stream_collection.streams.items():
+        status = EncoderStreamStatus(stream_id=stream.stream_id, state=stream.state,
+                                     state_last_update=stream.state_last_update)
+        streams_status.append(status)
+
+    ret = EncoderStatus(max_streams=encoder_settings.max_streams, current_streams=len(stream_collection.streams),
+                        streams=streams_status)
+    return json_response(ret)

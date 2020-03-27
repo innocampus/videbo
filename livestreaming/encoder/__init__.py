@@ -17,6 +17,7 @@ class EncoderSettings(SettingsSectionBase):
     rtmp_internal_ports: str
     rtmp_public_ports: str
     rtmps_cert: str
+    max_streams: int
 
 
 encoder_settings = EncoderSettings()
