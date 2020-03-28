@@ -3,6 +3,7 @@ import functools
 import shlex
 import socket
 import errno
+import re
 from enum import Enum
 from pathlib import Path
 from typing import Optional
@@ -52,17 +53,20 @@ class FFmpeg:
         self.stream: 'EncoderStream' = stream
         self.ffmpeg_process: Optional[asyncio.subprocess.Process] = None
         self.socat_process: Optional[asyncio.subprocess.Process] = None
+        self.watch_task: Optional[asyncio.Task] = None
 
     async def start(self):
         program = encoder_settings.binary_ffmpeg
         url = self.stream.get_url()
-        args = (f"-listen 1 -i {url} -c:v libx264 -crf 21 -preset "
+        args = (f"-listen 1 -hide_banner -i {url} -c:v libx264 -crf 21 -preset "
                 f"veryfast -c:a aac -b:a 128k -ac 2 -f hls -hls_time 3 -hls_playlist_type event stream.m3u8")
 
         self.ffmpeg_process = await asyncio.create_subprocess_exec(program, *shlex.split(args),
-                                                                   stdout=asyncio.subprocess.DEVNULL,
-                                                                   stderr=asyncio.subprocess.DEVNULL,
+                                                                   stdout=asyncio.subprocess.PIPE,
+                                                                   stderr=asyncio.subprocess.STDOUT,
                                                                    cwd=self.stream.dir)
+
+        self.watch_task = asyncio.create_task(self.watch_ffmpeg())
 
         if encoder_settings.rtmps_cert:
             args = f"openssl-listen:{self.stream.public_port},cert={encoder_settings.rtmps_cert},verify=0"
@@ -77,20 +81,73 @@ class FFmpeg:
                                                                   stderr=asyncio.subprocess.DEVNULL,
                                                                   cwd=self.stream.dir)
 
+    async def watch_ffmpeg(self):
+        try:
+            if self.ffmpeg_process is None:
+                logger.warning("started watch of ffmpeg process with no process alive")
+                return
+            else:
+                logger.info(f"started watch for stream {self.stream.stream_id}")
+            buffer_counter = 0
+            expected_states = [StreamState.NOT_YET_STARTED, StreamState.WAITING_FOR_CONNECTION, StreamState.BUFFERING,
+                               StreamState.STREAMING]
+            if self.stream.state not in expected_states:
+                logger.error(f"stream {self.stream.stream_id} in unexpected state ({self.stream.state})")
+            while self.stream.state in expected_states:
+                if self.stream.state == StreamState.NOT_YET_STARTED:
+                    self.stream.state = StreamState.WAITING_FOR_CONNECTION
+                    logger.info(f"watch <stream {self.stream.stream_id}>: state changed: wait for connection")
+                # first ffmpeg output will come when stream started
+                line = await self.ffmpeg_process.stdout.readline()
+                line_str = line.decode('utf-8').rstrip()
+                logger.debug(line_str)
+                if self.stream.state == StreamState.WAITING_FOR_CONNECTION:
+                    self.stream.state = StreamState.BUFFERING
+                    logger.info(f"watch <stream {self.stream.stream_id}>: received data; state changed: buffering")
+                if self.stream.state == StreamState.BUFFERING:
+                    if re.match(r"\[.*\] Unexpected stream", line_str):
+                        # handle this case for security reasons
+                        logger.error(f"unexpected stream, stop stream {self.stream.stream_id} immediately")
+                        self.stream.state = StreamState.UNEXPECTED_STREAM
+                        self.ffmpeg_process.kill()
+                    if re.match(r"\[.*\] Opening '.+\.tmp' for writing", line_str):
+                        buffer_counter += 1
+                        logger.debug(f"watch <stream {self.stream.stream_id}>: buffer_counter: {buffer_counter}")
+                        if buffer_counter >= 3:
+                            self.stream.state = StreamState.STREAMING
+                            logger.info(f"watch <stream {self.stream.stream_id}>: state changed: streaming")
+                if self.stream.state == StreamState.STREAMING:
+                    await self.wait()
+                    self.stream.state = StreamState.STOPPED
+                    logger.info(f"watch <stream {self.stream.stream_id}>: state changed: stopped")
+            logger.info(f"watch for stream {self.stream.stream_id} ended")
+        except asyncio.CancelledError:
+            logger.warning(f"watch for stream {self.stream.stream_id} was CANCELLED unexpectedly")
+            self.watch_task = None
+            await self.stop()
+
     async def wait(self):
         await self.ffmpeg_process.wait()
         await self.socat_process.wait()
 
-    async def stop(self):
+    async def stop(self, kill_in: float = 2.0):
         for process_name in ['ffmpeg_process', 'socat_process']:
             process = getattr(self, process_name, None)
             if process:
-                process.terminate()
-                try:
-                    await asyncio.wait_for(process.wait(), 2)
-                except asyncio.TimeoutError:
+                if kill_in > 0:
+                    process.terminate()
+                    try:
+                        await asyncio.wait_for(process.wait(), kill_in)
+                    except asyncio.TimeoutError:
+                        process.kill()
+                else:
                     process.kill()
             setattr(self, process_name, None)
+        if self.watch_task:
+            self.watch_task.cancel()
+
+    async def kill(self):
+        await self.stop(kill_in=0)
 
 
 class EncoderStream(Stream):
@@ -99,6 +156,7 @@ class EncoderStream(Stream):
         self.port: int = get_unused_port(port_type=PortType.INTERNAL)
         self.public_port: int = get_unused_port(port_type=PortType.PUBLIC)
         self.control_task: Optional[asyncio.Task] = None
+        self.watch_task: Optional[asyncio.Task] = None
         self.ffmpeg: Optional[FFmpeg] = None
         self.dir: Optional[Path] = None
         self.state = StreamState.NOT_YET_STARTED
@@ -113,11 +171,10 @@ class EncoderStream(Stream):
             logger.info(f"Start ffmpeg on port {self.port} for stream id {self.stream_id}")
 
             # Start ffmpeg.
-            self.state = StreamState.WAITING_FOR_CONNECTION
+            self.state = StreamState.NOT_YET_STARTED
             self.ffmpeg = FFmpeg(self)
             await self.ffmpeg.start()
             await self.ffmpeg.wait()
-            self.state = StreamState.STOPPED
 
         except asyncio.CancelledError:
             if self.ffmpeg:

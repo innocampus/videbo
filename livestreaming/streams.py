@@ -12,6 +12,7 @@ class StreamState(Enum):
     STREAMING = 3 # streaming started, content node may fetch data from encoder and clients may connect to content node
     STOPPED = 4 # streamer stopped broadcasting, wait until manager tells to clean up
     ERROR = 100
+    UNEXPECTED_STREAM = 104
     UNKNOWN = 200
 
 
@@ -20,14 +21,16 @@ class Stream:
     ip_range: Union[IPv6Network, IPv4Network, None] = None
     _state: StreamState = StreamState.UNKNOWN
     state_last_update: float = 0
+    _logger: Optional[Logger] = None
 
     def __init__(self, stream_id: int, ip_range: Optional[str], logger: Optional[Logger] = None):
         self.stream_id = stream_id
+        self._logger = logger
         try:
             self.ip_range = ip_network(ip_range)
         except ValueError as e:
-            if logger and ip_range:
-                logger.warning(e)
+            if self._logger and ip_range:
+                self._logger.warning(e)
             self.ip_range = None
 
     @property
