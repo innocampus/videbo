@@ -9,18 +9,22 @@ from hcloud.locations.domain import Location
 import pickle
 from random import choice
 import secrets
+from .status import DeploymentStatus
 
 
 class Node:
-    def __init__(self, name, status, ip, id, provider):
+    def __init__(self, name, node_type, deployment_status, vm_status, ip, id, provider):
         self.name = name
-        self.status = status
+        self.node_type = node_type
+        self.deployment_status = deployment_status
+        self.vm_status = vm_status
         self.ip = ip
         self.id = id
         self.provider = provider
 
     def __str__(self):
-        return f"[Node name: {self.name}; status: {self.status}; ip: {self.ip}; id: {self.id}, provider: {self.provider}] "
+        return f"[Node name: {self.name}; deployment status: {self.deployment_status}; vm status: {self.vm_status}; " \
+               f"ip: {self.ip}; id: {self.id}, provider: {self.provider}] "
 
 
 class CloudAPI:
@@ -31,7 +35,7 @@ class CloudAPI:
     def get_all_nodes(self) -> List[Node]:
         return []
 
-    def create_node(self, name) -> Node:
+    def create_node(self, name, node_type) -> Node:
         pass
 
     def delete_node(self, name):
@@ -63,21 +67,19 @@ class CombinedCloudAPI(CloudAPI):
             nodes += self.provider_apis[provider].get_all_nodes()
         return nodes
 
-    def create_node(self, name=False) -> Node:
-        provider = self.__pick_provider_for_node_creation()
-        name = self.pick_node_name()
-        return self.provider_apis[provider].create_node(name)
+    def create_node(self, name=False, node_type=False) -> Node:
+        provider = self.__pick_provider_for_node_creation(node_type)
+        name = self.__pick_node_name()
+        return self.provider_apis[provider].create_node(name, node_type)
 
-    def __pick_provider_for_node_creation(self):
+    def __pick_provider_for_node_creation(self, node_type=False):
         # TODO: implement logic to pick provider based on utilisation
         return self.providers[0]
 
-    def pick_node_name(self):
+    def __pick_node_name(self):
         hash = secrets.token_hex(4)
         random_name = f"{choice(self.random_words['adj'])}-{choice(self.random_words['nouns'])}-{hash}"
-        print(random_name)
         return random_name
-
 
 
 class HetznerAPI(CloudAPI):
@@ -95,7 +97,7 @@ class HetznerAPI(CloudAPI):
             servers = self.client.servers.get_all()
             nodes = []
             for s in servers:
-                nodes.append(Node(s.name, s.status, s.public_net.ipv4.ip, s.id, self.provider))
+                nodes.append(Node(s.name, "unknown", "unknown", s.status, s.public_net.ipv4.ip, s.id, self.provider))
             return nodes
         except APIException:  # handle exceptions
             pass
@@ -104,21 +106,23 @@ class HetznerAPI(CloudAPI):
         except ActionTimeoutException:
             pass
 
-    def create_node(self, name):
+    def create_node(self, name, node_type):
         try:
+            # TODO: pick specs based on node type
             response = self.client.servers.create(name=name,
                                                   server_type=ServerType("cx11"),
                                                   image=Image(name="debian-10"),
                                                   location=Location(name="nbg1"),  # allowed locations: fsn1, nbg1, hel1
                                                   ssh_keys=[SSHKey(name="streamingkey")])
             server = response.server
-            return Node(server.name, server.status, server.public_net.ipv4.ip, server.id, self.provider)
-        except APIException:  # handle exceptions
-            pass
-        except ActionFailedException:
-            pass
-        except ActionTimeoutException:
-            pass
+            return Node(server.name, node_type, DeploymentStatus.CREATED, server.status, server.public_net.ipv4.ip,
+                        server.id, self.provider)
+        except APIException as e:  # handle exceptions
+            print(e)
+        except ActionFailedException as e:
+            print(e)
+        except ActionTimeoutException as e:
+            print(e)
 
     def delete_node(self, name):
         try:

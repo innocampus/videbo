@@ -12,6 +12,7 @@ class ManagerSettings(SettingsSectionBase):
     http_port: int
     cloud_providers: str
     hetzner_api_token: str
+    cloud_deployment: bool
 
 
 manager_settings = ManagerSettings()
@@ -22,8 +23,9 @@ def start() -> None:
     from .api.routes import routes
     manager_settings.load()
 
-    nc = NodeController(manager_settings)
-    nc.start_loop()
+    if manager_settings.cloud_deployment:
+        nc = NodeController(manager_settings)
+        nc.start_loop()
 
     start_web_server(manager_settings.http_port, routes)
 
