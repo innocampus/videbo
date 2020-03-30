@@ -4,6 +4,8 @@ import time
 from .cloud import CombinedCloudAPI
 from .cloud import init_node
 from .cloud import DeploymentStatus
+from .cloud import Node
+from .cloud import PlatformType
 
 
 class NodeController:
@@ -28,17 +30,30 @@ class NodeController:
 
     def control_loop(self):
         self.api.init_cloud_apis()
+        self.__init_static_nodes()
+
         while True:
             # print('Tick...')
             # TODO implement control loop
             # TODO check current state against desired state of cloud deployment
             # TODO spawn new nodes or destroy nodes if necessary
-            self.__get_current_cloud_state()
-            self.__create_nodes_if_necessary()
+            self.__get_current_node_state()
+            if self.manager_settings.cloud_deployment:
+                self.__create_nodes_if_necessary()
 
-            time.sleep(3)
+            time.sleep(10)
 
-    def __get_current_cloud_state(self):
+    def __init_static_nodes(self):
+        # TODO initialise static nodes if configured
+        if self.manager_settings.init_static_content_nodes:
+            node_type = "content"
+            content_nodes_ips = list(map(str.strip, self.manager_settings.static_content_nodes_ips.split(',')))
+            for ip in content_nodes_ips:
+                new_node = Node("static_content_"+ip, node_type, PlatformType.static, DeploymentStatus.CREATED, ip)
+                self.node_lists[node_type].append(new_node)
+                init_node(new_node)
+
+    def __get_current_node_state(self):
         print("Currently tracked Nodes:")
         for t in self.node_types:
             for n in self.node_lists[t]:
@@ -58,8 +73,6 @@ class NodeController:
                     time.sleep(30)
                     # TODO mechanism for checking if node is up
                     init_node(new_node)
-                    # TODO run tests on newly initialized node
-                    new_node.deployment_status = DeploymentStatus.OPERATIONAL
                 except Exception as e:
                     print(e)
                     # TODO: handle node creation exception

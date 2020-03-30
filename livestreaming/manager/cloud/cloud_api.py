@@ -10,21 +10,14 @@ import pickle
 from random import choice
 import secrets
 from .status import DeploymentStatus
+from .node import Node
+from enum import Enum
 
 
-class Node:
-    def __init__(self, name, node_type, deployment_status, vm_status, ip, id, provider):
-        self.name = name
-        self.node_type = node_type
-        self.deployment_status = deployment_status
-        self.vm_status = vm_status
-        self.ip = ip
-        self.id = id
-        self.provider = provider
-
-    def __str__(self):
-        return f"[Node name: {self.name}; deployment status: {self.deployment_status}; vm status: {self.vm_status}; " \
-               f"ip: {self.ip}; id: {self.id}, provider: {self.provider}] "
+class PlatformType(Enum):
+    static = 0  # nodes that have been created manually and can't be created or destroyed using an API
+    cloud = 1
+    unknown = 2
 
 
 class CloudAPI:
@@ -97,7 +90,7 @@ class HetznerAPI(CloudAPI):
             servers = self.client.servers.get_all()
             nodes = []
             for s in servers:
-                nodes.append(Node(s.name, "unknown", "unknown", s.status, s.public_net.ipv4.ip, s.id, self.provider))
+                nodes.append(Node(s.name, "unknown", PlatformType.unknown, "unknown", s.status, s.public_net.ipv4.ip, s.id, self.provider))
             return nodes
         except APIException:  # handle exceptions
             pass
@@ -115,7 +108,7 @@ class HetznerAPI(CloudAPI):
                                                   location=Location(name="nbg1"),  # allowed locations: fsn1, nbg1, hel1
                                                   ssh_keys=[SSHKey(name="streamingkey")])
             server = response.server
-            return Node(server.name, node_type, DeploymentStatus.CREATED, server.status, server.public_net.ipv4.ip,
+            return Node(server.name, node_type, PlatformType.cloud, DeploymentStatus.CREATED, server.status, server.public_net.ipv4.ip,
                         server.id, self.provider)
         except APIException as e:  # handle exceptions
             print(e)

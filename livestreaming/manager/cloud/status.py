@@ -1,7 +1,7 @@
-import enum
+from enum import Enum
 
 
-class DeploymentStatus(enum.Enum):
+class DeploymentStatus(Enum):
     REQUESTED = 1
     CREATED = 2
     INITIALIZED = 3
