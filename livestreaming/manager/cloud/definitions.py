@@ -79,6 +79,9 @@ class CloudInstanceDefsController:
         for section in config.config.sections():
             if section.startswith(instance_type.section_name_prefix):
                 instance = instance_type(config, section)
+                if instance.provider not in self.provider_definitions:
+                    raise UnknownProviderError(instance.provider)
+
                 if instance.priority not in collection:
                     collection[instance.priority] = [instance]
                 else:
