@@ -49,7 +49,7 @@ async def get_stream_status(request: Request, _jwt_data: BaseJWTData):
 async def get_all_streams_status(request: Request, _jwt_data: BaseJWTData):
     try:
         streams_list = []
-        for stream in stream_collection.streams:
+        for _, stream in stream_collection.streams.items():
             streams_list.append(stream.get_status(False))
 
         status = AllStreamsStatus(streams=streams_list)
