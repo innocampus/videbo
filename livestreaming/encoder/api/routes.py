@@ -4,7 +4,7 @@ from livestreaming.web import json_response, ensure_json_body
 from livestreaming.encoder import encoder_settings
 from livestreaming.encoder.streams import stream_collection, StreamIdAlreadyExistsError, EncoderStream
 from .models import NewStreamCreated, NewStreamReturn, NewStreamParams, EncoderStreamStatus, EncoderStatus,\
-    StreamRecordingStartParams, StreamRecordingStopParams, StreamRecordingsStatusReturn, StreamRecordingMeta
+    StreamRecordingStartParams, StreamRecordingStopParams, StreamRecordingMeta
 
 routes = RouteTableDef()
 
@@ -12,7 +12,7 @@ routes = RouteTableDef()
 @routes.post(r'/api/encoder/stream/new/{stream_id:\d}')
 @ensure_jwt_data_and_role(Role.manager)
 @ensure_json_body()
-async def new_stream(request: Request, jwt_data: BaseJWTData, json: NewStreamParams):
+async def new_stream(request: Request, _jwt_data: BaseJWTData, json: NewStreamParams):
     """Manager requests encoder to open a port and start a new stream to HLS encoding."""
     stream_id = int(request.match_info['stream_id'])
     try:
@@ -45,26 +45,26 @@ async def new_stream(_request: Request, _jwt_data: BaseJWTData):
 @routes.post(r'/api/encoder/stream/{stream_id:\d}/recording/start')
 @ensure_jwt_data_and_role(Role.manager)
 @ensure_json_body()
-async def recording_start(_request: Request, _jwt_data: BaseJWTData, json: StreamRecordingStartParams):
+async def recording_start(_request: Request, _jwt_data: BaseJWTData, _json: StreamRecordingStartParams):
     raise NotImplementedError()
 
 
 @routes.post(r'/api/encoder/stream/{stream_id:\d}/recording/stop')
 @ensure_jwt_data_and_role(Role.manager)
 @ensure_json_body()
-async def recording_stop(_request: Request, _jwt_data: BaseJWTData, json: StreamRecordingStopParams):
+async def recording_stop(_request: Request, _jwt_data: BaseJWTData, _json: StreamRecordingStopParams):
     raise NotImplementedError()
 
 
 @routes.get(r'/api/encoder/stream/{stream_id:\d}/recording/status')
 @ensure_jwt_data_and_role(Role.manager)
 async def recordings_status(_request: Request, _jwt_data: BaseJWTData):
-    raise NotImplementedError() # return a StreamRecordingsStatusReturn
+    raise NotImplementedError()  # return a StreamRecordingsStatusReturn
 
 
 @routes.patch(r'/api/encoder/stream/{stream_id:\d}/recording/{recording_id:\d}')
 @ensure_jwt_data_and_role(Role.manager)
 @ensure_json_body()
-async def recording_edit(_request: Request, _jwt_data: BaseJWTData, json: StreamRecordingMeta):
+async def recording_edit(_request: Request, _jwt_data: BaseJWTData, _json: StreamRecordingMeta):
     """Update the matadata of a recording."""
     raise NotImplementedError()
