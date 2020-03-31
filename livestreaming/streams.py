@@ -43,12 +43,12 @@ class Stream:
         self.state_last_update = time()
 
     @property
-    def is_restricted(self) -> bool:
+    def is_ip_restricted(self) -> bool:
         return self.ip_range is not None
 
     @property
     def ip_range_str(self) -> Optional[str]:
-        return str(self.ip_range) if self.is_restricted else None
+        return str(self.ip_range) if self.is_ip_restricted else None
 
 
 StreamType = TypeVar("StreamType", bound=Stream)

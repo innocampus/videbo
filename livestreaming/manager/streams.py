@@ -1,11 +1,12 @@
+from typing import Optional, Union
 from livestreaming.web import HTTPClient, HTTPResponseError
 from livestreaming.auth import BaseJWTData
 from livestreaming.streams import Stream, StreamCollection
 from livestreaming.encoder.api.models import NewStreamReturn, NewStreamParams
 from livestreaming.content.api.models import StartStreamDistributionInfo
 from livestreaming.broker.api.models import BrokerContentNode, BrokerGridModel, BrokerStreamCollection
+from livestreaming.manager.api.models import StreamStatusFull, StreamStatus
 from . import logger
-from typing import Optional
 
 
 class ManagerStream(Stream):
@@ -44,6 +45,24 @@ class ManagerStream(Stream):
 
         except HTTPResponseError as error:
             raise ContentStartStreamingError()
+
+    def get_status(self, full: bool) -> Union[StreamStatus, StreamStatusFull]:
+        data = {
+            'stream_id': self.stream_id,
+            'state': self.state,
+            'state_last_update': self.state_last_update,
+            'viewers': 0,  # TODO
+            'thumbnail_urls': []  # TODO
+        }
+
+        if full:
+            data['streamer_url'] = self.encoder_streamer_url
+            data['streamer_key'] = '' # TODO
+            data['streamer_ip_restricted'] = self.is_ip_restricted
+            data['viewer_broker_url'] = '' # TODO
+            return StreamStatusFull(**data)
+        else:
+            return StreamStatus(**data)
 
 
 class ManagerStreamCollection(StreamCollection[ManagerStream]):
