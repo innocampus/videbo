@@ -82,7 +82,7 @@ class CloudInstanceDefsController:
             self.provider_definitions[provider] = definition
 
         dns_provider = config.get_config('manager', 'dns_provider')
-        if dns_provider == 'hetzner':
+        if dns_provider == 'inwx':
             self.dns_provider_definition = INWXApiAuthDefinition(config.get_config('cloud-inwx', 'username'),
                                                                  config.get_config('cloud-inwx', 'password'))
         else:
