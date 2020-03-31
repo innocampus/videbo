@@ -1,5 +1,5 @@
 from operator import attrgetter
-from typing import Dict, List, Type, Callable
+from typing import Dict, List, Type, Optional
 from livestreaming import Settings
 
 
@@ -18,6 +18,11 @@ class ProviderApiKeyDefinition(ProviderDefinition):
 class HetznerApiKeyDefinition(ProviderApiKeyDefinition):
     pass
 
+
+class INWXApiAuthDefinition(ProviderDefinition):
+    def __init__(self, username: str, password: str):
+        self.username: str = username
+        self.password: str = password
 
 class InstanceDefinition:
     section_name_prefix: str
@@ -52,11 +57,13 @@ class EncoderInstanceDefinition(InstanceDefinition):
 
 class CloudInstanceDefsController:
     provider_definitions: Dict[str, ProviderDefinition] # map provider name to definition
+    dns_provider_definition: Optional[ProviderDefinition]
     content_definitions: Dict[int, List[ContentInstanceDefinition]] # priority to list of definitions
     encoder_definitions: Dict[int, List[EncoderInstanceDefinition]]
 
     def __init__(self):
         self.provider_definitions = {}
+        self.dns_provider_definition = None
         self.content_definitions = {}
         self.encoder_definitions = {}
 
@@ -73,6 +80,13 @@ class CloudInstanceDefsController:
             else:
                 raise UnknownProviderError(provider)
             self.provider_definitions[provider] = definition
+
+        dns_provider = config.get_config('manager', 'dns_provider')
+        if dns_provider == 'hetzner':
+            self.dns_provider_definition = INWXApiAuthDefinition(config.get_config('cloud-inwx', 'username'),
+                                                                 config.get_config('cloud-inwx', 'password'))
+        else:
+            raise UnknownProviderError(dns_provider)
 
     def _init_node_definitions(self, config: Settings, collection: Dict, instance_type: Type[InstanceDefinition]):
         section: str

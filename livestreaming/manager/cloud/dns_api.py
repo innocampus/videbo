@@ -5,6 +5,7 @@ from dataclasses import dataclass
 from ipaddress import IPv4Address
 from threading import Lock
 from typing import List, Optional
+from .definitions import INWXApiAuthDefinition
 
 
 DYNAMIC_NODES_NAME_PREFIX = "dyn-"
@@ -82,10 +83,10 @@ class DNSManager:
 
 
 class DNSManagerINWX(DNSManager):
-    def __init__(self, domain: str, username: str, password: str):
+    def __init__(self, domain: str, auth: INWXApiAuthDefinition):
         super().__init__(domain)
-        self.username: str = username
-        self.password: str = password
+        self.username: str = auth.username
+        self.password: str = auth.password
         self.lock = Lock() # only one request at the same time allowed
 
     @contextmanager

@@ -12,6 +12,7 @@ class ManagerSettings(SettingsSectionBase):
     _section: str = 'manager'
     http_port: int
     cloud_providers: str
+    dns_provider: str
     hetzner_api_token: str
     cloud_deployment: bool
     static_content_nodes_ips: str
