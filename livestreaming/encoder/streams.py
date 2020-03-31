@@ -1,7 +1,9 @@
 import asyncio
 import functools
+import random
 import shlex
 import socket
+import string
 import errno
 import re
 from enum import Enum
@@ -11,6 +13,7 @@ from livestreaming.streams import StreamState
 from livestreaming.encoder import encoder_settings
 from livestreaming.streams import Stream
 from livestreaming.streams import StreamCollection
+from livestreaming.encoder.api.models import StreamRecordingStartParams
 from . import logger
 
 
@@ -159,6 +162,7 @@ class EncoderStream(Stream):
         self.watch_task: Optional[asyncio.Task] = None
         self.ffmpeg: Optional[FFmpeg] = None
         self.dir: Optional[Path] = None
+        self.recording_file: Optional[Path] = None
         self.state = StreamState.NOT_YET_STARTED
 
     def start(self):
@@ -188,7 +192,7 @@ class EncoderStream(Stream):
     async def create_temp_path(self):
         """Create a temporary directory for the stream.
 
-        It also creates all all parent dirs if needed."""
+        It also creates all parent dirs if needed and a temporary file for the recording."""
         if self.dir:
             # As long as this exists, we assume the dir exists in the system.
             return
@@ -198,6 +202,9 @@ class EncoderStream(Stream):
         await asyncio.get_event_loop().run_in_executor(None,
                 functools.partial(self.dir.mkdir, parents=True, exist_ok=True))
 
+        rec_name = "recording_" + ''.join(random.choices(string.ascii_lowercase, k=8))
+        self.recording_file = Path(self.dir, rec_name)
+
     def _get_url(self, port: PortType):
         return f"rtmp://localhost:{self.public_port if port is PortType.PUBLIC else self.port}/stream"
 
@@ -206,6 +213,15 @@ class EncoderStream(Stream):
 
     def get_public_url(self):
         return self._get_url(PortType.PUBLIC)
+
+    async def start_recording(self, info: StreamRecordingStartParams):
+        # save current position in video (current video duration or better current file size?)
+        raise NotImplementedError()
+
+    async def stop_recording(self, withdraw_recording: bool):
+        # save current position in video (current video duration or better current file size?)
+        # Be prepared that the teacher may start another recording after stopping the current.
+        raise NotImplementedError()
 
 
 class EncoderStreamCollection(StreamCollection[EncoderStream]):

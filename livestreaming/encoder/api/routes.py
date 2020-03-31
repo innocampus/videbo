@@ -3,7 +3,8 @@ from livestreaming.auth import Role, BaseJWTData, ensure_jwt_data_and_role
 from livestreaming.web import json_response, ensure_json_body
 from livestreaming.encoder import encoder_settings
 from livestreaming.encoder.streams import stream_collection, StreamIdAlreadyExistsError, EncoderStream
-from .models import NewStreamCreated, NewStreamReturn, NewStreamParams, EncoderStreamStatus, EncoderStatus
+from .models import NewStreamCreated, NewStreamReturn, NewStreamParams, EncoderStreamStatus, EncoderStatus,\
+    StreamRecordingStartParams, StreamRecordingStopParams, StreamRecordingsStatusReturn, StreamRecordingMeta
 
 routes = RouteTableDef()
 
@@ -39,3 +40,31 @@ async def new_stream(request: Request, jwt_data: BaseJWTData):
     ret = EncoderStatus(max_streams=encoder_settings.max_streams, current_streams=len(stream_collection.streams),
                         streams=streams_status)
     return json_response(ret)
+
+
+@routes.post(r'/api/encoder/stream/{stream_id:\d}/recording/start')
+@ensure_jwt_data_and_role(Role.manager)
+@ensure_json_body()
+async def recording_start(_request: Request, _jwt_data: BaseJWTData, json: StreamRecordingStartParams):
+    raise NotImplementedError()
+
+
+@routes.post(r'/api/encoder/stream/{stream_id:\d}/recording/stop')
+@ensure_jwt_data_and_role(Role.manager)
+@ensure_json_body()
+async def recording_stop(_request: Request, _jwt_data: BaseJWTData, json: StreamRecordingStopParams):
+    raise NotImplementedError()
+
+
+@routes.get(r'/api/encoder/stream/{stream_id:\d}/recording/status')
+@ensure_jwt_data_and_role(Role.manager)
+async def recordings_status(_request: Request, _jwt_data: BaseJWTData):
+    raise NotImplementedError() # return a StreamRecordingsStatusReturn
+
+
+@routes.patch(r'/api/encoder/stream/{stream_id:\d}/recording/{recording_id:\d}')
+@ensure_jwt_data_and_role(Role.manager)
+@ensure_json_body()
+async def recording_edit(_request: Request, _jwt_data: BaseJWTData, json: StreamRecordingMeta):
+    """Update the matadata of a recording."""
+    raise NotImplementedError()
