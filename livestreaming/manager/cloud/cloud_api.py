@@ -9,7 +9,7 @@ from hcloud.locations.domain import Location
 import pickle
 from random import choice
 import secrets
-from .status import DeploymentStatus
+from .status import DeploymentStatus, VmStatus
 from .node import Node
 from enum import Enum
 
@@ -29,6 +29,9 @@ class CloudAPI:
         return []
 
     def create_node(self, name, node_type) -> Node:
+        pass
+
+    def update_vm_state(self, node):
         pass
 
     def delete_node(self, name):
@@ -65,6 +68,14 @@ class CombinedCloudAPI(CloudAPI):
         name = self.__pick_node_name()
         return self.provider_apis[provider].create_node(name, node_type)
 
+    def update_vm_state(self, node):
+        provider = node.provider
+        self.provider_apis[provider].update_vm_state(node)
+
+    def delete_node(self, node):
+        provider = node.provider
+        return self.provider_apis[provider].delete_node(node.name)
+
     def __pick_provider_for_node_creation(self, node_type=False):
         # TODO: implement logic to pick provider based on utilisation
         return self.providers[0]
@@ -90,7 +101,8 @@ class HetznerAPI(CloudAPI):
             servers = self.client.servers.get_all()
             nodes = []
             for s in servers:
-                nodes.append(Node(s.name, "unknown", PlatformType.unknown, "unknown", s.status, s.public_net.ipv4.ip, s.id, self.provider))
+                nodes.append(Node(s.name, "unknown", PlatformType.unknown, "unknown", self.__str_to_vm_status(s.status),
+                                  s.public_net.ipv4.ip, s.id, self.provider))
             return nodes
         except APIException:  # handle exceptions
             pass
@@ -103,13 +115,13 @@ class HetznerAPI(CloudAPI):
         try:
             # TODO: pick specs based on node type
             response = self.client.servers.create(name=name,
-                                                  server_type=ServerType("cx11"),
-                                                  image=Image(name="debian-10"),
-                                                  location=Location(name="nbg1"),  # allowed locations: fsn1, nbg1, hel1
-                                                  ssh_keys=[SSHKey(name="streamingkey")])
+                                                  server_type=ServerType(self.__pick_server_type()),
+                                                  image=Image(name=self.__pick_image()),
+                                                  location=Location(name=self.__pick_location()),
+                                                  ssh_keys=[SSHKey(name=self.__pick_ssh_key())])
             server = response.server
-            return Node(server.name, node_type, PlatformType.cloud, DeploymentStatus.CREATED, server.status, server.public_net.ipv4.ip,
-                        server.id, self.provider)
+            return Node(server.name, node_type, PlatformType.cloud, DeploymentStatus.CREATED, server.public_net.ipv4.ip,
+                        vm_status=self.__str_to_vm_status(server.status), vm_id=server.id, provider=self.provider)
         except APIException as e:  # handle exceptions
             print(e)
         except ActionFailedException as e:
@@ -127,3 +139,33 @@ class HetznerAPI(CloudAPI):
             pass
         except ActionTimeoutException:
             pass
+
+    @staticmethod
+    def __str_to_vm_status(s_status):
+        if s_status == "running":
+            status = VmStatus.RUNNING
+        elif s_status == "initializing":
+            status = VmStatus.INIT
+        else:
+            status = VmStatus.ERROR
+        return status
+
+    def __pick_server_type(self):
+        return self.manager_settings.hetzner_server_type
+
+    def __pick_image(self):
+        return self.manager_settings.hetzner_image
+
+    def __pick_location(self):
+        return self.manager_settings.hetzner_location
+
+    def __pick_ssh_key(self):
+        return self.manager_settings.hetzner_ssh_key
+
+    def update_vm_state(self, node):
+        try:
+            server = self.client.servers.get_by_name(node.name)
+            node.vm_status = self.__str_to_vm_status(server.status)
+        except Exception as e:
+            print(e)
+            node.vm_status = VmStatus.ERROR

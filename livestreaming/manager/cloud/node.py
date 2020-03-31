@@ -1,5 +1,14 @@
+from enum import Enum
+from .status import VmStatus
+
+
+class NodeType(Enum):
+    content = 0
+    orphaned = 1
+
+
 class Node:
-    def __init__(self, name, node_type, platform, deployment_status, ip, vm_status="unknown", vm_id="unknown",
+    def __init__(self, name, node_type, platform, deployment_status, ip, vm_status=VmStatus.UNKNOWN, vm_id="unknown",
                  provider="unknown"):
         self.name = name
         self.node_type = node_type

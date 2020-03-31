@@ -17,6 +17,11 @@ class ManagerSettings(SettingsSectionBase):
     cloud_deployment: bool
     static_content_nodes_ips: str
     init_static_content_nodes: bool
+    remove_orphaned_nodes: bool
+    hetzner_server_type: str
+    hetzner_image: str
+    hetzner_location: str
+    hetzner_ssh_key: str
 
 
 manager_settings = ManagerSettings()
