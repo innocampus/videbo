@@ -61,8 +61,19 @@ class FFmpeg:
     async def start(self):
         program = encoder_settings.binary_ffmpeg
         url = self.stream.get_url()
-        args = (f"-listen 1 -hide_banner -i {url} -c:v libx264 -crf 21 -preset "
-                f"veryfast -c:a aac -b:a 128k -ac 2 -f hls -hls_time 3 -hls_playlist_type event stream.m3u8")
+        args = (f"-listen 1 -hide_banner -i {url} "
+                f"-filter_complex \"[v:0] split=2 [vtemp001][vtemp002];"
+                f"[vtemp001]scale=w=1920:h=1080[vout001];"
+                f"[vtemp002]scale=w=960:h=540[vout002]\""
+                f"-preset veryfast -g 30 -sc_threshold 0"
+                f"-map [vout001] -c:v:0 libx264 -b:v:1 6000k -maxrate:v:1 6600k -bufsize:v:1 8000k"
+                f"-map [vout002] -c:v:1 libx264 -b:v:0 1000k -maxrate:v:0 1100k -bufsize:v:0 2000k"
+                f"-map a:0 -map a:0 -c:a aac -b:a 128k -ac 2"
+                f"-f hls -hls_time 2 -hls_list_size 2 -hls_flags independent_segments"
+                f"-master_pl_name stream.m3u8"
+                f"-hls_segment_filename stream_%v/data%06d.ts"
+                f"-use_localtime_mkdir 1"
+                f"-var_stream_map \"v:0,a:0 v:1,a:1\" stream_%v.m3u8")
 
         self.ffmpeg_process = await asyncio.create_subprocess_exec(program, *shlex.split(args),
                                                                    stdout=asyncio.subprocess.PIPE,
