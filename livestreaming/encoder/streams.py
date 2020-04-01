@@ -119,7 +119,7 @@ class FFmpeg:
                         if buffer_counter >= 3:
                             self.stream.state = StreamState.STREAMING
                             logger.info(f"watch <stream {self.stream.stream_id}>: state changed: streaming")
-                if self.stream.state == StreamState.STREAMING:
+                if self.ffmpeg_process.stdout.at_eof():
                     await self.wait()
                     self.stream.state = StreamState.STOPPED
                     logger.info(f"watch <stream {self.stream.stream_id}>: state changed: stopped")
@@ -127,9 +127,9 @@ class FFmpeg:
         except asyncio.CancelledError:
             logger.warning(f"watch for stream {self.stream.stream_id} was CANCELLED unexpectedly")
             self.watch_task = None
-            await self.stop()
 
     async def wait(self):
+        # never wait for watch_task since it waits itself
         await self.ffmpeg_process.wait()
         await self.socat_process.wait()
 
@@ -179,6 +179,11 @@ class EncoderStream(Stream):
             self.ffmpeg = FFmpeg(self)
             await self.ffmpeg.start()
             await self.ffmpeg.wait()
+            logger.info(f"ffmpeg on port {self.port} for stream id {self.stream_id} ended")
+            await asyncio.sleep(5)
+            if self.watch_task and (not self.watch_task.done() or not self.watch_task.cancelled()):
+                logger.warning(f"ffmpeg watch still running for stream id {self.stream_id} - cancelling task")
+                self.watch_task.cancel()
 
         except asyncio.CancelledError:
             if self.ffmpeg:
