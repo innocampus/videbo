@@ -27,7 +27,7 @@ class EncoderStreamStatus(JSONBaseModel):
 class EncoderStatus(JSONBaseModel):
     max_streams: int
     current_streams: int
-    streams: List[EncoderStreamStatus]
+    streams: Dict[int, EncoderStreamStatus]
 
 
 class StreamRecordingMeta(JSONBaseModel):

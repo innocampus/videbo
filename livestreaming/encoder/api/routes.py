@@ -30,12 +30,12 @@ async def new_stream(request: Request, _jwt_data: BaseJWTData, json: NewStreamPa
 @routes.get(r'/api/encoder/state')
 @ensure_jwt_data_and_role(Role.manager)
 async def new_stream(_request: Request, _jwt_data: BaseJWTData):
-    streams_status = []
+    streams_status = {}
     stream: EncoderStream
     for _, stream in stream_collection.streams.items():
         status = EncoderStreamStatus(stream_id=stream.stream_id, state=stream.state,
                                      state_last_update=stream.state_last_update)
-        streams_status.append(status)
+        streams_status[stream.stream_id] = status
 
     ret = EncoderStatus(max_streams=encoder_settings.max_streams, current_streams=len(stream_collection.streams),
                         streams=streams_status)

@@ -1,6 +1,6 @@
 from asyncio import get_event_loop
 from aiohttp.web import Request, Response, RouteTableDef, FileResponse
-from aiohttp.web_exceptions import HTTPNotAcceptable, HTTPSeeOther, HTTPNotFound, HTTPForbidden
+from aiohttp.web_exceptions import HTTPNotAcceptable, HTTPSeeOther, HTTPNotFound, HTTPForbidden, HTTPOk
 from pathlib import Path
 from livestreaming import settings
 from livestreaming.auth import Role, BaseJWTData, ensure_jwt_data_and_role
@@ -48,7 +48,7 @@ async def get_segment(request: Request):
 @routes.post(r'/api/content/stream/start/{stream_id:\d}')
 @ensure_jwt_data_and_role(Role.manager)
 @ensure_json_body()
-async def start_stream(request: Request, jwt_data: BaseJWTData, data: StartStreamDistributionInfo):
+async def start_stream(_request: Request, _jwt_data: BaseJWTData, data: StartStreamDistributionInfo):
     try:
         new_fetcher = StreamFetcher(data.stream_id, data.encoder_base_url)
         stream_fetcher_collection.start_fetching_stream(new_fetcher)
@@ -57,3 +57,14 @@ async def start_stream(request: Request, jwt_data: BaseJWTData, data: StartStrea
     except AlreadyFetchingStreamError:
         content_logger.info(f"Manager requested to start a new streaming, but stream with id {data.stream_id} is already streamed")
         raise HTTPNotAcceptable()
+
+
+@routes.post(r'/api/content/stream/destroy/{stream_id:\d}')
+@ensure_jwt_data_and_role(Role.manager)
+async def destroy_stream(request: Request, __: BaseJWTData):
+    try:
+        stream_id = int(request.match_info['stream_id'])
+    except ValueError:
+        raise HTTPNotAcceptable()
+    stream_fetcher_collection.get_fetcher_by_id(stream_id).destroy()
+    raise HTTPOk()
