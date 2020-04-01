@@ -6,7 +6,7 @@ from livestreaming import settings
 from livestreaming.auth import Role, BaseJWTData, ensure_jwt_data_and_role
 from livestreaming.web import ensure_json_body, register_route_with_cors
 from livestreaming.content.streams_fetcher import stream_fetcher_collection, StreamFetcher, AlreadyFetchingStreamError
-from livestreaming.content import logger, content_settings
+from livestreaming.content import content_logger, content_settings
 from .models import StartStreamDistributionInfo, ContentPlaylistJWTData
 
 routes = RouteTableDef()
@@ -39,7 +39,7 @@ async def get_segment(request: Request):
     file = request.match_info['file']
     path = Path(content_settings.hls_temp_dir, str(stream_id), file)
     if not (await get_event_loop().run_in_executor(None, path.is_file)):
-        logger.error('File does not exist: %s', path)
+        content_logger.error('File does not exist: %s', path)
         return HTTPNotFound()
 
     return FileResponse(path)
@@ -55,5 +55,5 @@ async def start_stream(request: Request, jwt_data: BaseJWTData, data: StartStrea
         return Response()
 
     except AlreadyFetchingStreamError:
-        logger.info(f"Manager requested to start a new streaming, but stream with id {data.stream_id} is already streamed")
+        content_logger.info(f"Manager requested to start a new streaming, but stream with id {data.stream_id} is already streamed")
         raise HTTPNotAcceptable()

@@ -13,7 +13,7 @@ class ContentSettings(SettingsSectionBase):
 
 
 content_settings = ContentSettings()
-logger = logging.getLogger('livestreaming-content')
+content_logger = logging.getLogger('livestreaming-content')
 
 
 def start() -> None:

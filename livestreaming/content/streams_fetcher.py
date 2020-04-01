@@ -5,8 +5,7 @@ import m3u8
 from pathlib import Path
 from typing import Dict, Optional, Set
 from livestreaming.web import read_data_from_response, ResponseTooManyDataError, HTTPClient
-from . import logger, content_settings
-
+from . import content_logger, content_settings
 
 POLL_FILES_FREQUENCY = 1 # fetch files from encoder periodically every n seconds
 
