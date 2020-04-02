@@ -1,4 +1,5 @@
-from typing import List
+from asyncio import get_event_loop, sleep
+from typing import List, Dict, Optional
 from hcloud import Client
 from hcloud import APIException
 from hcloud.actions.domain import ActionFailedException, ActionTimeoutException
@@ -6,103 +7,153 @@ from hcloud.images.domain import Image
 from hcloud.server_types.domain import ServerType
 from hcloud.ssh_keys.domain import SSHKey
 from hcloud.locations.domain import Location
+from ipaddress import IPv4Address, IPv6Network
+import logging
 import pickle
 from random import choice
 import secrets
+
+from livestreaming.manager import manager_settings
+from .definitions import CloudInstanceDefsController, InstanceDefinition, HetznerApiKeyDefinition, UnknownProviderError
 from .status import DeploymentStatus, VmStatus
-from .node import Node
-from enum import Enum
+from .server import Server, DynamicServer
 
 
-class PlatformType(Enum):
-    static = 0  # nodes that have been created manually and can't be created or destroyed using an API
-    cloud = 1
-    unknown = 2
+cloud_logger = logging.getLogger('livestreaming-cloud')
 
 
 class CloudAPI:
-    def __init__(self, manager_settings):
-        self.name = ""
-        self.manager_settings = manager_settings
-
-    def get_all_nodes(self) -> List[Node]:
+    async def get_all_nodes(self) -> List[DynamicServer]:
         return []
 
-    def create_node(self, name, node_type) -> Node:
+    async def create_node(self, definition: InstanceDefinition, name: Optional[str] = None) -> DynamicServer:
         pass
 
-    def update_vm_state(self, node):
+    async def update_vm_state(self, node: DynamicServer) -> None:
         pass
 
-    def delete_node(self, name):
+    async def delete_node(self, node: DynamicServer) -> None:
         pass
+
+    async def validate_instance_definition(self, definition: InstanceDefinition) -> None:
+        """Check that the location and server_type of the instance definition really exists.
+
+        Raise InstanceValidationError on an error."""
+        raise NotImplementedError()
+
+    async def wait_node_running(self, server: DynamicServer):
+        """Wait until the provider started the server."""
+        while True:
+            if DeploymentStatus.state_ok(server.deployment_status) and server.vm_status == VmStatus.RUNNING:
+                return
+            await sleep(3)
+            await self.update_vm_state(server)
+
+
+class CloudBlockingAPI(CloudAPI):
+    """Interface for provider classes that can only be implemented with blocking calls."""
+    async def get_all_nodes(self) -> List[DynamicServer]:
+        return await get_event_loop().run_in_executor(None, self._get_all_nodes)
+
+    async def create_node(self, definition: InstanceDefinition, name: Optional[str] = None) -> DynamicServer:
+        return await get_event_loop().run_in_executor(None, self._create_node, definition, name)
+
+    async def update_vm_state(self, node: DynamicServer) -> None:
+        status: VmStatus = await get_event_loop().run_in_executor(None, self._get_vm_state, node)
+        node.vm_status = status
+
+    async def delete_node(self, node: DynamicServer) -> None:
+        await get_event_loop().run_in_executor(None, self._delete_node, node)
+        node.vm_status = VmStatus.OFF
+        node.deployment_status = DeploymentStatus.DESTROYED
+
+    async def validate_instance_definition(self, definition: InstanceDefinition) -> None:
+        return await get_event_loop().run_in_executor(None, self._validate_instance_definition, definition)
+
+    def _get_all_nodes(self) -> List[DynamicServer]:
+        raise NotImplementedError()
+
+    def _create_node(self, definition: InstanceDefinition, name: Optional[str] = None) -> DynamicServer:
+        raise NotImplementedError()
+
+    def _get_vm_state(self, node: DynamicServer) -> VmStatus:
+        raise NotImplementedError()
+
+    def _delete_node(self, name: DynamicServer) -> None:
+        raise NotImplementedError()
+
+    def _validate_instance_definition(self, definition: InstanceDefinition) -> None:
+        raise NotImplementedError()
 
 
 class CombinedCloudAPI(CloudAPI):
-    def __init__(self, manager_settings):
-        super().__init__(manager_settings)
-        self.providers = ""
-        self.provider_apis = {}
+    def __init__(self, definitions: CloudInstanceDefsController):
+        self.definitions = definitions
+        self.provider_apis: Dict[str, CloudAPI] = {}  # map provider name to api
         self.random_words = {}
 
         self.init_cloud_apis()
 
     def init_cloud_apis(self):
-        self.providers = list(map(str.strip, self.manager_settings.cloud_providers.split(',')))
-
-        for provider in self.providers:
-            if provider == "hetzner":
-                self.provider_apis["hetzner"] = HetznerAPI(self.manager_settings)
+        for _, definition in self.definitions.provider_definitions.items():
+            if isinstance(definition, HetznerApiKeyDefinition):
+                self.provider_apis["hetzner"] = HetznerAPI(definition)
+            else:
+                raise UnknownProviderError(str(definition))
 
         with open('livestreaming/manager/random_word_database.pickle', "rb") as f:
             self.random_words = pickle.load(f)
 
-    def get_all_nodes(self) -> List[Node]:
+    async def get_all_nodes(self) -> List[DynamicServer]:
         nodes = []
-        for provider in self.providers:
-            nodes += self.provider_apis[provider].get_all_nodes()
+        for _, provider in self.provider_apis.items():
+            nodes += await provider.get_all_nodes()
         return nodes
 
-    def create_node(self, name=False, node_type=False) -> Node:
-        provider = self.__pick_provider_for_node_creation(node_type)
-        name = self.__pick_node_name()
-        return self.provider_apis[provider].create_node(name, node_type)
+    async def create_node(self, definition: InstanceDefinition, name: Optional[str] = None) -> DynamicServer:
+        provider = definition.provider
+        if name is None:
+            name = self._pick_node_name()
+        return await self.provider_apis[provider].create_node(definition, name)
 
-    def update_vm_state(self, node):
+    async def update_vm_state(self, node: DynamicServer) -> None:
         provider = node.provider
-        self.provider_apis[provider].update_vm_state(node)
+        await self.provider_apis[provider].update_vm_state(node)
 
-    def delete_node(self, node):
+    async def delete_node(self, node: DynamicServer) -> None:
         provider = node.provider
-        return self.provider_apis[provider].delete_node(node.name)
+        await self.provider_apis[provider].delete_node(node)
 
-    def __pick_provider_for_node_creation(self, node_type=False):
-        # TODO: implement logic to pick provider based on utilisation
-        return self.providers[0]
-
-    def __pick_node_name(self):
+    def _pick_node_name(self):
         hash = secrets.token_hex(4)
-        random_name = f"{choice(self.random_words['adj'])}-{choice(self.random_words['nouns'])}-{hash}"
+        random_name = f"{manager_settings.dynamic_node_name_prefix}{choice(self.random_words['adj'])}-{choice(self.random_words['nouns'])}-{hash}"
         return random_name
 
+    async def validate_instance_definition(self, definition: InstanceDefinition):
+        """Check that the location and server_type of the instance definition really exists."""
+        await self.provider_apis[definition.provider].validate_instance_definition(definition)
 
-class HetznerAPI(CloudAPI):
-    def __init__(self, manager_settings):
-        super().__init__(manager_settings)
-        self.token = self.manager_settings.hetzner_api_token
-        self.provider = "hetzner"
+
+class HetznerAPI(CloudBlockingAPI):
+    provider: str = "hetzner"
+    image_name: str = "debian-10"
+
+    def __init__(self, hetzner_def: HetznerApiKeyDefinition):
+        self.token: str = hetzner_def.key
+        self.ssh_key_name: str =hetzner_def.ssh_key_name
         self.client = Client(token=self.token)
 
     def get_all_locations(self):
         return self.client.locations.get_all()
 
-    def get_all_nodes(self) -> List[Node]:
+    def _get_all_nodes(self) -> List[DynamicServer]:
         try:
             servers = self.client.servers.get_all()
             nodes = []
             for s in servers:
-                nodes.append(Node(s.name, "unknown", PlatformType.unknown, "unknown", self.__str_to_vm_status(s.status),
-                                  s.public_net.ipv4.ip, s.id, self.provider))
+                ipv6 = next(IPv6Network(s.public_net.ipv6.ip).hosts())  # get first IPv6 address from the network
+                nodes.append(DynamicServer(s.name, DeploymentStatus.UNKNOWN, IPv4Address(s.public_net.ipv4.ip), ipv6,
+                                           self._str_to_vm_status(s.status), None, s.id, self.provider))
             return nodes
         except APIException:  # handle exceptions
             pass
@@ -111,17 +162,20 @@ class HetznerAPI(CloudAPI):
         except ActionTimeoutException:
             pass
 
-    def create_node(self, name, node_type):
+        return []
+
+    def _create_node(self, definition: InstanceDefinition, name: Optional[str] = None) -> DynamicServer:
         try:
-            # TODO: pick specs based on node type
+            cloud_logger.info(f"Create a new node at Hetzner (server type {definition.server_type})")
             response = self.client.servers.create(name=name,
-                                                  server_type=ServerType(self.__pick_server_type()),
-                                                  image=Image(name=self.__pick_image()),
-                                                  location=Location(name=self.__pick_location()),
-                                                  ssh_keys=[SSHKey(name=self.__pick_ssh_key())])
+                                                  server_type=ServerType(definition.server_type),
+                                                  image=Image(name=self.image_name),
+                                                  location=Location(name=definition.location),
+                                                  ssh_keys=[SSHKey(name=self.ssh_key_name)])
             server = response.server
-            return Node(server.name, node_type, PlatformType.cloud, DeploymentStatus.CREATED, server.public_net.ipv4.ip,
-                        vm_status=self.__str_to_vm_status(server.status), vm_id=server.id, provider=self.provider)
+            ipv6 = next(IPv6Network(server.public_net.ipv6.ip).hosts())  # get first IPv6 address from the network
+            return DynamicServer(server.name, DeploymentStatus.CREATED, IPv4Address(server.public_net.ipv4.ip),
+                                 ipv6, self._str_to_vm_status(server.status), definition, server.id, self.provider)
         except APIException as e:  # handle exceptions
             print(e)
         except ActionFailedException as e:
@@ -129,9 +183,12 @@ class HetznerAPI(CloudAPI):
         except ActionTimeoutException as e:
             print(e)
 
-    def delete_node(self, name):
+        raise NodeCreateError()
+
+    def _delete_node(self, node: DynamicServer) -> None:
         try:
-            server = self.client.servers.get_by_name(name)
+            cloud_logger.info(f"Delete node at Hetzner ({node.name})")
+            server = self.client.servers.get_by_name(node.name)
             server.delete()
         except APIException:  # handle exceptions
             pass
@@ -141,31 +198,38 @@ class HetznerAPI(CloudAPI):
             pass
 
     @staticmethod
-    def __str_to_vm_status(s_status):
+    def _str_to_vm_status(s_status) -> VmStatus:
         if s_status == "running":
             status = VmStatus.RUNNING
-        elif s_status == "initializing":
+        elif s_status == "initializing" or s_status == "starting":
             status = VmStatus.INIT
         else:
             status = VmStatus.ERROR
         return status
 
-    def __pick_server_type(self):
-        return self.manager_settings.hetzner_server_type
-
-    def __pick_image(self):
-        return self.manager_settings.hetzner_image
-
-    def __pick_location(self):
-        return self.manager_settings.hetzner_location
-
-    def __pick_ssh_key(self):
-        return self.manager_settings.hetzner_ssh_key
-
-    def update_vm_state(self, node):
+    def _get_vm_state(self, node: DynamicServer) -> VmStatus:
         try:
             server = self.client.servers.get_by_name(node.name)
-            node.vm_status = self.__str_to_vm_status(server.status)
+            cloud_logger.debug(f"Got vm state from Hetzner ({node.name}) status: {server.status}")
+            return self._str_to_vm_status(server.status)
         except Exception as e:
-            print(e)
-            node.vm_status = VmStatus.ERROR
+            return VmStatus.ERROR
+
+    def _validate_instance_definition(self, definition: InstanceDefinition) -> None:
+        raise NotImplementedError() # TODO
+
+
+class InstanceValidationError(Exception):
+    def __init__(self, invalid_server_type: Optional[str], invalid_location: Optional[str]):
+        self.invalid_server_type = invalid_server_type
+        self.invalid_location = invalid_location
+        format = f"Invalid instance definition: "
+        if invalid_server_type:
+            format += f"invalid server type ({invalid_server_type}) "
+        if invalid_location:
+            format += f"invalid location ({invalid_location}) "
+        super().__init__(format)
+
+
+class NodeCreateError(Exception):
+    pass

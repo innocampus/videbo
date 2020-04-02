@@ -3,7 +3,7 @@ import inspect
 import logging
 import pydantic
 from json import JSONDecodeError
-from typing import Optional, Type, List, Union, Any, Tuple
+from typing import Optional, Type, List, Union, Any, Tuple, Callable
 from aiohttp import web, ClientResponse, ClientSession, ClientError
 from aiohttp.web_exceptions import HTTPException, HTTPBadRequest
 from livestreaming.auth import BaseJWTData, internal_jwt_encode
@@ -11,11 +11,15 @@ from livestreaming.auth import BaseJWTData, internal_jwt_encode
 web_logger = logging.getLogger('livestreaming-web')
 
 
-def start_web_server(port: int, routes):
+def start_web_server(port: int, routes, on_startup: Optional[Callable] = None, on_cleanup: Optional[Callable] = None):
     HTTPClient.create_client_session()
 
     app = web.Application()
     app.add_routes(routes)
+    if on_startup:
+        app.on_startup.append(on_startup)
+    if on_cleanup:
+        app.on_cleanup.append(on_cleanup)
     app.on_shutdown.append(HTTPClient.close_all)
     web.run_app(app, port=port)
 
@@ -185,6 +189,14 @@ async def read_data_from_response(response: ClientResponse, max_bytes: int) -> b
             raise ResponseTooManyDataError()
         blocks.append(block)
     return b''.join(blocks)
+
+
+def ensure_url_does_not_end_with_slash(url: str) -> str:
+    while url:
+        if url[-1] == '/':
+            url = url[0:-1]
+        else:
+            return url
 
 
 # exceptions

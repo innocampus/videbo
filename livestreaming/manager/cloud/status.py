@@ -12,6 +12,7 @@ class DeploymentStatus(Enum):
     TEST_FAILED = 8
     DESTROYED = 9
     ORPHANED = 10
+    UNKNOWN = 11
 
     @staticmethod
     def state_ok(state):
@@ -20,6 +21,11 @@ class DeploymentStatus(Enum):
                 state == DeploymentStatus.OPERATIONAL):
             return True
         return False
+
+    @staticmethod
+    def state_pending(state):
+        return (state == DeploymentStatus.REQUESTED or state == DeploymentStatus.CREATED or
+                state == DeploymentStatus.INITIALIZING or state == DeploymentStatus.INITIALIZED)
 
 
 class VmStatus(Enum):

@@ -3,18 +3,20 @@ from asyncio import get_event_loop
 from contextlib import contextmanager
 from dataclasses import dataclass
 from ipaddress import IPv4Address
+import logging
 from threading import Lock
 from typing import List, Optional
-from .definitions import INWXApiAuthDefinition
+from livestreaming.manager import manager_settings
+from .definitions import INWXApiAuthDefinition, CloudInstanceDefsController
 
 
-DYNAMIC_NODES_NAME_PREFIX = "dyn-"
+logger = logging.getLogger('livestreaming-dns')
 
 
 @dataclass
 class DNSRecord:
     type: str # A, AAAA, MX, ...
-    name: str
+    name: str # including full domain
     content: str
     ttl: int = 3600
     prio: int = 0
@@ -22,7 +24,7 @@ class DNSRecord:
 
     @classmethod
     def create_dynamic_node_name_from_ipv4(cls, domain: str, ip: IPv4Address):
-        name = DYNAMIC_NODES_NAME_PREFIX + ip.packed.hex() + "." + domain
+        name = f"{manager_settings.dynamic_node_name_prefix}{ip.packed.hex()}.{domain}"
         return DNSRecord(type="A", name=name, content=str(ip))
 
 
@@ -45,11 +47,12 @@ class DNSManager:
     async def get_all_dynamic_records(self) -> List[DNSRecord]:
         """Get all records that belong to a dynamic node."""
         records = await self.get_all_records()
-        return [record for record in records if record.name.startswith(DYNAMIC_NODES_NAME_PREFIX)]
+        return [record for record in records if record.name.startswith(manager_settings.dynamic_node_name_prefix)]
 
     async def add_record(self, record: DNSRecord):
         await self._add_record(record)
         self.cached_records.append(record)
+        logger.info(f"Added record: {record.name} {record.type} {record.content}")
 
     async def _add_record(self, record: DNSRecord):
         """Internal method that needs to be overridden by dns provider api."""
@@ -60,6 +63,7 @@ class DNSManager:
             return
 
         await self._remove_record(record)
+        logger.info(f"Removed record: {record.name} {record.type} {record.content}")
         try:
             self.cached_records.remove(record)
         except ValueError:
@@ -69,17 +73,17 @@ class DNSManager:
         """Internal method that needs to be overridden by dns provider api."""
         raise NotImplementedError
 
-    async def add_dynamic_node_name_from_ipv4(self, ip: IPv4Address) -> str:
+    async def add_dynamic_node_name_from_ipv4(self, ip: IPv4Address) -> DNSRecord:
         """Add new record for a dynamic node and return the full host name."""
         new_record = DNSRecord.create_dynamic_node_name_from_ipv4(self.domain, ip)
 
         # Check if a record with this name already exists. Then do not add again.
         for record in self.cached_records:
             if record.name == new_record.name:
-                return new_record.name
+                return record
 
         await self.add_record(new_record)
-        return new_record.name
+        return new_record
 
 
 class DNSManagerINWX(DNSManager):
@@ -183,6 +187,17 @@ class DNSManagerINWX(DNSManager):
                     raise DNSAPIError()
         except:
             raise DNSAPIError()
+
+
+def get_dns_api_by_provider(definitions: CloudInstanceDefsController) -> Optional[DNSManager]:
+    if definitions.domain is None:
+        return None
+
+    dns_def = definitions.dns_provider_definition
+    if isinstance(dns_def, INWXApiAuthDefinition):
+        return DNSManagerINWX(definitions.domain, dns_def)
+    else:
+        return None
 
 
 class DNSAPIError(Exception):
