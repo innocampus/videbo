@@ -1,5 +1,6 @@
 import logging
 from pathlib import PurePath, Path
+from typing import Optional
 
 from livestreaming import settings
 from livestreaming.settings import SettingsSectionBase
@@ -18,6 +19,7 @@ class EncoderSettings(SettingsSectionBase):
     rtmp_public_ports: str
     rtmps_cert: str
     max_streams: int
+    ffmpeg_user: str
 
 
 encoder_settings = EncoderSettings()

@@ -57,25 +57,40 @@ class FFmpeg:
         self.ffmpeg_process: Optional[asyncio.subprocess.Process] = None
         self.socat_process: Optional[asyncio.subprocess.Process] = None
         self.watch_task: Optional[asyncio.Task] = None
+        self.user: Optional[str] = encoder_settings.ffmpeg_user
 
     async def start(self):
+        print("start ffmpeg!")
         program = encoder_settings.binary_ffmpeg
         url = self.stream.get_url()
-        recording_file = self.stream.recording_file
-        args = (f"-y -listen 1 -hide_banner -i {url} "
-                f"-filter_complex \"[v:0] split=3 [vtemp001][vtemp002][vout003];"
-                f"[vtemp001]scale=w='min(1920\, iw*3/2):h=-1'[vout001];"
-                f"[vtemp002]scale=w='min(1280\, iw*3/2):h=-1'[vout002]\""
-                f"-preset veryfast -g 30 -sc_threshold 0"
-                f"-map a:0 -map a:0 -c:a aac -b:a 128k -ac 2"
-                f"-map [vout001] -c:v:0 libx264 -b:v:0 6000k -maxrate:v:0 6600k -bufsize:v:0 8000k"
-                f"-map [vout002] -c:v:1 libx264 -b:v:1 1000k -maxrate:v:1 1100k -bufsize:v:1 2000k"
-                f"-f hls -hls_time 2 -hls_list_size 2 -hls_flags independent_segments"
-                f"-master_pl_name stream.m3u8"
-                f"-hls_segment_filename stream_%v/data%06d.ts"
-                f"-use_localtime_mkdir 1"
-                f"-var_stream_map \"v:0,a:0 v:1,a:1\" stream_%v.m3u8"
-                f"-map [vout003] -c:v:2 copy {recording_file}")
+
+        video_split = "split=2 [vtemp001][vtemp002]"
+        recording_args = ""
+
+        if self.stream.recording_file is not None:
+            video_split = "split=3 [vtemp001][vtemp002][vout003]"
+            recording_args += f"-map [vout003] -c:v:2 copy {self.stream.recording_file}"
+
+        args = f"-y -listen 1 -hide_banner -i {url} " \
+               f"-filter_complex \"[v:0] {video_split};" \
+               f"[vtemp001]scale=w='min(1920\, iw*3/2):h=-1'[vout001];" \
+               f"[vtemp002]scale=w='min(1280\, iw*3/2):h=-1'[vout002]\" " \
+               f"-preset veryfast -g 30 -sc_threshold 0 " \
+               f"-map a:0 -map a:0 -c:a aac -b:a 128k -ac 2 " \
+               f"-map [vout001] -c:v:0 libx264 -b:v:0 6000k -maxrate:v:0 6600k -bufsize:v:0 8000k " \
+               f"-map [vout002] -c:v:1 libx264 -b:v:1 1000k -maxrate:v:1 1100k -bufsize:v:1 2000k " \
+               f"-f hls -hls_time 2 -hls_list_size 2 -hls_flags independent_segments " \
+               f"-master_pl_name stream.m3u8 -hls_segment_filename stream_%v/data%06d.ts -use_localtime_mkdir 1 " \
+               f"-var_stream_map \"v:0,a:0 v:1,a:1\" stream_%v.m3u8 "
+
+        args += recording_args
+
+        if self.stream.recording_file is not None:
+            args += f"-map [vout003] -c:v:2 copy {self.stream.recording_file}"
+
+        if self.user:
+            program = "sudo"
+            args = f"-u {self.user} {encoder_settings.binary_ffmpeg}" + args
 
         self.ffmpeg_process = await asyncio.create_subprocess_exec(program, *shlex.split(args),
                                                                    stdout=asyncio.subprocess.PIPE,
