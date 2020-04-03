@@ -60,7 +60,6 @@ class FFmpeg:
         self.user: Optional[str] = encoder_settings.ffmpeg_user
 
     async def start(self):
-        print("start ffmpeg!")
         program = encoder_settings.binary_ffmpeg
         url = self.stream.get_url()
 
@@ -69,7 +68,7 @@ class FFmpeg:
 
         if self.stream.recording_file is not None:
             video_split = "split=3 [vtemp001][vtemp002][vout003]"
-            recording_args += f"-map [vout003] -c:v:2 copy {self.stream.recording_file}"
+            recording_args += f"-map [vout003] -c:v:2 copy {self.stream.recording_file}.mp4"
 
         args = f"-y -listen 1 -hide_banner -i {url} " \
                f"-filter_complex \"[v:0] {video_split};" \
@@ -84,9 +83,6 @@ class FFmpeg:
                f"-var_stream_map \"v:0,a:0 v:1,a:1\" stream_%v.m3u8 "
 
         args += recording_args
-
-        if self.stream.recording_file is not None:
-            args += f"-map [vout003] -c:v:2 copy {self.stream.recording_file}"
 
         if self.user:
             program = "sudo"
