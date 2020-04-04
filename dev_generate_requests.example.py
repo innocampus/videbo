@@ -26,13 +26,17 @@ jwt = internal_jwt_encode(jwt_data, 24*3600)
 
 # ------------------------
 
+from livestreaming.manager.api.models import LMSNewStreamParams
+
+params = LMSNewStreamParams(ip_range=None, rtmps=False, lms_stream_instance_id=1)
+
 jwt_data = BaseJWTData.construct(role='manager')
 url = f'http://localhost:9030/api/manager/stream/new'
-#future = HTTPClient.internal_request('GET', url, jwt_data)
-#status, ret = get_event_loop().run_until_complete(future)
+future = HTTPClient.internal_request('POST', url, jwt_data, params)
+status, ret = get_event_loop().run_until_complete(future)
 
-#print(status)
-#print(ret)
+print(status)
+print(ret)
 
 
 # ------------------------
