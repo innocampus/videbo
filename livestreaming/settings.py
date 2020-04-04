@@ -40,6 +40,8 @@ class GeneralSettings(SettingsSectionBase):
     _section = 'general'
     internal_api_secret: str
     dev_mode: bool
+    domain: str
+    wildcard_certificate_path: PurePath
 
 
 class LMSSettings(SettingsSectionBase):
