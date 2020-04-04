@@ -49,6 +49,7 @@ class ManagerStream(Stream):
     def get_status(self, full: bool) -> Union[StreamStatus, StreamStatusFull]:
         data = {
             'stream_id': self.stream_id,
+            'lms_stream_instance_id': 0,
             'state': self.state,
             'state_last_update': self.state_last_update,
             'viewers': 0,  # TODO
@@ -59,6 +60,7 @@ class ManagerStream(Stream):
             data['streamer_url'] = self.encoder_streamer_url
             data['streamer_key'] = '' # TODO
             data['streamer_ip_restricted'] = self.is_ip_restricted
+            data['streamer_connection_time_left'] = 300
             data['viewer_broker_url'] = '' # TODO
             return StreamStatusFull(**data)
         else:

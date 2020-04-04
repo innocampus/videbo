@@ -28,8 +28,7 @@ async def new_stream(request: Request, jwt_data: BaseJWTData, json: LMSNewStream
     except Exception as e:
         error_type = type(e).__name__
         return_data = LMSNewStreamReturn(success=False, error=error_type)
-        file = e.__traceback__.tb_frame.f_code.co_filename
-        logger.error(f"{error_type} raised at {file} on line {e.__traceback__.tb_lineno}")
+        logger.exception("Exception in new_stream")
         return json_response(return_data, status=500)
 
 
