@@ -10,6 +10,7 @@ class ContentSettings(SettingsSectionBase):
     _section: str = 'content'
     http_port: int
     hls_temp_dir: PurePath
+    max_clients: int
 
 
 content_settings = ContentSettings()
