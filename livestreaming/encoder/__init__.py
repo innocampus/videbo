@@ -14,7 +14,6 @@ class EncoderSettings(SettingsSectionBase):
     binary_ffprobe: str
     binary_socat: str
     hls_temp_dir: PurePath
-    passwd_length: int
     rtmp_internal_ports: str
     rtmp_public_ports: str
     rtmps_cert: str
