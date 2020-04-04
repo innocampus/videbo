@@ -18,7 +18,6 @@ class EncoderSettings(SettingsSectionBase):
     rtmp_public_ports: str
     rtmps_cert: str
     max_streams: int
-    ffmpeg_user: str
 
 
 encoder_settings = EncoderSettings()

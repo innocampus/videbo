@@ -57,7 +57,6 @@ class FFmpeg:
         self.ffmpeg_process: Optional[asyncio.subprocess.Process] = None
         self.socat_process: Optional[asyncio.subprocess.Process] = None
         self.watch_task: Optional[asyncio.Task] = None
-        self.user: Optional[str] = encoder_settings.ffmpeg_user
 
     async def start(self):
         program = encoder_settings.binary_ffmpeg
@@ -83,10 +82,6 @@ class FFmpeg:
                f"-var_stream_map \"v:0,a:0 v:1,a:1\" stream_%v.m3u8 "
 
         args += recording_args
-
-        if self.user:
-            program = "sudo"
-            args = f"-u {self.user} {encoder_settings.binary_ffmpeg}" + args
 
         self.ffmpeg_process = await asyncio.create_subprocess_exec(program, *shlex.split(args),
                                                                    stdout=asyncio.subprocess.PIPE,
