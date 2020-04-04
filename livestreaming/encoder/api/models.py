@@ -6,10 +6,14 @@ from livestreaming.web import JSONBaseModel
 
 class NewStreamParams(JSONBaseModel):
     ip_range: Optional[str]
+    rtmps: bool
+    lms_stream_instance_id: int
 
 
 class NewStreamCreated(JSONBaseModel):
-    url: str
+    rtmp_public_url: str
+    rtmp_stream_key: str
+    encoder_subdir_name: str
 
 
 class NewStreamReturn(JSONBaseModel):

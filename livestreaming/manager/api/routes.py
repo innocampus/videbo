@@ -16,7 +16,7 @@ routes = RouteTableDef()
 async def new_stream(request: Request, jwt_data: BaseJWTData, json: LMSNewStreamParams):
     """LMS requests manager to set up a new stream."""
     try:
-        stream = stream_collection.create_new_stream(json.ip_range)
+        stream = stream_collection.create_new_stream(json.ip_range, json.rtmps, json.lms_stream_instance_id)
         await stream.tell_encoder()
         await asyncio.sleep(30)
         await stream.tell_content()

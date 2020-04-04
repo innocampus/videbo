@@ -1,3 +1,4 @@
+from time import time
 from typing import Optional, Union
 from livestreaming.web import HTTPClient, HTTPResponseError
 from livestreaming.auth import BaseJWTData
@@ -10,20 +11,25 @@ from . import logger
 
 
 class ManagerStream(Stream):
-    def __init__(self, stream_id: int, ip_range: Optional[str]):
-        super().__init__(stream_id, ip_range, logger)
+    def __init__(self, stream_id: int, ip_range: Optional[str], use_rtmps: bool, lms_stream_instance_id: int):
+        super().__init__(stream_id, ip_range, use_rtmps, logger)
         self.encoder_streamer_url: str = ''
+        self.lms_stream_instance_id = lms_stream_instance_id
+        self.streamer_connection_until: Optional[int] = None
 
     async def tell_encoder(self):
         jwt_data = BaseJWTData.construct(role='manager')
         url = f'http://localhost:9010/api/encoder/stream/new/{self.stream_id}'
-        stream_params = NewStreamParams(ip_range=self.ip_range_str)
+        stream_params = NewStreamParams(ip_range=self.ip_range_str, rtmps=self.use_rtmps,
+                                        lms_stream_instance_id=self.lms_stream_instance_id)
 
         try:
             ret: NewStreamReturn
             status, ret = await HTTPClient.internal_request('POST', url, jwt_data, stream_params, NewStreamReturn)
             if ret.success:
-                self.encoder_streamer_url = ret.stream.url
+                self.encoder_streamer_url = ret.stream.rtmp_public_url
+                self.rtmp_stream_key = ret.stream.rtmp_stream_key
+                self.encoder_subdir_name = ret.stream.encoder_subdir_name
                 logger.info(f"New stream created, encoder streamer url {self.encoder_streamer_url}")
             else:
                 logger.error(f"Could not create a new stream: {ret.error}")
@@ -35,7 +41,7 @@ class ManagerStream(Stream):
     async def tell_content(self):
         jwt_data = BaseJWTData.construct(role='manager')
         url = f'http://localhost:9020/api/content/stream/start/{self.stream_id}'
-        encoder_url = f'http://localhost:9010'
+        encoder_url = f'http://localhost:9010/data/hls/{self.stream_id}/{self.encoder_subdir_name}'
         info = StartStreamDistributionInfo(stream_id=self.stream_id, encoder_base_url=encoder_url)
 
         try:
@@ -49,7 +55,7 @@ class ManagerStream(Stream):
     def get_status(self, full: bool) -> Union[StreamStatus, StreamStatusFull]:
         data = {
             'stream_id': self.stream_id,
-            'lms_stream_instance_id': 0,
+            'lms_stream_instance_id': self.lms_stream_instance_id,
             'state': self.state,
             'state_last_update': self.state_last_update,
             'viewers': 0,  # TODO
@@ -60,7 +66,8 @@ class ManagerStream(Stream):
             data['streamer_url'] = self.encoder_streamer_url
             data['streamer_key'] = '' # TODO
             data['streamer_ip_restricted'] = self.is_ip_restricted
-            data['streamer_connection_time_left'] = 300
+            if self.streamer_connection_until:
+                data['streamer_connection_time_left'] = self.streamer_connection_until - time()
             data['viewer_broker_url'] = '' # TODO
             return StreamStatusFull(**data)
         else:
@@ -71,9 +78,9 @@ class ManagerStreamCollection(StreamCollection[ManagerStream]):
     def __init__(self):
         self.last_stream_id = 1
 
-    def create_new_stream(self, ip_range: Optional[str] = None) -> ManagerStream:
+    def create_new_stream(self, ip_range: Optional[str], use_rtmps: bool, lms_stream_instance_id: int) -> ManagerStream:
         self.last_stream_id += 1
-        new_stream = ManagerStream(self.last_stream_id, ip_range)
+        new_stream = ManagerStream(self.last_stream_id, ip_range, use_rtmps, lms_stream_instance_id)
         self.streams[new_stream.stream_id] = new_stream
         return new_stream
 

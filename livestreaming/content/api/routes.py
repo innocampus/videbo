@@ -12,24 +12,33 @@ from .models import StartStreamDistributionInfo, ContentPlaylistJWTData
 routes = RouteTableDef()
 
 
-@register_route_with_cors(routes, "GET", r"/api/content/playlist/{stream_id:\d}.m3u8")
+@register_route_with_cors(routes, "GET", r"/api/content/playlist/{stream_id:\d+}/{playlist:[a-z0-9]+}.m3u8")
 @ensure_jwt_data_and_role(Role.client)
 async def get_playlist(request: Request, jwt_token: ContentPlaylistJWTData):
-    """Manager requests encoder to open a port and start a new stream to HLS encoding."""
+    """Client asks for a playlist."""
     stream_id = int(request.match_info['stream_id'])
     if stream_id != jwt_token.stream_id:
         raise HTTPForbidden()
 
-    import random
-    if random.randint(0, 4) == 2:
-        url = f"http://localhost:9040/api/broker/redirect/{stream_id}.m3u8?{request.query_string}"
-        raise HTTPSeeOther(location=url)
+    #import random
+    #if random.randint(0, 4) == 2:
+    #    url = f"http://localhost:9040/api/broker/redirect/{stream_id}.m3u8?{request.query_string}"
+    #    raise HTTPSeeOther(location=url)
 
-    stream = stream_fetcher_collection.get_fetcher_by_id(stream_id)
-    return Response(body=stream.current_playlist, content_type='application/x-mpegURL')
+    stream_fetcher = stream_fetcher_collection.get_fetcher_by_id(stream_id)
+    playlist = request.match_info['playlist']
+    if playlist == 'main':
+        jwt = request.query['jwt']
+        content = stream_fetcher.get_main_playlist(jwt)
+    else:
+        # sub playlists are numbered
+        sub_no = int(playlist)
+        content = stream_fetcher.get_sub_playlist(sub_no)
+
+    return Response(body=content, content_type='application/x-mpegURL')
 
 
-@register_route_with_cors(routes, "GET", r"/data/hls/{stream_id:\d}/{file:[a-z0-9]+\.ts}")
+@register_route_with_cors(routes, "GET", r"/data/hls/{stream_id:\d+}/{file:[a-z0-9_]+\.ts}")
 async def get_segment(request: Request):
     """Serving segments for development purposes."""
     if not settings.general.dev_mode:

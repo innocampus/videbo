@@ -19,12 +19,18 @@ class StreamState(Enum):
 class Stream:
     stream_id: int
     ip_range: Union[IPv6Network, IPv4Network, None] = None
+    use_rtmps: bool
+    rtmp_stream_key: Optional[str]
+    encoder_subdir_name: Optional[str]
     _state: StreamState = StreamState.UNKNOWN
     state_last_update: float = 0
     _logger: Optional[Logger] = None
 
-    def __init__(self, stream_id: int, ip_range: Optional[str], logger: Optional[Logger] = None):
+    def __init__(self, stream_id: int, ip_range: Optional[str], use_rtmps: bool, logger: Optional[Logger] = None):
         self.stream_id = stream_id
+        self.use_rtmps = use_rtmps
+        self.rtmp_stream_key = None
+        self.encoder_subdir_name = None
         self._logger = logger
         try:
             self.ip_range = ip_network(ip_range)
@@ -41,6 +47,7 @@ class Stream:
     def state(self, value: StreamState):
         self._state = value
         self.state_last_update = time()
+        self._logger.info(f"<stream {self.stream_id}>: state changed: {StreamState(value).name}")
 
     @property
     def is_ip_restricted(self) -> bool:

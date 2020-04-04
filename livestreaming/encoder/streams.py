@@ -2,6 +2,7 @@ import asyncio
 import functools
 import random
 import shlex
+import secrets
 import socket
 import string
 import errno
@@ -30,7 +31,7 @@ def get_unused_port(port_type: PortType) -> int:
     for ports in raw_ports.split(","):
         port_split = ports.split("-")
         if len(port_split) > 1:
-            ports = range(int(port_split[0]), int(port_split[1])+1)
+            ports = range(int(port_split[0]), int(port_split[1]) + 1)
         else:
             ports = [int(port_split[0])]
         for port in ports:
@@ -52,22 +53,25 @@ class FFmpeg:
     """
     FFmpeg and converting to HLS playlist and segments.
     """
+    STREAM_NAME_PREFIX = "stream_"
+
     def __init__(self, stream: 'EncoderStream'):
         self.stream: 'EncoderStream' = stream
         self.ffmpeg_process: Optional[asyncio.subprocess.Process] = None
         self.socat_process: Optional[asyncio.subprocess.Process] = None
         self.watch_task: Optional[asyncio.Task] = None
+        self.current_time: float = 0.0
 
     async def start(self):
         program = encoder_settings.binary_ffmpeg
-        url = self.stream.get_url()
+        url = self.stream.get_local_ffmpeg_url()
 
         video_split = "split=2 [vtemp001][vtemp002]"
         recording_args = ""
 
         if self.stream.recording_file is not None:
             video_split = "split=3 [vtemp001][vtemp002][vout003]"
-            recording_args += f"-map [vout003] -c:v:2 copy {self.stream.recording_file}.mp4"
+            recording_args += f"-map [vout003] -c:v:2 copy {self.stream.recording_file}"
 
         args = f"-y -listen 1 -hide_banner -i {url} " \
                f"-filter_complex \"[v:0] {video_split};" \
@@ -78,8 +82,8 @@ class FFmpeg:
                f"-map [vout001] -c:v:0 libx264 -b:v:0 6000k -maxrate:v:0 6600k -bufsize:v:0 8000k " \
                f"-map [vout002] -c:v:1 libx264 -b:v:1 1000k -maxrate:v:1 1100k -bufsize:v:1 2000k " \
                f"-f hls -hls_time 2 -hls_list_size 2 -hls_flags independent_segments " \
-               f"-master_pl_name stream.m3u8 -hls_segment_filename stream_%v/data%06d.ts -use_localtime_mkdir 1 " \
-               f"-var_stream_map \"v:0,a:0 v:1,a:1\" stream_%v.m3u8 "
+               f"-master_pl_name stream.m3u8 -hls_segment_filename {self.STREAM_NAME_PREFIX}%v/data%06d.ts -use_localtime_mkdir 1 " \
+               f"-var_stream_map \"v:0,a:0 v:1,a:1\" {self.STREAM_NAME_PREFIX}%v.m3u8 "
 
         args += recording_args
 
@@ -90,13 +94,13 @@ class FFmpeg:
 
         self.watch_task = asyncio.create_task(self.watch_ffmpeg())
 
-        if encoder_settings.rtmps_cert:
+        if encoder_settings.rtmps_cert and self.stream.use_rtmps:
             args = f"openssl-listen:{self.stream.public_port},cert={encoder_settings.rtmps_cert},verify=0"
         else:
             args = f"tcp-listen:{self.stream.public_port}"
         if self.stream.ip_range:
             args += f",range={self.stream.ip_range}"
-        args += f" tcp:localhost:{self.stream.port}"
+        args += f" tcp:127.0.0.1:{self.stream.port}"
 
         self.socat_process = await asyncio.create_subprocess_exec(encoder_settings.binary_socat, *shlex.split(args),
                                                                   stdout=asyncio.subprocess.DEVNULL,
@@ -113,35 +117,48 @@ class FFmpeg:
             buffer_counter = 0
             expected_states = [StreamState.NOT_YET_STARTED, StreamState.WAITING_FOR_CONNECTION, StreamState.BUFFERING,
                                StreamState.STREAMING]
+
             if self.stream.state not in expected_states:
                 logger.error(f"stream {self.stream.stream_id} in unexpected state ({self.stream.state})")
+
+            unexpected_stream_regex = re.compile(r"\[.*\] Unexpected stream")
+            open_file_regex = re.compile(r"\[hls.*\] Opening '" + self.STREAM_NAME_PREFIX +
+                                         r"0\.m3u8\.tmp' for writing")
+            time_regex = re.compile(r"time=(\d{2}):(\d{2}):(\d{2}).(\d{2})")
+
             while self.stream.state in expected_states:
                 if self.stream.state == StreamState.NOT_YET_STARTED:
                     self.stream.state = StreamState.WAITING_FOR_CONNECTION
-                    logger.info(f"watch <stream {self.stream.stream_id}>: state changed: wait for connection")
+
                 # first ffmpeg output will come when stream started
                 line = await self.ffmpeg_process.stdout.readline()
                 line_str = line.decode('utf-8').rstrip()
-                logger.debug(line_str)
+                logger.debug(line)
+
                 if self.stream.state == StreamState.WAITING_FOR_CONNECTION:
                     self.stream.state = StreamState.BUFFERING
-                    logger.info(f"watch <stream {self.stream.stream_id}>: received data; state changed: buffering")
+
                 if self.stream.state == StreamState.BUFFERING:
-                    if re.match(r"\[.*\] Unexpected stream", line_str):
+                    if unexpected_stream_regex.search(line_str) is not None:
                         # handle this case for security reasons
                         logger.error(f"unexpected stream, stop stream {self.stream.stream_id} immediately")
                         self.stream.state = StreamState.UNEXPECTED_STREAM
                         self.ffmpeg_process.kill()
-                    if re.match(r"\[.*\] Opening '.+\.tmp' for writing", line_str):
+                    if open_file_regex.search(line_str) is not None:
                         buffer_counter += 1
                         logger.debug(f"watch <stream {self.stream.stream_id}>: buffer_counter: {buffer_counter}")
                         if buffer_counter >= 3:
                             self.stream.state = StreamState.STREAMING
-                            logger.info(f"watch <stream {self.stream.stream_id}>: state changed: streaming")
+
+                times_found = time_regex.findall(line_str)
+                if len(times_found):
+                    time = times_found[-1]
+                    self.current_time = float(time[0]) * 3600 + float(time[1]) * 60 + float(time[2]) + \
+                                        float(time[3]) / 100.0
+
                 if self.ffmpeg_process.stdout.at_eof():
-                    await self.wait()
                     self.stream.state = StreamState.STOPPED
-                    logger.info(f"watch <stream {self.stream.stream_id}>: state changed: stopped")
+                    break
             logger.info(f"watch for stream {self.stream.stream_id} ended")
         except asyncio.CancelledError:
             logger.warning(f"watch for stream {self.stream.stream_id} was CANCELLED unexpectedly")
@@ -154,16 +171,20 @@ class FFmpeg:
 
     async def stop(self, kill_in: float = 2.0):
         for process_name in ['ffmpeg_process', 'socat_process']:
-            process = getattr(self, process_name, None)
-            if process:
-                if kill_in > 0:
-                    process.terminate()
-                    try:
-                        await asyncio.wait_for(process.wait(), kill_in)
-                    except asyncio.TimeoutError:
+            process: asyncio.subprocess.Process = getattr(self, process_name, None)
+            if process and process.pid:
+                try:
+                    if kill_in > 0:
+                        process.terminate()
+                        try:
+                            await asyncio.wait_for(process.wait(), kill_in)
+                        except asyncio.TimeoutError:
+                            process.kill()
+                    else:
                         process.kill()
-                else:
-                    process.kill()
+                except OSError:
+                    # The process most probably already does not exist anymore.
+                    pass
             setattr(self, process_name, None)
         if self.watch_task:
             self.watch_task.cancel()
@@ -173,16 +194,17 @@ class FFmpeg:
 
 
 class EncoderStream(Stream):
-    def __init__(self, stream_id: int, ip_range: Optional[str] = None):
-        super().__init__(stream_id, ip_range, logger)
+    def __init__(self, stream_id: int, ip_range: Optional[str] = None, use_rtmps: bool = True):
+        super().__init__(stream_id, ip_range, use_rtmps, logger)
         self.port: int = get_unused_port(port_type=PortType.INTERNAL)
         self.public_port: int = get_unused_port(port_type=PortType.PUBLIC)
         self.control_task: Optional[asyncio.Task] = None
-        self.watch_task: Optional[asyncio.Task] = None
         self.ffmpeg: Optional[FFmpeg] = None
         self.dir: Optional[Path] = None
         self.recording_file: Optional[Path] = None
         self.state = StreamState.NOT_YET_STARTED
+        self.rtmp_stream_key = secrets.token_hex(8)
+        self.encoder_subdir_name = secrets.token_hex(8)
 
     def start(self):
         # Run everything in an own task.
@@ -200,9 +222,9 @@ class EncoderStream(Stream):
             await self.ffmpeg.wait()
             logger.info(f"ffmpeg on port {self.port} for stream id {self.stream_id} ended")
             await asyncio.sleep(5)
-            if self.watch_task and (not self.watch_task.done() or not self.watch_task.cancelled()):
+            if self.ffmpeg.watch_task and (not self.ffmpeg.watch_task.done() or not self.ffmpeg.watch_task.cancelled()):
                 logger.warning(f"ffmpeg watch still running for stream id {self.stream_id} - cancelling task")
-                self.watch_task.cancel()
+                self.ffmpeg.watch_task.cancel()
 
         except asyncio.CancelledError:
             if self.ffmpeg:
@@ -216,27 +238,24 @@ class EncoderStream(Stream):
     async def create_temp_path(self):
         """Create a temporary directory for the stream.
 
-        It also creates all parent dirs if needed and a temporary file for the recording."""
+        It also creates all parent dirs if needed and a temporary file for the recording.
+        Since the directory is not access-protected, we use the random encoder_subdir_name as a protection."""
         if self.dir:
             # As long as this exists, we assume the dir exists in the system.
             return
 
-        self.dir = Path(encoder_settings.hls_temp_dir, str(self.stream_id))
+        self.dir = Path(encoder_settings.hls_temp_dir, str(self.stream_id), self.encoder_subdir_name)
         # there might be blocking io, run in another thread
         await asyncio.get_event_loop().run_in_executor(None,
-                functools.partial(self.dir.mkdir, parents=True, exist_ok=True))
-
-        rec_name = "recording_" + ''.join(random.choices(string.ascii_lowercase, k=8))
+                                                       functools.partial(self.dir.mkdir, parents=True, exist_ok=True))
+        rec_name = "recording_" + ''.join(random.choices(string.ascii_lowercase, k=8)) + ".mp4"
         self.recording_file = Path(self.dir, rec_name)
 
-    def _get_url(self, port: PortType):
-        return f"rtmp://localhost:{self.public_port if port is PortType.PUBLIC else self.port}/stream"
-
-    def get_url(self):
-        return self._get_url(PortType.INTERNAL)
+    def get_local_ffmpeg_url(self):
+        return f"rtmp://127.0.0.1:{self.port}/stream/random"
 
     def get_public_url(self):
-        return self._get_url(PortType.PUBLIC)
+        return f"rtmp://localhost:{self.public_port}/stream"
 
     async def start_recording(self, info: StreamRecordingStartParams):
         # save current position in video (current video duration or better current file size?)
@@ -250,11 +269,11 @@ class EncoderStream(Stream):
 
 class EncoderStreamCollection(StreamCollection[EncoderStream]):
 
-    def create_new_stream(self, stream_id: int, ip_range: Optional[str] = None) -> EncoderStream:
+    def create_new_stream(self, stream_id: int, ip_range: Optional[str] = None, use_rtmps: bool = True) -> EncoderStream:
         if stream_id in self.streams:
             raise StreamIdAlreadyExistsError()
 
-        new_stream = EncoderStream(stream_id, ip_range)
+        new_stream = EncoderStream(stream_id, ip_range, use_rtmps)
         self.streams[stream_id] = new_stream
         return new_stream
 

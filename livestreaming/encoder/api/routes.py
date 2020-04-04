@@ -16,10 +16,12 @@ async def new_stream(request: Request, _jwt_data: BaseJWTData, json: NewStreamPa
     """Manager requests encoder to open a port and start a new stream to HLS encoding."""
     stream_id = int(request.match_info['stream_id'])
     try:
-        stream = stream_collection.create_new_stream(stream_id, json.ip_range)
+        stream = stream_collection.create_new_stream(stream_id, json.ip_range, json.rtmps)
         stream.start()
 
-        new_stream_data = NewStreamCreated(url=stream.get_public_url())
+        new_stream_data = NewStreamCreated(rtmp_public_url=stream.get_public_url(),
+                                           rtmp_stream_key=stream.rtmp_stream_key,
+                                           encoder_subdir_name=stream.encoder_subdir_name)
         return_data = NewStreamReturn(success=True, stream=new_stream_data)
         return json_response(return_data)
     except StreamIdAlreadyExistsError:
