@@ -55,6 +55,9 @@ def call_node():
     elif settings.args.mode == 'manager':
         from livestreaming.manager import start
         start()
+    elif settings.args.mode == 'storage':
+        from livestreaming.storage import start
+        start()
     else:
         print("Mode must be manager, encoder, content or broker")
         sys.exit(2)
