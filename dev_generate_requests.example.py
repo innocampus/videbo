@@ -23,6 +23,12 @@ jwt_data = BaseJWTData.construct(role="manager")
 jwt = internal_jwt_encode(jwt_data, 24*3600)
 #print(jwt)
 
+# ------------------------
+
+from livestreaming.content.api.models import ContentPlaylistJWTData
+jwt_data = ContentPlaylistJWTData.construct(role="manager", stream_id=2)
+jwt = internal_jwt_encode(jwt_data, 24*3600)
+print(jwt)
 
 # ------------------------
 
