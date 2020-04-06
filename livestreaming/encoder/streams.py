@@ -194,10 +194,12 @@ class FFmpeg:
 
 
 class EncoderStream(Stream):
+    _start_new_stream_lock = asyncio.Lock()
+
     def __init__(self, stream_id: int, ip_range: Optional[str] = None, use_rtmps: bool = True):
         super().__init__(stream_id, ip_range, use_rtmps, logger)
-        self.port: int = get_unused_port(port_type=PortType.INTERNAL)
-        self.public_port: int = get_unused_port(port_type=PortType.PUBLIC)
+        self.port: Optional[int] = None
+        self.public_port: Optional[int] = None
         self.control_task: Optional[asyncio.Task] = None
         self.ffmpeg: Optional[FFmpeg] = None
         self.dir: Optional[Path] = None
@@ -213,12 +215,16 @@ class EncoderStream(Stream):
     async def control(self):
         try:
             await self.create_temp_path()
-            logger.info(f"Start ffmpeg on port {self.port} for stream id {self.stream_id}")
 
-            # Start ffmpeg.
-            self.state = StreamState.NOT_YET_STARTED
-            self.ffmpeg = FFmpeg(self)
-            await self.ffmpeg.start()
+            # Start ffmpeg (use a lock to avoid race conditions when multiple streams are started at the same time).
+            async with EncoderStream._start_new_stream_lock:
+                self.port = get_unused_port(port_type=PortType.INTERNAL)
+                self.public_port = get_unused_port(port_type=PortType.PUBLIC)
+                logger.info(f"Start ffmpeg on port {self.port} for stream id {self.stream_id}")
+                self.state = StreamState.NOT_YET_STARTED
+                self.ffmpeg = FFmpeg(self)
+                await self.ffmpeg.start()
+
             await self.ffmpeg.wait()
             logger.info(f"ffmpeg on port {self.port} for stream id {self.stream_id} ended")
             await asyncio.sleep(5)
