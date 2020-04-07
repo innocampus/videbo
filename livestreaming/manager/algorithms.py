@@ -10,8 +10,8 @@ StreamToContentType = List[Tuple[int, ContentNodeListType]]  # stream id to list
 
 
 class EncoderToContentReturnStatus:
-    def __init__(self, need_more_content_nodes: int, stream_to_content: Optional[StreamToContentType] = None):
-        self.need_more_content_nodes_for_clients: int = need_more_content_nodes
+    def __init__(self, clients_left_out: int, stream_to_content: Optional[StreamToContentType] = None):
+        self.clients_left_out: int = clients_left_out  # need more content nodes for n clients
         self.stream_to_content: Optional[StreamToContentType] = stream_to_content
 
 
@@ -37,11 +37,13 @@ class MToNEncoderToContentAlgorithm(EncoderToContentAlgorithmBase):
         for content in contents:
             total_max_clients += content.max_clients
             current_clients += content.current_clients
+        for stream in streams:
+            current_clients += stream.waiting_clients
 
         more_needed_client_slots = len(streams) * AVAILABLE_CLIENTS_PER_STREAM
-        need_more = total_max_clients < (current_clients + more_needed_client_slots)
+        clients_left_out = max(0, (current_clients + more_needed_client_slots) - total_max_clients)
 
-        return EncoderToContentReturnStatus(need_more, stream_to_content)
+        return EncoderToContentReturnStatus(clients_left_out, stream_to_content)
 
 
 def get_algorithm(name: str) -> EncoderToContentAlgorithmBase:
