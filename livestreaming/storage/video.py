@@ -141,7 +141,7 @@ class VideoValidator:
             valid_video = video_codec in VIDEO_CODEC_WHITELIST
 
         audio_stream = self._info.get_one_stream_type("audio")
-        if video_stream:
+        if audio_stream:
             audio_codec = audio_stream["codec_name"]
             valid_audio = audio_codec in AUDIO_CODEC_WHITELIST
 
