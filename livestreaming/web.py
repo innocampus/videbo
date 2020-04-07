@@ -175,6 +175,14 @@ class HTTPClient:
             web_logger.warning("Error while internal web request: " + str(error))
             raise HTTPResponseError()
 
+    @classmethod
+    async def internal_request_manager(cls, method: str, url: str,
+                                       json_data: Optional[JSONBaseModel] = None,
+                                       expected_return_type: Optional[Type[JSONBaseModel]] = None) -> Tuple[int, Any]:
+        """Do an internal request with the manager role (without having to specify jwt_data."""
+        jwt_data = BaseJWTData.construct(role='manager')
+        return await cls.internal_request(method, url, jwt_data, json_data, expected_return_type)
+
 
 async def read_data_from_response(response: ClientResponse, max_bytes: int) -> bytes:
     """Read up to max_bytes of data in memory. Be carefull with max_bytes."""

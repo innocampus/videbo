@@ -10,10 +10,16 @@ class Server:
         self.name: str = name
         self.host: str = host # ip or domain
 
+    def is_operational(self) -> bool:
+        raise NotImplementedError()
+
 
 class StaticServer(Server):
     def __repr__(self):
         return f"[StaticNode name: {self.name}; host: {self.host}] "
+
+    def is_operational(self) -> bool:
+        return True # TODO
 
 
 class DynamicServer(Server):
@@ -40,3 +46,6 @@ class DynamicServer(Server):
     async def set_domain_and_records(self, dns_manager: DNSManager) -> None:
         self.dns_record = await dns_manager.add_dynamic_node_name_from_ipv4(self.ipv4)
         self.domain = self.dns_record.name
+
+    def is_operational(self) -> bool:
+        return self.vm_status == VmStatus.RUNNING and self.deployment_status == DeploymentStatus.OPERATIONAL

@@ -1,4 +1,5 @@
 from aiohttp.web import Request, RouteTableDef
+from aiohttp.web_exceptions import HTTPNotFound, HTTPNotAcceptable, HTTPOk
 from livestreaming.auth import Role, BaseJWTData, ensure_jwt_data_and_role
 from livestreaming.web import json_response, ensure_json_body
 from livestreaming.encoder import encoder_settings
@@ -29,9 +30,9 @@ async def new_stream(request: Request, _jwt_data: BaseJWTData, json: NewStreamPa
         return json_response(return_data, status=409)
 
 
-@routes.get(r'/api/encoder/state')
+@routes.get(r'/api/encoder/status')
 @ensure_jwt_data_and_role(Role.manager)
-async def new_stream(_request: Request, _jwt_data: BaseJWTData):
+async def encoder_status(_request: Request, _jwt_data: BaseJWTData):
     streams_status = {}
     stream: EncoderStream
     for _, stream in stream_collection.streams.items():
@@ -42,6 +43,22 @@ async def new_stream(_request: Request, _jwt_data: BaseJWTData):
     ret = EncoderStatus(max_streams=encoder_settings.max_streams, current_streams=len(stream_collection.streams),
                         streams=streams_status)
     return json_response(ret)
+
+
+@routes.post(r'/api/encoder/stream/{stream_id:\d}/destroy')
+@ensure_jwt_data_and_role(Role.manager)
+async def destroy_stream(request: Request, __: BaseJWTData):
+    try:
+        stream_id = int(request.match_info['stream_id'])
+        stream = stream_collection.get_stream_by_id(stream_id)
+    except ValueError:
+        raise HTTPNotAcceptable()
+    except KeyError:
+        raise HTTPNotFound
+
+    # TODO
+
+    raise HTTPOk()
 
 
 @routes.post(r'/api/encoder/stream/{stream_id:\d}/recording/start')

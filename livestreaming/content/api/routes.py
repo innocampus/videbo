@@ -4,10 +4,10 @@ from aiohttp.web_exceptions import HTTPNotAcceptable, HTTPSeeOther, HTTPNotFound
 from pathlib import Path
 from livestreaming import settings
 from livestreaming.auth import Role, BaseJWTData, ensure_jwt_data_and_role
-from livestreaming.web import ensure_json_body, register_route_with_cors
+from livestreaming.web import ensure_json_body, register_route_with_cors, json_response
 from livestreaming.content.streams_fetcher import stream_fetcher_collection, StreamFetcher, AlreadyFetchingStreamError
 from livestreaming.content import content_logger, content_settings
-from .models import StartStreamDistributionInfo, ContentPlaylistJWTData
+from .models import StartStreamDistributionInfo, ContentPlaylistJWTData, ContentStatus
 
 routes = RouteTableDef()
 
@@ -77,3 +77,10 @@ async def destroy_stream(request: Request, __: BaseJWTData):
         raise HTTPNotAcceptable()
     stream_fetcher_collection.get_fetcher_by_id(stream_id).destroy()
     raise HTTPOk()
+
+
+@routes.get(r'/api/content/status')
+@ensure_jwt_data_and_role(Role.manager)
+async def new_stream(_request: Request, _jwt_data: BaseJWTData):
+    ret = ContentStatus(max_clients=100, current_clients=0, streams={})  # TODO
+    return json_response(ret)

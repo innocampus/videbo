@@ -13,6 +13,9 @@ class ManagerSettings(SettingsSectionBase):
     dns_provider: str
     cloud_deployment: bool
     static_content_node_base_urls: str
+    static_encoder_node_base_urls: str
+    static_broker_node_base_url: str
+    static_storage_node_base_url: str
     init_static_content_nodes: bool
     remove_orphaned_nodes: bool
     dynamic_node_name_prefix: str  # always ends with - (a hyphen)
@@ -31,6 +34,7 @@ def start() -> None:
     from .api.routes import routes
     from .cloud.definitions import CloudInstanceDefsController
     from .node_controller import NodeController
+    from .streams import stream_collection
 
     manager_settings.load()
 
@@ -43,8 +47,10 @@ def start() -> None:
     async def on_http_startup(app):
         from .node_types import ContentNode
 
+        stream_collection.init(nc)
+        await nc.start()
+
         if manager_settings.cloud_deployment:
-            await nc.start()
             node = await nc.start_content_node(1)
             app['contentnode'] = node
 

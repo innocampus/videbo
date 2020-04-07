@@ -17,8 +17,8 @@ async def new_stream(request: Request, jwt_data: BaseJWTData, json: LMSNewStream
     """LMS requests manager to set up a new stream."""
     try:
         stream = stream_collection.create_new_stream(json.ip_range, json.rtmps, json.lms_stream_instance_id)
-        await stream.tell_encoder()
-        await asyncio.sleep(30)
+        await stream.encoder_listening_started
+
         await stream.tell_content()
         await stream_collection.tell_broker()
 

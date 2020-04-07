@@ -62,7 +62,10 @@ StreamType = TypeVar("StreamType", bound=Stream)
 
 
 class StreamCollection(Generic[StreamType]):
-    streams: Dict[int, StreamType] = {}
+    streams: Dict[int, StreamType]
+
+    def __init__(self):
+        self.streams = {}
 
     def get_stream_by_id(self, stream_id: int) -> StreamType:
         return self.streams[stream_id]
