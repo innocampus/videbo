@@ -5,3 +5,4 @@ __pycache__
 venv
 .idea
 dev_generate_requests.py
+config.ini.j2

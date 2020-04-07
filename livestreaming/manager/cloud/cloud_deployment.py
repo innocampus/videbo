@@ -16,7 +16,20 @@ async def init_node(node: DynamicServer):
 
 
 async def init_content_node(host: str, definition: ContentInstanceDefinition):
-    # Tell new node the definition.max_clients setting somehow.
-    cmd_ret = os.system(f"export ANSIBLE_HOST_KEY_CHECKING=False; ansible-playbook -i root@{host}, ansible/init_content_node.yml")
+    # TODO: handle node config
+    domain = ""
+    ramdisk_size = "1G"
+    internal_api_secret = "secure"
+    api_secret = "secure"
+
+    cmd_ret = os.system(f"export ANSIBLE_HOST_KEY_CHECKING=False;"
+                        f" ansible-playbook -i root@{host}, ansible/init_content_node.yml"
+                        f"--extra-vars \""
+                        f"domain={domain} "
+                        f"ramdisk_size={ramdisk_size} "
+                        f"internal_api_secret={internal_api_secret} "
+                        f"api_secret={api_secret} "
+                        f"max_clients={definition.max_clients} "
+                        f"\"")
     if cmd_ret != 0:
         raise Exception(f"ansible failed for node: {host}")

@@ -1,0 +1,13 @@
+[Unit]
+Description=Livestreaming encoder node
+After=network.target
+
+[Service]
+WorkingDirectory=/opt/livestreaming-server
+ExecStart=/opt/livestreaming-server/venv/bin/python3 -m livestreaming encoder
+
+Restart=on-failure
+RestartSec=10s
+
+[Install]
+WantedBy=multi-user.target
