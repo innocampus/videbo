@@ -25,7 +25,7 @@ class VideoInfo:
         self.streams = []  # type: List[Dict]
         self.format = None  # type: Optional[Dict]
 
-    async def fetch_mimetype(self, binary: str = "file", user: str = None) -> None:
+    async def fetch_mime_type(self, binary: str = "file", user: str = None) -> None:
         """Call file and fetch mime type."""
 
         args = ["-b", "-i", self.video_file]

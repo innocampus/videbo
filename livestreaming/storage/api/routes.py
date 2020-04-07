@@ -147,7 +147,7 @@ async def upload_file(request: Request, jwt_token: UploadFileJWTData):
         await file.close()  # close file for ffmpeg operations
         video = VideoInfo(video_file=file.path)
         validator = VideoValidator(info=video)
-        await video.fetch_mimetype(binary=storage_settings.binary_file, user=storage_settings.check_user)
+        await video.fetch_mime_type(binary=storage_settings.binary_file, user=storage_settings.check_user)
         validator.check_valid_mime_type()
         await video.fetch_info(binary=storage_settings.binary_ffprobe, user=storage_settings.check_user)
         validator.check_valid_video()
