@@ -11,7 +11,7 @@ class NewStreamParams(JSONBaseModel):
 
 
 class NewStreamCreated(JSONBaseModel):
-    rtmp_public_url: str
+    rtmp_port: str
     rtmp_stream_key: str
     encoder_subdir_name: str
 

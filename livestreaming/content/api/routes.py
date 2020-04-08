@@ -20,12 +20,16 @@ async def get_playlist(request: Request, jwt_token: ContentPlaylistJWTData):
     if stream_id != jwt_token.stream_id:
         raise HTTPForbidden()
 
-    #import random
-    #if random.randint(0, 4) == 2:
-    #    url = f"http://localhost:9040/api/broker/redirect/{stream_id}.m3u8?{request.query_string}"
-    #    raise HTTPSeeOther(location=url)
+    import random
+    if random.randint(0, 4) == 2:
+        url = f"http://localhost:9040/api/broker/redirect/{stream_id}/main.m3u8?{request.query_string}"
+        raise HTTPSeeOther(location=url)
 
-    stream_fetcher = stream_fetcher_collection.get_fetcher_by_id(stream_id)
+    try:
+        stream_fetcher = stream_fetcher_collection.get_fetcher_by_id(stream_id)
+    except KeyError:
+        raise HTTPNotFound()
+
     playlist = request.match_info['playlist']
     if playlist == 'main':
         jwt = request.query['jwt']
@@ -68,7 +72,7 @@ async def start_stream(_request: Request, _jwt_data: BaseJWTData, data: StartStr
         raise HTTPNotAcceptable()
 
 
-@routes.post(r'/api/content/stream/destroy/{stream_id:\d}')
+@routes.get(r'/api/content/stream/{stream_id:\d}/destroy')
 @ensure_jwt_data_and_role(Role.manager)
 async def destroy_stream(request: Request, __: BaseJWTData):
     try:

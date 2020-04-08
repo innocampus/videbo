@@ -20,7 +20,7 @@ routes = RouteTableDef()
 grid = BrokerGrid()
 
 
-@register_route_with_cors(routes, "GET", "/api/broker/redirect/{playlist}")
+@register_route_with_cors(routes, "GET", "/api/broker/redirect/{stream_id:\d+}/{playlist:[a-z0-9]+}.m3u8")
 @ensure_jwt_data_and_role(Role.client)
 async def redirect(request: Request, data: BrokerRedirectJWTData):
     """
@@ -32,10 +32,12 @@ async def redirect(request: Request, data: BrokerRedirectJWTData):
     :raises HTTPServiceUnavailable
     :raises HTTPSeeOther
     """
-    playlist = request.match_info.get("playlist")
-    stream_id = int(path_splitext(playlist)[0])
+    playlist = request.match_info["playlist"]
+    stream_id = int(request.match_info['stream_id'])
+
     if data.stream_id != stream_id:
         raise HTTPForbidden()
+
     content_nodes = grid.get_stream(data.stream_id)
     if content_nodes is None:
         raise HTTPNotFound()
@@ -45,14 +47,14 @@ async def redirect(request: Request, data: BrokerRedirectJWTData):
         raise HTTPServiceUnavailable(headers={"Retry-After": broker_settings.http_retry_after})
     best_node = available_nodes.pop()
     if not len(available_nodes) == 0:
-        least_penalty = grid.get_penalty_ratio(host=best_node)
+        least_penalty = grid.get_penalty_ratio(base_url=best_node)
         for node in available_nodes:
-            penalty = grid.get_penalty_ratio(host=node)
+            penalty = grid.get_penalty_ratio(base_url=node)
             if penalty < least_penalty:
                 best_node = node
                 least_penalty = penalty
-    url = f"http://{best_node}/api/content/playlist/{stream_id}.m3u8?{request.query_string}"
-    grid.increment_clients(host=best_node)
+    url = f"{best_node}/api/content/playlist/{stream_id}/{playlist}.m3u8?{request.query_string}"
+    grid.increment_clients(base_url=best_node)
     raise HTTPSeeOther(location=url)
 
 

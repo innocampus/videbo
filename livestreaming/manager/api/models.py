@@ -7,6 +7,7 @@ class LMSNewStreamParams(JSONBaseModel):
     ip_range: Optional[str]
     rtmps: bool
     lms_stream_instance_id: int
+    expected_viewers: Optional[int]
 
 
 class StreamStatus(JSONBaseModel):

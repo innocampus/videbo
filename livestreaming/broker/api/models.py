@@ -7,8 +7,7 @@ from livestreaming.web import BaseJWTData
 class BrokerContentNode(JSONBaseModel):
     max_clients: int
     clients: int
-    load: float
-    host: str
+    base_url: str
     _penalty: int
 
     @property
@@ -18,18 +17,18 @@ class BrokerContentNode(JSONBaseModel):
     @penalty.setter
     def penalty(self, value):
         if value < 0:
-            msg = f"Penalty must be non-negative: got {value} for host <{self.host}>; penalty set to 0"
+            msg = f"Penalty must be non-negative: got {value} for base_url <{self.base_url}>; penalty set to 0"
             broker_logger.warning(msg)
             self._penalty = 0
         else:
             self._penalty = value
         if self._penalty == 0:
-            msg = f"Got penalty 0 for host <{self.host}>; <{self.host}> will always be prioritized"
+            msg = f"Got penalty 0 for base_url <{self.base_url}>; <{self.base_url}> will always be prioritized"
             broker_logger.warning(msg)
 
 
-BrokerStreams = List[str]
-BrokerStreamCollection = Dict[int, BrokerStreams]
+BrokerStreamContents = List[str]
+BrokerStreamCollection = Dict[int, BrokerStreamContents]
 BrokerContentNodeCollection = Dict[str, BrokerContentNode]
 BrokerQueue = List[Tuple[int, float]]  # list of tuples (stream_id, time)
 

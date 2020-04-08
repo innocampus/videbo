@@ -1,4 +1,4 @@
-from asyncio import Task, sleep
+from asyncio import Task, sleep, Lock
 from typing import Optional, Set, TYPE_CHECKING
 from livestreaming.web import HTTPClient, HTTPResponseError
 from livestreaming.encoder.api.models import EncoderStatus
@@ -36,6 +36,7 @@ class EncoderNode(NodeTypeBase):
         self.current_streams: Optional[int] = None
 
         self.streams: Set["ManagerStream"] = set()
+        self.streams_lock: Lock = Lock()
 
     async def watchdog(self):
         status_url = f"{self.base_url}/api/encoder/status"
@@ -48,6 +49,16 @@ class EncoderNode(NodeTypeBase):
                     self.max_streams = ret.max_streams
                     if self.current_streams is None:
                         self.current_streams = ret.current_streams
+
+                    async with self.streams_lock:
+                        for stream in self.streams:
+                            if stream.stream_id in ret.streams:
+                                ret_stream = ret.streams[stream.stream_id]
+                                stream.update_state(ret_stream.state, ret_stream.state_last_update)
+                            else:
+                                logger.error(f"<Encoder {self.server.name}> should have <stream {stream.stream_id}>, "
+                                             f"but did not found in status data.")
+                        # TODO check if all nodes in ret.streams still exist in self.streams and their status is valid
 
                     if first_request:
                         logger.info(f"<Encoder watcher {self.server.name}> max_streams={self.max_streams}, "

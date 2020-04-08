@@ -25,24 +25,32 @@ jwt = internal_jwt_encode(jwt_data, 24*3600)
 
 # ------------------------
 
+
 from livestreaming.content.api.models import ContentPlaylistJWTData
 jwt_data = ContentPlaylistJWTData.construct(role="manager", stream_id=2)
 jwt = internal_jwt_encode(jwt_data, 24*3600)
 print(jwt)
 
+
 # ------------------------
 
-from livestreaming.manager.api.models import LMSNewStreamParams
+from livestreaming.manager.api.models import LMSNewStreamParams, LMSNewStreamReturn
 
 params = LMSNewStreamParams(ip_range=None, rtmps=False, lms_stream_instance_id=1)
 
 jwt_data = BaseJWTData.construct(role='manager')
 url = f'http://localhost:9030/api/manager/stream/new'
-future = HTTPClient.internal_request('POST', url, jwt_data, params)
+ret: LMSNewStreamReturn
+future = HTTPClient.internal_request('POST', url, jwt_data, params, LMSNewStreamReturn)
 status, ret = get_event_loop().run_until_complete(future)
 
 print(status)
 print(ret)
+
+if not ret.error:
+    jwt_data = ContentPlaylistJWTData.construct(role="manager", stream_id=ret.stream.stream_id)
+    jwt = internal_jwt_encode(jwt_data, 24*3600)
+    print(f"Broker URL: {ret.stream.viewer_broker_url}?jwt={jwt}")
 
 
 # ------------------------

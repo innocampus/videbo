@@ -19,6 +19,7 @@ class ManagerSettings(SettingsSectionBase):
     init_static_content_nodes: bool
     remove_orphaned_nodes: bool
     dynamic_node_name_prefix: str  # always ends with - (a hyphen)
+    streams_content_node_distribution_algorithm: str
 
     def load(self):
         super().load()

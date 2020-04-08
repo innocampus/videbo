@@ -6,6 +6,7 @@ from livestreaming.web import json_response, ensure_json_body
 from livestreaming.manager.streams import stream_collection
 from .models import LMSNewStreamReturn, LMSNewStreamParams, AllStreamsStatus
 from livestreaming.manager import logger
+from livestreaming.manager.streams import StreamStateObserver, StreamState
 
 routes = RouteTableDef()
 
@@ -16,11 +17,14 @@ routes = RouteTableDef()
 async def new_stream(request: Request, jwt_data: BaseJWTData, json: LMSNewStreamParams):
     """LMS requests manager to set up a new stream."""
     try:
-        stream = stream_collection.create_new_stream(json.ip_range, json.rtmps, json.lms_stream_instance_id)
-        await stream.encoder_listening_started
+        stream = stream_collection.create_new_stream(json.ip_range, json.rtmps, json.lms_stream_instance_id,
+                                                     json.expected_viewers)
+        watcher = stream.state_observer.new_watcher()
+        await StreamStateObserver.wait_until(watcher, StreamState.WAITING_FOR_CONNECTION)
 
-        await stream.tell_content()
-        await stream_collection.tell_broker()
+        if stream.state == StreamState.NO_ENCODER_AVAILABLE:
+            return_data = LMSNewStreamReturn(success=False, error="no_encoder_available")
+            return json_response(return_data, status=503)
 
         new_stream_data = stream.get_status(True)
         return_data = LMSNewStreamReturn(success=True, stream=new_stream_data)

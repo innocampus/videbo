@@ -2,36 +2,31 @@ from typing import Optional, Dict, TypeVar, Generic, Union
 from ipaddress import IPv4Network, IPv6Network, ip_network
 from time import time
 from logging import Logger
-from enum import Enum
+from enum import IntEnum
 
 
-class StreamState(Enum):
-    NOT_YET_STARTED = 0
-    WAITING_FOR_CONNECTION = 1  # streamer did not yet connect to open port
-    BUFFERING = 2  # streamer connected, but waiting now until there is enough data (first segments have been written)
-    STREAMING = 3  # streaming started, content node may fetch data from encoder and clients may connect to content node
-    STOPPED = 4  # streamer stopped broadcasting, wait until manager tells to clean up
+class StreamState(IntEnum):
+    UNKNOWN = 0
+    NOT_YET_STARTED = 1
+    WAITING_FOR_CONNECTION = 2  # streamer did not yet connect to open port
+    BUFFERING = 3  # streamer connected, but waiting now until there is enough data (first segments have been written)
+    STREAMING = 4  # streaming started, content node may fetch data from encoder and clients may connect to content node
+    STOPPED = 5  # streamer stopped broadcasting, wait until manager tells to clean up
     ERROR = 100
     UNEXPECTED_STREAM = 104
-    UNKNOWN = 200
+    NO_ENCODER_AVAILABLE = 105
 
 
 class Stream:
-    stream_id: int
-    ip_range: Union[IPv6Network, IPv4Network, None] = None
-    use_rtmps: bool
-    rtmp_stream_key: Optional[str]
-    encoder_subdir_name: Optional[str]
-    _state: StreamState = StreamState.UNKNOWN
-    state_last_update: float = 0
-    _logger: Optional[Logger] = None
-
     def __init__(self, stream_id: int, ip_range: Optional[str], use_rtmps: bool, logger: Optional[Logger] = None):
-        self.stream_id = stream_id
-        self.use_rtmps = use_rtmps
-        self.rtmp_stream_key = None
-        self.encoder_subdir_name = None
-        self._logger = logger
+        self.stream_id: int = stream_id
+        self.ip_range: Union[IPv6Network, IPv4Network, None] = None
+        self.use_rtmps: bool = use_rtmps
+        self.rtmp_stream_key: Optional[str] = None
+        self.encoder_subdir_name: Optional[str] = None
+        self._state: StreamState = StreamState.UNKNOWN
+        self.state_last_update: float = 0
+        self._logger: Optional[Logger] = logger
         try:
             self.ip_range = ip_network(ip_range)
         except ValueError as e:

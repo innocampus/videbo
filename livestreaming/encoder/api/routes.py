@@ -1,3 +1,4 @@
+import asyncio
 from aiohttp.web import Request, RouteTableDef
 from aiohttp.web_exceptions import HTTPNotFound, HTTPNotAcceptable, HTTPOk
 from livestreaming.auth import Role, BaseJWTData, ensure_jwt_data_and_role
@@ -20,7 +21,10 @@ async def new_stream(request: Request, _jwt_data: BaseJWTData, json: NewStreamPa
         stream = stream_collection.create_new_stream(stream_id, json.ip_range, json.rtmps)
         stream.start()
 
-        new_stream_data = NewStreamCreated(rtmp_public_url=stream.get_public_url(),
+        await asyncio.wait([stream.waiting_for_connection_event.wait(), stream.control_task],
+                           return_when=asyncio.FIRST_COMPLETED)
+
+        new_stream_data = NewStreamCreated(rtmp_port=stream.public_port,
                                            rtmp_stream_key=stream.rtmp_stream_key,
                                            encoder_subdir_name=stream.encoder_subdir_name)
         return_data = NewStreamReturn(success=True, stream=new_stream_data)
@@ -45,7 +49,7 @@ async def encoder_status(_request: Request, _jwt_data: BaseJWTData):
     return json_response(ret)
 
 
-@routes.post(r'/api/encoder/stream/{stream_id:\d}/destroy')
+@routes.get(r'/api/encoder/stream/{stream_id:\d}/destroy')
 @ensure_jwt_data_and_role(Role.manager)
 async def destroy_stream(request: Request, __: BaseJWTData):
     try:

@@ -10,6 +10,7 @@ import re
 from enum import Enum
 from pathlib import Path
 from typing import Optional
+from livestreaming import settings
 from livestreaming.streams import StreamState
 from livestreaming.encoder import encoder_settings
 from livestreaming.streams import Stream
@@ -205,8 +206,12 @@ class EncoderStream(Stream):
         self.dir: Optional[Path] = None
         self.recording_file: Optional[Path] = None
         self.state = StreamState.NOT_YET_STARTED
-        self.rtmp_stream_key = secrets.token_hex(8)
+        if settings.general.dev_mode:
+            self.rtmp_stream_key = "random"
+        else:
+            self.rtmp_stream_key = secrets.token_hex(8)
         self.encoder_subdir_name = secrets.token_hex(8)
+        self.waiting_for_connection_event: asyncio.Event = asyncio.Event()
 
     def start(self):
         # Run everything in an own task.
@@ -225,10 +230,11 @@ class EncoderStream(Stream):
                 self.ffmpeg = FFmpeg(self)
                 await self.ffmpeg.start()
 
+            self.waiting_for_connection_event.set()
             await self.ffmpeg.wait()
             logger.info(f"ffmpeg on port {self.port} for stream id {self.stream_id} ended")
             await asyncio.sleep(5)
-            if self.ffmpeg.watch_task and (not self.ffmpeg.watch_task.done() or not self.ffmpeg.watch_task.cancelled()):
+            if self.ffmpeg.watch_task and not self.ffmpeg.watch_task.done():
                 logger.warning(f"ffmpeg watch still running for stream id {self.stream_id} - cancelling task")
                 self.ffmpeg.watch_task.cancel()
 
@@ -258,7 +264,7 @@ class EncoderStream(Stream):
         self.recording_file = Path(self.dir, rec_name)
 
     def get_local_ffmpeg_url(self):
-        return f"rtmp://127.0.0.1:{self.port}/stream/random"
+        return f"rtmp://127.0.0.1:{self.port}/stream/{self.rtmp_stream_key}"
 
     def get_public_url(self):
         return f"rtmp://localhost:{self.public_port}/stream"
