@@ -109,6 +109,7 @@ async def read_data(request: Request) -> TempFile:
 
         await file.write(data)
 
+    await file.close()
     return file
 
 
@@ -135,16 +136,14 @@ async def upload_file(request: Request, jwt_token: UploadFileJWTData):
         file = await read_data(request)
     except NoValidFileInRequestError:
         storage_logger.warning("no or invalid file found in request.")
-        raise HTTPUnsupportedMediaType(headers={"Warning": "no valid file in request"})
+        return json_response({'error': 'invalid_format'}, status=415)
     except FileTooBigError:
         storage_logger.warning("client wanted to upload file that is too big.")
-        raise HTTPRequestEntityTooLarge(max_size=storage_settings.max_file_size_mb,
-                                        actual_size=request.content.total_bytes)
+        return json_response({'max_size': storage_settings.max_file_size_mb}, status=413)
     except NotADirectoryError:
         raise HTTPInternalServerError()
 
     try:
-        await file.close()  # close file for ffmpeg operations
         video = VideoInfo(video_file=file.path)
         validator = VideoValidator(info=video)
         await video.fetch_mime_type(binary=storage_settings.binary_file, user=storage_settings.check_user)
@@ -183,16 +182,16 @@ async def upload_file(request: Request, jwt_token: UploadFileJWTData):
         if ffprobe_err.stderr is not None:
             storage_logger.warn(ffprobe_err.stderr)
         await file.delete()
-        raise HTTPUnsupportedMediaType(headers={"Warning": "Read error"})
+        return json_response({'error': 'invalid_format'}, status=415)
     except InvalidVideoError as video_err:
         storage_logger.warning("invalid video file found in request (video: %s, audio: %s, container: %s).",
                                video_err.video_codec, video_err.audio_codec, video_err.container)
         await file.delete()
-        raise HTTPUnsupportedMediaType(headers={"Warning": "Invalid video stream"})
+        return json_response({'error': 'invalid_format'}, status=415)
     except InvalidMimeTypeError as mimetype_err:
         storage_logger.warning(f"invalid video mime type found in request (mime type: {mimetype_err.mime_type}).")
         await file.delete()
-        raise HTTPUnsupportedMediaType(headers={"Warning": f"Invalid mime type {mimetype_err.mime_type}"})
+        return json_response({'error': 'invalid_format'}, status=415)
     except Exception as err:
         await file.delete()
         storage_logger.exception(err)
@@ -258,14 +257,18 @@ async def request_file(_: Request, jwt_data: RequestFileJWTData):
         storage_logger.info(f"serve temp storage with hash {video}")
         path = file_storage.get_path_in_temp(video)
 
-    elif jwt_data.type == FileType.THUMBNAIL:
-        storage_logger.info(f"serve thumbnail {jwt_data.thumb_id} for video with hash {video}")
-        path = file_storage.get_thumb_path(video, jwt_data.thumb_id)[0]
+    elif jwt_data.type == FileType.THUMBNAIL or jwt_data.type == FileType.THUMBNAIL_TEMP:
+        if jwt_data.thumb_id is None:
+            storage_logger.info('thumb ID is None in JWT')
+            raise HTTPBadRequest()
 
-    elif jwt_data.type == FileType.THUMBNAIL_TEMP:
-        storage_logger.info(f"serve temp thumbnail {jwt_data.thumb_id} for video with hash {video}")
-        path = file_storage.get_thumb_path_in_temp(video, jwt_data.thumb_id)
+        if jwt_data.type == FileType.THUMBNAIL:
+            storage_logger.info(f"serve thumbnail {jwt_data.thumb_id} for video with hash {video}")
+            path = file_storage.get_thumb_path(video, jwt_data.thumb_id)[0]
 
+        else:
+            storage_logger.info(f"serve temp thumbnail {jwt_data.thumb_id} for video with hash {video}")
+            path = file_storage.get_thumb_path_in_temp(video, jwt_data.thumb_id)
     else:
         storage_logger.info(f"unknown request type: {jwt_data.type}")
         raise HTTPBadRequest()

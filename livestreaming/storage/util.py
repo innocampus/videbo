@@ -214,15 +214,12 @@ class FileStorage:
 
     async def _garbage_collect_cron(self):
         """Endless loop that cleans up data periodically."""
-        try:
-            while True:
-                files_deleted = await asyncio.get_event_loop().run_in_executor(None, self.garbage_collect_temp_dir)
-                if files_deleted > 0:
-                    storage_logger.info(f"Run GC of temp folder: Removed {files_deleted} file(s).")
+        while True:
+            files_deleted = await asyncio.get_event_loop().run_in_executor(None, self.garbage_collect_temp_dir)
+            if files_deleted > 0:
+                storage_logger.info(f"Run GC of temp folder: Removed {files_deleted} file(s).")
 
-                await asyncio.sleep(self.GC_ITERATION_SECS)
-        except asyncio.CancelledError:
-            pass
+            await asyncio.sleep(self.GC_ITERATION_SECS)
 
     async def save_thumbnail(self, video_in: str, thumbnail_out: str, offset: int, height: int, binary: str = "ffmpeg",
                              user: str = None, temp_output_file: str = None) -> None:
