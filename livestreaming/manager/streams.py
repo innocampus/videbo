@@ -85,86 +85,24 @@ class ManagerStream(Stream):
         state_watcher = self.state_observer.new_watcher()
         try:
             async with self._stream_collection.hold_encoder_stream_slot(self) as encoder:
-                self.encoder = encoder
-                await StreamStateObserver.wait_until(state_watcher, StreamState.STOPPED)
-        except EncoderNoStreamSlotAvailable:
-            self.update_state(StreamState.NO_ENCODER_AVAILABLE)
-        finally:
-            for content in list(self.contents): # copy to list because we modify self.contents in loop
-                await self.tell_content_destroy(content)
-            logger.info(f"<stream {self.stream_id}> ended with status {StreamState(self.state).name}")
-
-    async def tell_encoder_start(self, encoder: EncoderNode):
-        """Tell encoder to start listening to an incoming stream."""
-        url = f"{encoder.base_url}/api/encoder/stream/new/{self.stream_id}"
-        stream_params = NewStreamParams(ip_range=self.ip_range_str, rtmps=self.use_rtmps,
-                                        lms_stream_instance_id=self.lms_stream_instance_id)
-
-        try:
-            ret: NewStreamReturn
-            status, ret = await HTTPClient.internal_request_manager('POST', url, stream_params, NewStreamReturn)
-            if ret.success:
-                self.encoder_streamer_url = f"rtmp://{encoder.server.host}:{ret.stream.rtmp_port}/stream"
+                self.encoder: EncoderNode = encoder
+                ret = await self.encoder.start_stream(self)
+                self.encoder_streamer_url = f"rtmp://{self.encoder.server.host}:{ret.stream.rtmp_port}/stream"
                 self.rtmp_stream_key = ret.stream.rtmp_stream_key
                 self.encoder_subdir_name = ret.stream.encoder_subdir_name
-                logger.info(f"Encoder: new <stream {self.stream_id}> encoder streamer url {self.encoder_streamer_url}")
-            else:
-                logger.error(f"Encoder: Could not create a new <stream {self.stream_id}>: {ret.error}")
-                raise EncoderCreateNewStreamError()
-        except HTTPResponseError as error:
-            logger.exception(f"Encoder: Could not create a new <stream {self.stream_id}>, http error")
-            raise EncoderCreateNewStreamError()
 
-    async def tell_encoder_destroy(self):
-        if self.encoder is None:
-            return
+                await StreamStateObserver.wait_until(state_watcher, StreamState.STOPPED)
 
-        try:
-            url = f"{self.encoder.base_url}/api/encoder/stream/{self.stream_id}/destroy"
-            status, ret = await HTTPClient.internal_request_manager('GET', url)
-            if status == 200:
-                logger.info(f"Encoder: destroyed <stream {self.stream_id}>")
-            else:
-                logger.error(f"Encoder: Could not destroy <stream {self.stream_id}>: http status {status}")
-        except HTTPResponseError as error:
-            logger.exception(f"Encoder: Could not destroy <stream {self.stream_id}>, http error")
-            # TODO retry
+                # encoder.destroy_stream will be called by the context manager
 
-        self.encoder = None
-
-    async def tell_content_start(self, content: ContentNode):
-        self.contents.add(content)
-        content.streams.add(self)
-        url = f"{content.base_url}/api/content/stream/start/{self.stream_id}"
-        encoder_url = f"{self.encoder.base_url}/data/hls/{self.stream_id}/{self.encoder_subdir_name}"
-        info = StartStreamDistributionInfo(stream_id=self.stream_id, encoder_base_url=encoder_url)
-
-        try:
-            status, ret = await HTTPClient.internal_request_manager('POST', url, info)
-            if status == 200:
-                logger.info(f"Content: new <stream {self.stream_id}> on {content.server.name}")
-            else:
-                logger.error(f"Content: Could not add <stream {self.stream_id}> on {content.server.name}: "
-                             f"got http status {status}")
-                raise ContentStartStreamingError()
-
-        except HTTPResponseError as error:
-            logger.exception(f"Content: Could not add <stream {self.stream_id}> on {content.server.name}, http error")
-            raise ContentStartStreamingError()
-
-    async def tell_content_destroy(self, content: ContentNode):
-        content.streams.remove(self)
-        self.contents.remove(content)
-        try:
-            url = f"{content.base_url}/api/content/stream/{self.stream_id}/destroy"
-            status, ret = await HTTPClient.internal_request_manager('GET', url)
-            if status == 200:
-                logger.info(f"Content: destroyed <stream {self.stream_id}>")
-            else:
-                logger.error(f"Content: Could not destroy <stream {self.stream_id}>: http status {status}")
-        except HTTPResponseError as error:
-            logger.exception(f"Content: Could not destroy <stream {self.stream_id}>, http error")
-            # TODO retry
+        except EncoderNoStreamSlotAvailable:
+            self.update_state(StreamState.NO_ENCODER_AVAILABLE)
+        except:
+            if self.state < StreamState.ERROR:
+                self.update_state(StreamState.ERROR)
+            raise
+        finally:
+            logger.info(f"<stream {self.stream_id}> ended with status {StreamState(self.state).name}")
 
     def get_status(self, full: bool) -> Union[StreamStatus, StreamStatusFull]:
         data = {
@@ -245,16 +183,10 @@ class ManagerStreamCollection(StreamCollection[ManagerStream]):
     async def hold_encoder_stream_slot(self, stream: ManagerStream):
         encoder = await self._encoder_nodes_controller.find_encoder()
         try:
-            await stream.tell_encoder_start(encoder)
-            async with encoder.streams_lock:
-                encoder.streams.add(stream)
             yield encoder
 
         finally:
-            async with encoder.streams_lock:
-                encoder.streams.remove(stream)
-            await stream.tell_encoder_destroy()
-            encoder.current_streams -= 1
+            await encoder.destroy_stream(stream.stream_id)
 
     def get_broker_stream_main_playlist_url(self, stream_id: int) -> str:
         if self.node_controller.broker_node:
@@ -300,10 +232,12 @@ class ManagerStreamCollection(StreamCollection[ManagerStream]):
 
             # all content nodes that should no longer carry this stream
             for rem_content in (stream.contents - new_contents):
-                awaitables.append(stream.tell_content_destroy(rem_content))
+                awaitables.append(rem_content.destroy_stream(stream.stream_id))
+                stream.contents.remove(rem_content)
             # all content nodes that should start to carry this stream
             for new_content in (new_contents - stream.contents):
-                awaitables.append(stream.tell_content_start(new_content))
+                awaitables.append(new_content.start_stream(stream))
+                stream.contents.add(new_content)
 
         await asyncio.gather(*awaitables) # TODO handle exceptions
 
@@ -382,15 +316,7 @@ class EncoderNodesController:
 stream_collection = ManagerStreamCollection()
 
 
-class EncoderCreateNewStreamError(Exception):
-    pass
-
-
-class EncoderNoStreamSlotAvailable(EncoderCreateNewStreamError):
-    pass
-
-
-class ContentStartStreamingError(Exception):
+class EncoderNoStreamSlotAvailable(Exception):
     pass
 
 

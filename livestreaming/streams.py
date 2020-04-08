@@ -11,7 +11,9 @@ class StreamState(IntEnum):
     WAITING_FOR_CONNECTION = 2  # streamer did not yet connect to open port
     BUFFERING = 3  # streamer connected, but waiting now until there is enough data (first segments have been written)
     STREAMING = 4  # streaming started, content node may fetch data from encoder and clients may connect to content node
-    STOPPED = 5  # streamer stopped broadcasting, wait until manager tells to clean up
+    STOPPED = 5  # streamer stopped broadcasting
+    PROCESS_RECORDINGS = 6  # encoder node processes the recordings
+    DONE = 10  # encoder waits until manager tells to clean up
     ERROR = 100
     UNEXPECTED_STREAM = 104
     NO_ENCODER_AVAILABLE = 105

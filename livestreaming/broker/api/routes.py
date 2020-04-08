@@ -20,7 +20,7 @@ routes = RouteTableDef()
 grid = BrokerGrid()
 
 
-@register_route_with_cors(routes, "GET", "/api/broker/redirect/{stream_id:\d+}/{playlist:[a-z0-9]+}.m3u8")
+@register_route_with_cors(routes, "GET", r"/api/broker/redirect/{stream_id:\d+}/{playlist:[a-z0-9]+}.m3u8")
 @ensure_jwt_data_and_role(Role.client)
 async def redirect(request: Request, data: BrokerRedirectJWTData):
     """
