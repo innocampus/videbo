@@ -28,6 +28,10 @@ def start() -> None:
     from .api.routes import routes
     encoder_settings.load()
 
+    # Use general wildcard certificate if no cert specified.
+    if encoder_settings.rtmps_cert == '':
+        encoder_settings.rtmps_cert = settings.general.wildcard_certificate_path
+
     # ensure temp dir exists
     temp_dir = Path(encoder_settings.hls_temp_dir)
     temp_dir.mkdir(parents=True, exist_ok=True)
