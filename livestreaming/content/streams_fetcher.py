@@ -76,10 +76,13 @@ class StreamFetcher:
             content_logger.info(f"fetch for <stream {self.stream_id}> was cancelled")
         except Exception as e:
             content_logger.exception(f"Exception while fetching playlists for <stream {self.stream_id}>")
+        finally:
+            for task in subtasks:
+                if not task.done():
+                    task.cancel()
 
-        for task in subtasks:
-            if not task.cancelled():
-                task.cancel()
+            self.sub_playlists.clear()
+            self.destroy()
 
     def get_main_playlist(self, jwt: str) -> bytes:
         return self.main_playlist.replace("JWT", jwt).encode()
@@ -113,9 +116,14 @@ class StreamFetcher:
                                                        functools.partial(self.dir.mkdir, parents=True, exist_ok=True))
 
     def destroy(self):
+        if self._destroy_task:
+            # already destroying stream
+            return
+
         async def destroyer():
             try:
                 self.fetcher_task.cancel()
+                stream_fetcher_collection.remove(self)
                 await self.fetcher_task
             finally:
                 rm_func = functools.partial(shutil_rmtree,
@@ -127,9 +135,7 @@ class StreamFetcher:
                 except OSError as err:
                     content_logger.error(err)
                 finally:
-                    self.segments = []
-                    self.current_playlist = None
-                    stream_fetcher_collection.remove(self)
+                    content_logger.info(f"destroyed <stream {self.stream_id}> fetcher")
         self._destroy_task = asyncio.create_task(destroyer())
 
 
@@ -140,6 +146,7 @@ class SubPlaylistFetcher:
         self.no: int = no  # sub playlist number
         self.segments: Dict[str, str] = {}  # map old segment names to new names (that are not that easily to guess)
         self.current_playlist: bytes = b""  # bytes for faster response to client
+        self._segment_deleter_tasks: Set[asyncio.Task] = set()
 
     async def fetch_sub_playlist_task(self, sub_playlist_file: str):
         """Periodically fetch the sub playlist and segments from encoder."""
@@ -162,6 +169,15 @@ class SubPlaylistFetcher:
                                               f"{self.stream_id}> and sub playlist <{sub_playlist_file}>, "
                                               f"giving up")
 
+                # Check all deleter tasks.
+                for task in [t for t in self._segment_deleter_tasks if t.done()]:
+                    self._segment_deleter_tasks.remove(task)
+                    try:
+                        task.result()
+                    except Exception:
+                        content_logger.exception(f"Exception in sub playlist fetcher <{sub_playlist_file}> of "
+                                                 f"<stream {self.stream_id}>")
+
                 await asyncio.sleep(POLL_FILES_FREQUENCY)
 
         except asyncio.CancelledError:
@@ -171,6 +187,10 @@ class SubPlaylistFetcher:
             if not isinstance(e, StreamFetchingError):
                 content_logger.exception(f"Exception while fetch playlists for <stream {self.stream_id}>")
             raise
+        finally:
+            # Cancel all deleter tasks. The files will be deleted by the destroyer.
+            for task in self._segment_deleter_tasks:
+                task.cancel()
 
     async def _do_fetch(self, sub_playlist_file: str):
         try:
@@ -229,12 +249,22 @@ class SubPlaylistFetcher:
                 f.write(data)
         await asyncio.get_event_loop().run_in_executor(None, save_file)
         self.segments[segment_name] = new_name
+        self._segment_deleter_tasks.add(asyncio.create_task(self._delete_segment(segment_name)))
 
         return new_name
 
     def _get_random_segment_name(self, sequence: int):
         rand = ''.join(random.choices(string.ascii_lowercase, k=8))
         return f"stream_{self.main_fetcher.stream_id}_{self.no}_{sequence}_{rand}.ts"
+
+    async def _delete_segment(self, old_segment_name: str):
+        """Delete a segment file from disk.
+
+        Deletes the file after a reasonable time, i.e. clients have enough time to access the segment."""
+        await asyncio.sleep(60)
+        new_name = self.segments.pop(old_segment_name)
+        file = Path(self.main_fetcher.dir, new_name)
+        await asyncio.get_event_loop().run_in_executor(None, file.unlink)
 
 
 class StreamFetcherCollection:

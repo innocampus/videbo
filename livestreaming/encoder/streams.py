@@ -83,7 +83,8 @@ class FFmpeg:
                f"-map a:0 -map a:0 -c:a aac -b:a 128k -ac 2 " \
                f"-map [vout001] -c:v:0 libx264 -b:v:0 6000k -maxrate:v:0 6600k -bufsize:v:0 8000k " \
                f"-map [vout002] -c:v:1 libx264 -b:v:1 1000k -maxrate:v:1 1100k -bufsize:v:1 2000k " \
-               f"-f hls -hls_time 2 -hls_list_size 2 -hls_flags independent_segments " \
+               f"-f hls -hls_time 2 -hls_list_size 2 -hls_delete_threshold 2 " \
+               f"-hls_flags delete_segments+independent_segments " \
                f"-master_pl_name stream.m3u8 -hls_segment_filename {self.STREAM_NAME_PREFIX}%v/data%06d.ts -use_localtime_mkdir 1 " \
                f"-var_stream_map \"v:0,a:0 v:1,a:1\" {self.STREAM_NAME_PREFIX}%v.m3u8 "
 

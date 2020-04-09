@@ -88,6 +88,10 @@ async def destroy_stream(request: Request, __: BaseJWTData):
 
 @routes.get(r'/api/content/status')
 @ensure_jwt_data_and_role(Role.manager)
-async def new_stream(_request: Request, _jwt_data: BaseJWTData):
-    ret = ContentStatus(max_clients=100, current_clients=0, streams={})  # TODO
+async def get_status(_request: Request, _jwt_data: BaseJWTData):
+    streams = {}
+    for stream in stream_fetcher_collection.fetcher.values():
+        streams[stream.stream_id] = 0  # TODO
+
+    ret = ContentStatus(max_clients=100, current_clients=0, streams=streams)  # TODO
     return json_response(ret)
