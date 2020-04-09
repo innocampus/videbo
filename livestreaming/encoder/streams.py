@@ -289,6 +289,7 @@ class EncoderStream(Stream):
         async def destroyer():
             try:
                 try:
+                    stream_collection.remove(self)
                     old_state = self.state
                     if self.ffmpeg:
                         await self.ffmpeg.stop()
@@ -314,7 +315,6 @@ class EncoderStream(Stream):
                     finally:
                         self.segments = []
                         self.current_playlist = None
-                        stream_collection.remove(self)
                         logger.info(f"<stream {self.stream_id}> destroyed")
             except:
                 logger.exception(f"Error in destroyer task for <stream {self.stream_id}>")

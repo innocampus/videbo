@@ -58,7 +58,7 @@ async def destroy_stream(request: Request, __: BaseJWTData):
     except ValueError:
         raise HTTPNotAcceptable()
     except KeyError:
-        raise HTTPNotFound
+        raise HTTPOk()
 
     stream.destroy()
     raise HTTPOk()
