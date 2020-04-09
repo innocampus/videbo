@@ -17,29 +17,31 @@ routes = RouteTableDef()
 async def get_playlist(request: Request, jwt_token: ContentPlaylistJWTData):
     """Client asks for a playlist."""
     stream_id = int(request.match_info['stream_id'])
-    if stream_id != jwt_token.stream_id:
+    if stream_id != jwt_token.stream_id or 'jwt' not in request.query:
         raise HTTPForbidden()
 
+    jwt = request.query['jwt']
+
+    # TEST CODE BEGIN
     import random
-    if random.randint(0, 4) == 2:
-        url = f"http://localhost:9040/api/broker/redirect/{stream_id}/main.m3u8?{request.query_string}"
-        raise HTTPSeeOther(location=url)
+    if random.randint(0, 10) == 2:
+        raise HTTPSeeOther(location=stream_fetcher_collection.get_broker_url(stream_id, jwt))
+    # TEST CODE END
 
     try:
         stream_fetcher = stream_fetcher_collection.get_fetcher_by_id(stream_id)
+
+        playlist = request.match_info['playlist']
+        if playlist == 'main':
+            content = stream_fetcher.get_main_playlist(jwt)
+        else:
+            # sub playlists are numbered
+            sub_no = int(playlist)
+            content = stream_fetcher.get_sub_playlist(sub_no)
+
+        return Response(body=content, content_type='application/x-mpegURL')
     except KeyError:
-        raise HTTPNotFound()
-
-    playlist = request.match_info['playlist']
-    if playlist == 'main':
-        jwt = request.query['jwt']
-        content = stream_fetcher.get_main_playlist(jwt)
-    else:
-        # sub playlists are numbered
-        sub_no = int(playlist)
-        content = stream_fetcher.get_sub_playlist(sub_no)
-
-    return Response(body=content, content_type='application/x-mpegURL')
+        raise HTTPSeeOther(location=stream_fetcher_collection.get_broker_url(stream_id, jwt))
 
 
 @register_route_with_cors(routes, "GET", r"/data/hls/{stream_id:\d+}/{file:[a-z0-9_]+\.ts}")
@@ -65,6 +67,7 @@ async def start_stream(_request: Request, _jwt_data: BaseJWTData, data: StartStr
     try:
         new_fetcher = StreamFetcher(data.stream_id, data.encoder_base_url)
         stream_fetcher_collection.start_fetching_stream(new_fetcher)
+        stream_fetcher_collection.broker_base_url = data.broker_base_url
         return Response()
 
     except AlreadyFetchingStreamError:

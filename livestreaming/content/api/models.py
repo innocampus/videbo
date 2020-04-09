@@ -10,6 +10,7 @@ class ContentPlaylistJWTData(BaseJWTData):
 class StartStreamDistributionInfo(JSONBaseModel):
     stream_id: int
     encoder_base_url: str
+    broker_base_url: str
 
 
 class ContentStatus(JSONBaseModel):

@@ -240,6 +240,7 @@ class SubPlaylistFetcher:
 class StreamFetcherCollection:
     def __init__(self):
         self.fetcher: Dict[int, StreamFetcher] = {}
+        self.broker_base_url: Optional[str] = None
 
     def start_fetching_stream(self, fetcher: StreamFetcher) -> None:
         if fetcher.stream_id in self.fetcher:
@@ -254,6 +255,9 @@ class StreamFetcherCollection:
     def remove(self, fetcher: StreamFetcher):
         """ Expected standard case is, that <fetcher> was already fetched from collection """
         self.fetcher.pop(fetcher.stream_id)
+
+    def get_broker_url(self, stream_id: int, jwt: str):
+        return f"{self.broker_base_url}/api/broker/redirect/{stream_id}/main.m3u8?jwt={jwt}"
 
 
 # exceptions

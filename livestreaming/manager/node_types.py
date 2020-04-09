@@ -162,13 +162,14 @@ class ContentNode(NodeTypeBase):
                 logger.exception(f"<Content watcher {self.server.name}> http error")
             await sleep(1)
 
-    async def start_stream(self, stream: "ManagerStream"):
+    async def start_stream(self, stream: "ManagerStream", broker: "BrokerNode"):
         async with self.streams_lock:
             self.streams[stream.stream_id] = stream
 
         url = f"{self.base_url}/api/content/stream/start/{stream.stream_id}"
         encoder_url = f"{stream.encoder.base_url}/data/hls/{stream.stream_id}/{stream.encoder_subdir_name}"
-        info = StartStreamDistributionInfo(stream_id=stream.stream_id, encoder_base_url=encoder_url)
+        info = StartStreamDistributionInfo(stream_id=stream.stream_id, encoder_base_url=encoder_url,
+                                           broker_base_url=broker.base_url)
 
         try:
             status, ret = await HTTPClient.internal_request_manager('POST', url, info)

@@ -250,7 +250,7 @@ class ManagerStreamCollection(StreamCollection[ManagerStream]):
                 stream.contents.remove(rem_content)
             # all content nodes that should start to carry this stream
             for new_content in (new_contents - stream.contents):
-                awaitables.append(new_content.start_stream(stream))
+                awaitables.append(new_content.start_stream(stream, self.node_controller.broker_node))
                 stream.contents.add(new_content)
 
         await asyncio.gather(*awaitables) # TODO handle exceptions
