@@ -9,6 +9,7 @@ import errno
 import re
 from enum import Enum
 from pathlib import Path
+from shutil import rmtree as shutil_rmtree
 from typing import Optional
 from livestreaming import settings
 from livestreaming.streams import StreamState
@@ -202,6 +203,7 @@ class EncoderStream(Stream):
         self.port: Optional[int] = None
         self.public_port: Optional[int] = None
         self.control_task: Optional[asyncio.Task] = None
+        self._destroy_task: Optional[asyncio.Task] = None
         self.ffmpeg: Optional[FFmpeg] = None
         self.dir: Optional[Path] = None
         self.recording_file: Optional[Path] = None
@@ -277,6 +279,48 @@ class EncoderStream(Stream):
         # save current position in video (current video duration or better current file size?)
         # Be prepared that the teacher may start another recording after stopping the current.
         raise NotImplementedError()
+
+    def destroy(self):
+        if self._destroy_task:
+            # Destroy task is already running.
+            logger.info(f"already destroying <stream {self.stream_id}>")
+            return
+
+        async def destroyer():
+            try:
+                try:
+                    old_state = self.state
+                    if self.ffmpeg:
+                        await self.ffmpeg.stop()
+
+                    if StreamState.BUFFERING <= old_state <= StreamState.STOPPED:
+                        # Give content nodes a chance to get the last segments.
+                        logger.info(f"<stream {self.stream_id}> wait 30 seconds until removing all files")
+                        await asyncio.sleep(30)
+
+                finally:
+                    rm_func = None
+                    if self.dir:
+                        # Remove parent dir (named after the stream id).
+                        rm_func = functools.partial(shutil_rmtree,
+                                                    path=self.dir.parent,
+                                                    # function, path, error (sys.exc_info)
+                                                    onerror=lambda f, p, e: logger.error(f"{f} {p}:{e}"))
+                    try:
+                        if rm_func:
+                            await asyncio.get_event_loop().run_in_executor(None, rm_func)
+                    except OSError as err:
+                        logger.exception(f"Error when deleting {self.dir}")
+                    finally:
+                        self.segments = []
+                        self.current_playlist = None
+                        stream_collection.remove(self)
+                        logger.info(f"<stream {self.stream_id}> destroyed")
+            except:
+                logger.exception(f"Error in destroyer task for <stream {self.stream_id}>")
+
+        self._destroy_task = asyncio.create_task(destroyer())
+        logger.info(f"destroy <stream {self.stream_id}>")
 
 
 class EncoderStreamCollection(StreamCollection[EncoderStream]):

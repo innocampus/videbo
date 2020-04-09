@@ -1,4 +1,4 @@
-from asyncio import Task, sleep, Lock
+from asyncio import Task, sleep, Lock, gather
 from typing import Optional, Dict, TYPE_CHECKING
 from livestreaming.web import HTTPClient, HTTPResponseError
 from livestreaming.streams import StreamState
@@ -51,6 +51,7 @@ class EncoderNode(NodeTypeBase):
                     if self.current_streams is None:
                         self.current_streams = ret.current_streams
 
+                    awaitables = []
                     async with self.streams_lock:
                         for stream_id, stream in self.streams.items():
                             if stream_id in ret.streams:
@@ -63,7 +64,11 @@ class EncoderNode(NodeTypeBase):
                         # Check if all nodes in ret.streams still exist in self.streams and their status is valid.
                         for stream_id in ret.streams.keys():
                             if stream_id not in self.streams or self.streams[stream_id].state >= StreamState.ERROR:
-                                await self.destroy_stream(stream_id, True)
+                                logger.warn(f"<Encoder {self.server.name}> force destroy <stream {stream_id}>")
+                                awaitables.append(self.destroy_stream(stream_id, True))
+
+                    # run awaitables here to release streams_lock that is needed in destroy_streams
+                    await gather(*awaitables)
 
                     if first_request:
                         logger.info(f"<Encoder watcher {self.server.name}> max_streams={self.max_streams}, "
@@ -145,6 +150,7 @@ class ContentNode(NodeTypeBase):
                         # Check if all nodes in ret.streams still exist in self.streams and their status is valid.
                         for stream_id in ret.streams.keys():
                             if stream_id not in self.streams or self.streams[stream_id].state >= StreamState.ERROR:
+                                logger.warn(f"<Content {self.server.name}> force destroy <stream {stream_id}>")
                                 await self.destroy_stream(stream_id, True)
 
                     if first_request:

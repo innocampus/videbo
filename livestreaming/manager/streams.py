@@ -45,12 +45,14 @@ class StreamStateObserver:
 
 
 class ManagerStream(Stream):
+    MAX_WAIT_UNTIL_CONNECTION = 600
+
     def __init__(self, _stream_collection: 'ManagerStreamCollection', stream_id: int, ip_range: Optional[str],
                  use_rtmps: bool, lms_stream_instance_id: int, expected_viewers: Optional[int]):
         super().__init__(stream_id, ip_range, use_rtmps, logger)
         self._stream_collection: ManagerStreamCollection = _stream_collection
-        self.encoder_streamer_url: str = ''
         self.lms_stream_instance_id = lms_stream_instance_id
+        self.encoder_rtmp_port: Optional[int] = None
         self.streamer_connection_until: Optional[int] = None
         self.control_task: Optional[asyncio.Task] = None
         self.state_observer: StreamStateObserver = StreamStateObserver(self)
@@ -87,9 +89,18 @@ class ManagerStream(Stream):
             async with self._stream_collection.hold_encoder_stream_slot(self) as encoder:
                 self.encoder: EncoderNode = encoder
                 ret = await self.encoder.start_stream(self)
-                self.encoder_streamer_url = f"rtmp://{self.encoder.server.host}:{ret.stream.rtmp_port}/stream"
                 self.rtmp_stream_key = ret.stream.rtmp_stream_key
+                self.encoder_rtmp_port = ret.stream.rtmp_port
                 self.encoder_subdir_name = ret.stream.encoder_subdir_name
+                self.streamer_connection_until = time() + self.MAX_WAIT_UNTIL_CONNECTION
+
+                try:
+                    await asyncio.wait_for(StreamStateObserver.wait_until(state_watcher, StreamState.BUFFERING),
+                                           self.MAX_WAIT_UNTIL_CONNECTION)
+                except asyncio.TimeoutError:
+                    # streamer did not connect to RTMP server. Stop.
+                    self.update_state(StreamState.STREAMER_DID_NOT_CONNECT)
+                    return
 
                 await StreamStateObserver.wait_until(state_watcher, StreamState.STOPPED)
 
@@ -102,9 +113,12 @@ class ManagerStream(Stream):
                 self.update_state(StreamState.ERROR)
             raise
         finally:
-            logger.info(f"<stream {self.stream_id}> ended with status {StreamState(self.state).name}")
+            logger.info(f"<stream {self.stream_id}> ended with status {self.state_name}")
 
     def get_status(self, full: bool) -> Union[StreamStatus, StreamStatusFull]:
+        prot = "rtmps" if self.use_rtmps else 'rtmp'
+        encoder_streamer_url = f"{prot}://{self.encoder.server.host}:{self.encoder_rtmp_port}/stream"
+
         data = {
             'stream_id': self.stream_id,
             'lms_stream_instance_id': self.lms_stream_instance_id,
@@ -115,7 +129,7 @@ class ManagerStream(Stream):
         }
 
         if full:
-            data['streamer_url'] = self.encoder_streamer_url
+            data['streamer_url'] = encoder_streamer_url
             data['streamer_key'] = self.rtmp_stream_key
             data['streamer_ip_restricted'] = self.is_ip_restricted
             if self.streamer_connection_until:

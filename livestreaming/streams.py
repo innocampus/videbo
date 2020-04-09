@@ -15,6 +15,7 @@ class StreamState(IntEnum):
     PROCESS_RECORDINGS = 6  # encoder node processes the recordings
     DONE = 10  # encoder waits until manager tells to clean up
     ERROR = 100
+    STREAMER_DID_NOT_CONNECT = 101
     UNEXPECTED_STREAM = 104
     NO_ENCODER_AVAILABLE = 105
 
@@ -24,7 +25,7 @@ class Stream:
         self.stream_id: int = stream_id
         self.ip_range: Union[IPv6Network, IPv4Network, None] = None
         self.use_rtmps: bool = use_rtmps
-        self.rtmp_stream_key: Optional[str] = None
+        self.rtmp_stream_key: str = ''
         self.encoder_subdir_name: Optional[str] = None
         self._state: StreamState = StreamState.UNKNOWN
         self.state_last_update: float = 0
@@ -39,6 +40,13 @@ class Stream:
     @property
     def state(self) -> StreamState:
         return self._state
+
+    @property
+    def state_name(self) -> str:
+        try:
+            return StreamState(self.state).name
+        except:
+            return "ERROR_GETTING_STREAM_STATE"
 
     @state.setter
     def state(self, value: StreamState):
@@ -66,3 +74,6 @@ class StreamCollection(Generic[StreamType]):
 
     def get_stream_by_id(self, stream_id: int) -> StreamType:
         return self.streams[stream_id]
+
+    def remove(self, stream: StreamType):
+        self.streams.pop(stream.stream_id)

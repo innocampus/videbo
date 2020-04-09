@@ -26,6 +26,10 @@ async def new_stream(request: Request, jwt_data: BaseJWTData, json: LMSNewStream
             return_data = LMSNewStreamReturn(success=False, error="no_encoder_available")
             return json_response(return_data, status=503)
 
+        if stream.state >= StreamState.ERROR:
+            return_data = LMSNewStreamReturn(success=False, error="unknown_error")
+            return json_response(return_data, status=503)
+
         new_stream_data = stream.get_status(True)
         return_data = LMSNewStreamReturn(success=True, stream=new_stream_data)
         return json_response(return_data)
@@ -36,7 +40,7 @@ async def new_stream(request: Request, jwt_data: BaseJWTData, json: LMSNewStream
         return json_response(return_data, status=500)
 
 
-@routes.get(r'/api/manager/stream/{stream_id:\d}/status')
+@routes.get(r'/api/manager/stream/{stream_id:\d+}/status')
 @ensure_jwt_data_and_role(Role.lms)
 async def get_stream_status(request: Request, _jwt_data: BaseJWTData):
     try:

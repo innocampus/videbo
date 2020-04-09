@@ -58,7 +58,7 @@ async def get_segment(request: Request):
     return FileResponse(path)
 
 
-@routes.post(r'/api/content/stream/start/{stream_id:\d}')
+@routes.post(r'/api/content/stream/start/{stream_id:\d+}')
 @ensure_jwt_data_and_role(Role.manager)
 @ensure_json_body()
 async def start_stream(_request: Request, _jwt_data: BaseJWTData, data: StartStreamDistributionInfo):
@@ -72,7 +72,7 @@ async def start_stream(_request: Request, _jwt_data: BaseJWTData, data: StartStr
         raise HTTPNotAcceptable()
 
 
-@routes.get(r'/api/content/stream/{stream_id:\d}/destroy')
+@routes.get(r'/api/content/stream/{stream_id:\d+}/destroy')
 @ensure_jwt_data_and_role(Role.manager)
 async def destroy_stream(request: Request, __: BaseJWTData):
     try:
