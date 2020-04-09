@@ -113,9 +113,8 @@ async def read_data(request: Request) -> TempFile:
     return file
 
 
-@routes.get('/api/upload/maxsize')
-@ensure_jwt_data_and_role(Role.lms)
-async def get_max_size(_: Request, __: BaseJWTData):
+@register_route_with_cors(routes, 'GET', '/api/upload/maxsize')
+async def get_max_size(_: Request ):
     """Get max file size in mb."""
     return json_response({'max_size': storage_settings.max_file_size_mb})
 
