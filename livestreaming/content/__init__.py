@@ -1,4 +1,5 @@
 import logging
+import shutil
 from pathlib import PurePath, Path
 
 from livestreaming import settings
@@ -21,8 +22,11 @@ def start() -> None:
     from .api.routes import routes
     content_settings.load()
 
-    # ensure temp dir exists
+    # ensure temp dir exists and is empty.
     temp_dir = Path(content_settings.hls_temp_dir)
+    if temp_dir.is_dir():
+        # Remove all files. They may have been left from another run.
+        shutil.rmtree(path=temp_dir, onerror=lambda f, p, e: content_logger.error(f"{f} {p}:{e}"))
     temp_dir.mkdir(parents=True, exist_ok=True)
 
     start_web_server(content_settings.http_port, routes)
