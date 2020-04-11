@@ -46,6 +46,7 @@ class StreamStateObserver:
 
 class ManagerStream(Stream):
     MAX_WAIT_UNTIL_CONNECTION = 600
+    ADDITIONAL_CLIENTS_PER_STREAM = 10  # always available client slots per stream
 
     def __init__(self, _stream_collection: 'ManagerStreamCollection', stream_id: int, ip_range: Optional[str],
                  use_rtmps: bool, lms_stream_instance_id: int, expected_viewers: Optional[int]):
@@ -65,10 +66,10 @@ class ManagerStream(Stream):
 
         # nodes
         self.encoder: Optional[EncoderNode] = None
-        self.contents: Set[ContentNode] = set()
+        self.contents: Dict[ContentNode, int] = {}  # map content node to viewers on that node
 
     def get_estimated_viewers(self):
-        return max(self.viewers, self.expected_viewers)
+        return max(self.viewers + self.ADDITIONAL_CLIENTS_PER_STREAM + self.waiting_clients, self.expected_viewers)
 
     def update_state(self, new_state: StreamState, last_update: int = time()):
         if new_state != self._state:
@@ -245,13 +246,13 @@ class ManagerStreamCollection(StreamCollection[ManagerStream]):
                 continue
 
             # all content nodes that should no longer carry this stream
-            for rem_content in (stream.contents - new_contents):
+            for rem_content in [n for n in stream.contents.keys() if n not in new_contents]:
                 awaitables.append(rem_content.destroy_stream(stream.stream_id))
-                stream.contents.remove(rem_content)
+                stream.contents.pop(rem_content)
             # all content nodes that should start to carry this stream
-            for new_content in (new_contents - stream.contents):
+            for new_content in [n for n in new_contents if n not in stream.contents]:
                 awaitables.append(new_content.start_stream(stream, self.node_controller.broker_node))
-                stream.contents.add(new_content)
+                stream.contents[new_content] = 0
 
         await asyncio.gather(*awaitables) # TODO handle exceptions
 
@@ -269,7 +270,7 @@ class ManagerStreamCollection(StreamCollection[ManagerStream]):
         for stream in self.streams.values():
             if stream.state == StreamState.STREAMING:
                 cnodes: BrokerStreamContents = []
-                for content in stream.contents:
+                for content in stream.contents.keys():
                     cnodes.append(content.base_url)
                 all_streams[stream.stream_id] = cnodes
 
