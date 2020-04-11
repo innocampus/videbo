@@ -1,16 +1,16 @@
 import asyncio
 import hashlib
 import os
+import pathlib
 import tempfile
 import time
 import shutil
 from _sha256 import SHA256Type
-from typing import Optional
-from typing import Tuple
-from typing import BinaryIO
+from typing import Optional, Tuple, Dict, BinaryIO
 
 from . import storage_logger
 from . import storage_settings
+from .distribution import DistributionController, FileNodes
 from .video import VideoInfo
 from .exceptions import *
 
@@ -31,6 +31,17 @@ class HashedVideoFile:
         return self.hash + self.file_extension
 
 
+class StoredHashedVideoFile(HashedVideoFile):
+    def __init__(self, file_hash: str, file_extension: str):
+        super().__init__(file_hash, file_extension)
+        self.views: int = 0
+        self.nodes: FileNodes = FileNodes()
+
+    def __lt__(self, other: "StoredHashedVideoFile"):
+        """Compare videos by their view counters."""
+        return self.views < other.views
+
+
 class FileStorage:
     """Manages all stored files with their hashes as file names."""
     _instance: Optional["FileStorage"] = None
@@ -47,6 +58,8 @@ class FileStorage:
         self.path: str = path
         self.tempdir: str = path + '/temp'
         self.temp_out_dir: str = path + '/temp/out'
+        self._cached_files: Dict[str, StoredHashedVideoFile] = {}  # map hashes to files
+        self.distribution_controller : DistributionController = DistributionController()
 
         if not os.path.isdir(self.tempdir):
             os.mkdir(self.tempdir, mode=0o755)
@@ -68,6 +81,29 @@ class FileStorage:
         if cls._instance is None:
             cls._instance = FileStorage(storage_settings.videos_path)
         return cls._instance
+
+    async def get_file(self, file_hash: str, file_extension: str) -> StoredHashedVideoFile:
+        """Get video file in storage and check that it really exists."""
+        file = self._cached_files.get(file_hash)
+        if file:
+            if file.file_extension != file_extension:
+                raise FileDoesNotExistError()
+            return file
+
+        file = StoredHashedVideoFile(file_hash, file_extension)
+        path = pathlib.Path(self.get_path(file)[0])
+        if not (await asyncio.get_event_loop().run_in_executor(None, path.is_file)):
+            storage_logger.warning(f"file does not exist: {path}")
+            raise FileDoesNotExistError()
+
+        # Add to cached files, but check if another coroutine added the file meanwhile.
+        check_file = self._cached_files.get(file_hash)
+        if check_file:
+            return check_file
+
+        self._cached_files[file.hash] = file
+        self.distribution_controller.add_video(file)
+        return file
 
     async def generate_thumbs(self, file: HashedVideoFile, video: VideoInfo) -> int:
         """Generates thumbnail suggestions."""

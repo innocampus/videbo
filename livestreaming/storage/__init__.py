@@ -16,6 +16,7 @@ class StorageSettings(SettingsSectionBase):
     binary_file: str
     binary_ffmpeg: str
     binary_ffprobe: str
+    tx_max_rate_mbit: int
 
 
 storage_logger = logging.getLogger('livestreaming-storage')
@@ -23,6 +24,14 @@ storage_settings = StorageSettings()
 
 
 def start() -> None:
+    from livestreaming.network import NetworkInterfaces
     from .api.routes import routes
     storage_settings.load()
-    start_web_server(storage_settings.http_port, routes)
+
+    async def on_http_startup(app):
+        NetworkInterfaces.get_instance().start_fetching()
+
+    async def on_http_cleanup(app):
+        await NetworkInterfaces.get_instance().stop_fetching()
+
+    start_web_server(storage_settings.http_port, routes, on_http_startup, on_http_cleanup)

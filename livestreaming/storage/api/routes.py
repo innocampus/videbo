@@ -49,7 +49,8 @@ def generate_video_url(video: HashedVideoFile, temp: bool) -> str:
         "role": "client",
         "type": 'video_temp' if temp else 'video',
         "hash": video.hash,
-        "file_ext": video.file_extension
+        "file_ext": video.file_extension,
+        "rid": "",
     }
     jwt_data = external_jwt_encode(data, EXTERNAL_JWT_LIFE_TIME)
     return f"{storage_settings.public_base_url}/file?jwt={jwt_data}"
@@ -63,7 +64,8 @@ def generate_thumb_urls(video: HashedVideoFile, temp: bool, thumb_count: int) ->
             "type": "thumbnail_temp" if temp else "thumbnail",
             "hash": video.hash,
             "thumb_id": thumb_id,
-            "file_ext": video.file_extension
+            "file_ext": video.file_extension,
+            "rid": "",
         }
         jwt_data = external_jwt_encode(data, EXTERNAL_JWT_LIFE_TIME)
         urls.append(f"{storage_settings.public_base_url}/file?jwt={jwt_data}")
@@ -248,12 +250,18 @@ async def request_file(_: Request, jwt_data: RequestFileJWTData):
     video = HashedVideoFile(jwt_data.hash, jwt_data.file_ext)
     file_storage = FileStorage.get_instance()
 
-    if jwt_data.type == FileType.STORAGE:
-        storage_logger.info(f"serve storage with hash {video}")
+    if jwt_data.type == FileType.VIDEO:
+        # Record the video access and find out if this node serves the file or should redirect to a distributor node.
+        try:
+            video = await file_storage.get_file(jwt_data.hash, jwt_data.file_ext)
+        except FileDoesNotExistError:
+            raise HTTPNotFound()
+        file_storage.distribution_controller.count_file_access(video, jwt_data.rid)
+        storage_logger.info(f"serve video with hash {video}")
         path = file_storage.get_path(video)[0]
 
     elif jwt_data.type == FileType.VIDEO_TEMP:
-        storage_logger.info(f"serve temp storage with hash {video}")
+        storage_logger.info(f"serve temp video with hash {video}")
         path = file_storage.get_path_in_temp(video)
 
     elif jwt_data.type == FileType.THUMBNAIL or jwt_data.type == FileType.THUMBNAIL_TEMP:
@@ -272,9 +280,10 @@ async def request_file(_: Request, jwt_data: RequestFileJWTData):
         storage_logger.info(f"unknown request type: {jwt_data.type}")
         raise HTTPBadRequest()
 
+    # Check if the file really exists. If the video file is requested we already know the file should exist.
     path = pathlib.Path(path)
-    if not (await asyncio.get_event_loop().run_in_executor(None, path.is_file)):
-        storage_logger.error(f"file does not exist: {path}")
+    if jwt_data.type != FileType.VIDEO and not (await asyncio.get_event_loop().run_in_executor(None, path.is_file)):
+        storage_logger.warn(f"file does not exist: {path}")
         raise HTTPNotFound()
 
     return FileResponse(path, headers={"Cache-Control": "private, max-age=50400"})

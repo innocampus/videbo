@@ -20,8 +20,10 @@ JWT_ISS_INTERNAL = 'int'
 class Role:
     """All roles in a system ordered by powerfulness."""
     client = 0
-    lms = 1
-    manager = 2
+    streamer = 1
+    lms = 2
+    node = 3  # other node than manager
+    manager = 4
 
     @classmethod
     def get_level(cls, role: str, issuer: str) -> int:
@@ -97,7 +99,7 @@ def check_jwt_auth_save_data(request: web.Request, min_role_level: int, model: T
     try:
         token = extract_jwt_from_request(request)
 
-        if min_role_level >= Role.manager:
+        if min_role_level >= Role.node:
             # the issuer must be internal anyway
             decoded = internal_jwt_decode(token)
         else:

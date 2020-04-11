@@ -14,7 +14,7 @@ class NetworkInterface:
     def __init__(self, name: str):
         self.name = name
         self.rx_bytes = 0
-        self.rx_throughput: float = 0
+        self.rx_throughput: float = 0  # bytes per second
         self.rx_packets = 0
         self.rx_drops = 0
         self.rx_errors = 0
@@ -23,7 +23,7 @@ class NetworkInterface:
         self.rx_compr = 0
         self.rx_multicast = 0
         self.tx_bytes = 0
-        self.tx_throughput: float = 0
+        self.tx_throughput: float = 0  # bytes per second
         self.tx_packets = 0
         self.tx_drop = 0
         self.tx_errs = 0
@@ -44,6 +44,8 @@ class NetworkInterfaces:
     """
     NetworkInterfaces: a class to monitor your interfaces
     """
+    _instance: Optional["NetworkInterfaces"] = None
+
     # make _interfaces a singleton since they can be shared on one system
     _interfaces: Dict[str, NetworkInterface] = {}
     # A regular expression which separates the interesting fields and saves them in named groups
@@ -73,6 +75,13 @@ class NetworkInterfaces:
         self._do_fetch = False
         self._fetch_task: Optional[asyncio.Task] = None
         self.start_fetching()
+
+    @staticmethod
+    def get_instance() -> "NetworkInterfaces":
+        if NetworkInterfaces._instance is None:
+            NetworkInterfaces._instance = NetworkInterfaces()
+        return NetworkInterfaces._instance
+
 
     @property
     def is_fetching(self):
@@ -136,8 +145,7 @@ class NetworkInterfaces:
             self._fetch_task = asyncio.create_task(fetcher())
 
     def get_interface(self, interface: str) -> Optional[NetworkInterface]:
-        if interface in self._interfaces:
-            return self._interfaces[interface]
+        return self._interfaces.get(interface)
 
     def _set_interface_attr(self, interface: str, attr: str, value: Union[int, float]):
         """Sets only if interface exists"""

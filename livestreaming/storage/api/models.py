@@ -5,7 +5,7 @@ from livestreaming.web import BaseJWTData
 
 
 class FileType(Enum):
-    STORAGE = "storage"
+    VIDEO = "video"
     THUMBNAIL = "thumbnail"
     VIDEO_TEMP = "video_temp"
     THUMBNAIL_TEMP = "thumbnail_temp"
@@ -28,3 +28,4 @@ class RequestFileJWTData(BaseJWTData):
     hash: str
     file_ext: str
     thumb_id: Optional[int]
+    rid: str  # random string identifying the user
