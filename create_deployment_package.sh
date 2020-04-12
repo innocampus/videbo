@@ -41,7 +41,9 @@ rm segment-*.ini
 mkdir /opt/livestreaming-server
 tar -czvf /opt/livestreaming-server/livestream_content_deploy.tar.gz \
       --exclude="*/__pycache__" \
-      ./livestreaming ./requirements.txt
+      ./livestreaming ./requirements.txt \
+      ./.lego/certificates/_.tu-berlin-streaming.de.crt \
+      ./.lego/certificates/_.tu-berlin-streaming.de.key
 
 tar -czvf /opt/livestreaming-server/livestream_encoder_deploy.tar.gz \
       --exclude="*/__pycache__" \

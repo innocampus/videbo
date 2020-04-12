@@ -11,5 +11,5 @@
 
 - include: ramdisk.yml
 - include: copy_project.yml
-- include: config_nginx.yml
 - include: install.yml
+- include: config_nginx.yml

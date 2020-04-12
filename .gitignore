@@ -6,3 +6,4 @@ venv
 .idea
 dev_generate_requests.py
 config.ini.j2
+.lego
