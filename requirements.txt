@@ -2,6 +2,7 @@ aiohttp==3.6.2
 m3u8==0.5.4
 pydantic==1.4
 PyJWT==1.7.1
+PuLP==2.1
 ipaddress==1.0.23
 hcloud==1.6.3
 idna>=2.5,<2.9
