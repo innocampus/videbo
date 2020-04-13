@@ -58,6 +58,9 @@ def call_node():
     elif settings.args.mode == 'storage':
         from livestreaming.storage import start
         start()
+    elif settings.args.mode == 'distributor':
+        from livestreaming.distributor import start
+        start()
     else:
-        print("Mode must be manager, encoder, content or broker")
+        print("Mode must be manager, encoder, content, broker, storage or distributor")
         sys.exit(2)

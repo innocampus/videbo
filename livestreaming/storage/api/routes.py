@@ -1,7 +1,7 @@
 import asyncio
 import pathlib
 from aiohttp import BodyPartReader
-from aiohttp.web import Request
+from aiohttp.web import Request, Response
 from aiohttp.web import FileResponse
 from aiohttp.web import json_response
 from aiohttp.web import RouteTableDef
@@ -12,24 +12,28 @@ from aiohttp.web_exceptions import HTTPNotAcceptable
 from aiohttp.web_exceptions import HTTPUnsupportedMediaType
 from aiohttp.web_exceptions import HTTPRequestEntityTooLarge
 from aiohttp.web_exceptions import HTTPInternalServerError
+from aiohttp.web_exceptions import HTTPFound, HTTPServiceUnavailable
 from typing import List
 
-from livestreaming.web import register_route_with_cors
+from livestreaming.web import ensure_json_body, register_route_with_cors, json_response as model_json_response
 from livestreaming.auth import external_jwt_encode
 from livestreaming.auth import ensure_jwt_data_and_role
-from livestreaming.auth import Role
+from livestreaming.auth import Role, JWT_ISS_INTERNAL
 from livestreaming.auth import BaseJWTData
+from livestreaming.misc import get_free_disk_space
+from livestreaming.network import NetworkInterfaces
 from livestreaming.storage.api.models import UploadFileJWTData
 from livestreaming.storage.api.models import SaveFileJWTData
 from livestreaming.storage.api.models import DeleteFileJWTData
 from livestreaming.storage.api.models import RequestFileJWTData
-from livestreaming.storage.api.models import FileType
+from livestreaming.storage.api.models import FileType, StorageStatus, DistributorNodeInfo
+from livestreaming.storage.distribution import DistributionNodeInfo
 from livestreaming.storage.util import TempFile
 from livestreaming.storage.util import FileStorage
 from livestreaming.storage.util import FileDoesNotExistError
 from livestreaming.storage.util import NoValidFileInRequestError
 from livestreaming.storage.util import FileTooBigError
-from livestreaming.storage.util import HashedVideoFile
+from livestreaming.storage.util import HashedVideoFile, StoredHashedVideoFile
 from livestreaming.storage.util import FFProbeError
 from livestreaming.storage.util import is_allowed_file_ending
 from livestreaming.storage.video import VideoInfo
@@ -228,12 +232,13 @@ async def delete_file(request: Request, jwt_data: DeleteFileJWTData):
         storage_logger.info("unauthorized request")
         raise HTTPForbidden()
 
-    file = HashedVideoFile(request.match_info['hash'], request.match_info['file_ext'])
+    file_storage = FileStorage.get_instance()
+    file = await file_storage.get_file(request.match_info['hash'], request.match_info['file_ext'])
 
-    await FileStorage.get_instance().remove_thumbs(file)
+    await file_storage.remove_thumbs(file)
 
     try:
-        await FileStorage.get_instance().remove(file)
+        await file_storage.remove(file)
     except FileDoesNotExistError:
         storage_logger.error('Cannot delete file with hash %s from video, file does not exist.', file.hash)
         return json_response({'status': 'error', 'error': 'file_does_not_exist'})
@@ -243,7 +248,7 @@ async def delete_file(request: Request, jwt_data: DeleteFileJWTData):
 
 @routes.get('/file')
 @ensure_jwt_data_and_role(Role.client)
-async def request_file(_: Request, jwt_data: RequestFileJWTData):
+async def request_file(request: Request, jwt_data: RequestFileJWTData):
     """Serve a video or a thumbnail."""
 
     # Check all required data.
@@ -256,7 +261,12 @@ async def request_file(_: Request, jwt_data: RequestFileJWTData):
             video = await file_storage.get_file(jwt_data.hash, jwt_data.file_ext)
         except FileDoesNotExistError:
             raise HTTPNotFound()
-        file_storage.distribution_controller.count_file_access(video, jwt_data.rid)
+
+        # Only consider redirecting the client when it is an external request.
+        if jwt_data.iss != JWT_ISS_INTERNAL:
+            file_storage.distribution_controller.count_file_access(video, jwt_data.rid)
+            video_check_redirect(request, video)
+
         storage_logger.info(f"serve video with hash {video}")
         path = file_storage.get_path(video)[0]
 
@@ -280,10 +290,122 @@ async def request_file(_: Request, jwt_data: RequestFileJWTData):
         storage_logger.info(f"unknown request type: {jwt_data.type}")
         raise HTTPBadRequest()
 
-    # Check if the file really exists. If the video file is requested we already know the file should exist.
+    # Check if the file really exists. If a video file is requested we already know the file should exist.
     path = pathlib.Path(path)
     if jwt_data.type != FileType.VIDEO and not (await asyncio.get_event_loop().run_in_executor(None, path.is_file)):
         storage_logger.warn(f"file does not exist: {path}")
         raise HTTPNotFound()
 
     return FileResponse(path, headers={"Cache-Control": "private, max-age=50400"})
+
+
+def video_check_redirect(request: Request, file: StoredHashedVideoFile) -> None:
+    own_tx_load = get_own_tx_load()
+    node, has_complete_file = file.nodes.find_good_node(file)
+    if node is None:
+        # There is no distribution node.
+        if file.views >= 2 or own_tx_load > 0.4:
+            if file.nodes.copying:
+                # When we are here this means that there is no non-busy distribution node. Even the dist node that
+                # is currently loading the file is too busy.
+                storage_logger.info(f"Cannot serve video, node too busy (tx load {own_tx_load:.2f} "
+                                    f"and waiting for copying to complete")
+                raise HTTPServiceUnavailable()
+            else:
+                to_node = FileStorage.get_instance().distribution_controller.copy_file_to_one_node(file)
+                if to_node is None:
+                    if own_tx_load > 0.9:
+                        # There is no dist node to copy the file to and this storage node is too busy.
+                        storage_logger.warning(f"Cannot serve video, node too busy (tx load {own_tx_load:.2f}")
+                        raise HTTPServiceUnavailable()
+                    else:
+                        # Serve file.
+                        return
+                else:
+                    if own_tx_load > 0.4:
+                        # Redirect to node where the client needs to wait until the node downloaded the file.
+                        video_redirect_to_node(request, to_node)
+                    else:
+                        # Serve file.
+                        return
+
+        else:
+            # This storage node is not too busy and can serve the file by itself.
+            return
+    elif has_complete_file:
+        # One distribution node that can serve the file.
+        video_redirect_to_node(request, node)
+    else:
+        # There is only a distribution node that is downloading the file however.
+        if own_tx_load > 0.4:
+            # Redirect to node where the client needs to wait until the node downloaded the file.
+            video_redirect_to_node(request, node)
+        else:
+            # Serve file.
+            return
+
+    raise Exception("video_check_redirect: should not reach this line")
+
+
+def video_redirect_to_node(request: Request, node: DistributionNodeInfo):
+    storage_logger.info(f"Redirect user to {node.base_url}")
+    jwt = request.query['jwt']
+    url = f"{node.base_url}/file?jwt={jwt}"
+    raise HTTPFound(url)
+
+
+def get_own_tx_load() -> float:
+    network = NetworkInterfaces.get_instance()
+    interfaces = network.get_interface_names()
+    if len(interfaces) == 0:
+        return 0
+    iface = network.get_interface(interfaces[0])
+    return (iface.tx_throughput * 8 / 1_000_000) / storage_settings.tx_max_rate_mbit
+
+
+@routes.post(r'/api/storage/distributor/add')
+@ensure_jwt_data_and_role(Role.manager)
+@ensure_json_body()
+async def add_dist_node(_request: Request, _jwt_data: BaseJWTData, data: DistributorNodeInfo):
+    await FileStorage.get_instance().distribution_controller.add_new_dist_node(data.base_url)
+    return Response()
+
+
+@routes.post(r'/api/storage/distributor/remove')
+@ensure_jwt_data_and_role(Role.manager)
+@ensure_json_body()
+async def remove_dist_node(_request: Request, _jwt_data: BaseJWTData, data: DistributorNodeInfo):
+    await FileStorage.get_instance().distribution_controller.remove_dist_node(data.base_url)
+    return Response()
+
+
+@routes.get(r'/api/storage/status')
+@ensure_jwt_data_and_role(Role.manager)
+async def get_status(request: Request, _jwt_data: BaseJWTData):
+    status = StorageStatus.construct()
+
+    if 'get_connections' in request.query:
+        status.current_connections = 0  # TODO
+
+    status.free_space = await get_free_disk_space(str(storage_settings.videos_path))
+
+    status.tx_max_rate = storage_settings.tx_max_rate_mbit
+    network = NetworkInterfaces.get_instance()
+    interfaces = network.get_interface_names()
+    if len(interfaces) > 0:
+        # Just take the first network interface.
+        iface = network.get_interface(interfaces[0])
+        status.tx_current_rate = int(iface.tx_throughput * 8 / 1_000_000)
+        status.rx_current_rate = int(iface.rx_throughput * 8 / 1_000_000)
+        status.tx_total = int(iface.tx_bytes / 1024 / 1024)
+        status.rx_total = int(iface.rx_bytes / 1024 / 1024)
+    else:
+        status.tx_current_rate = 0
+        status.rx_current_rate = 0
+        status.tx_total = 0
+        status.rx_total = 0
+        storage_logger.error("No network interface found!")
+
+    status.distributor_nodes = FileStorage.get_instance().distribution_controller.get_dist_node_base_urls()
+
+    return model_json_response(status)

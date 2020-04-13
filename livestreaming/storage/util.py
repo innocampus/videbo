@@ -8,6 +8,7 @@ import shutil
 from _sha256 import SHA256Type
 from typing import Optional, Tuple, Dict, BinaryIO
 
+from livestreaming.misc import TaskManager
 from . import storage_logger
 from . import storage_settings
 from .distribution import DistributionController, FileNodes
@@ -19,6 +20,8 @@ THUMB_EXT = '.jpg'
 
 
 class HashedVideoFile:
+    __slots__ = "hash", "file_extension"
+
     def __init__(self, file_hash: str, file_extension: str):
         self.hash = file_hash
         self.file_extension = file_extension
@@ -32,8 +35,11 @@ class HashedVideoFile:
 
 
 class StoredHashedVideoFile(HashedVideoFile):
+    __slots__ = "file_size", "views", "nodes"
+
     def __init__(self, file_hash: str, file_extension: str):
         super().__init__(file_hash, file_extension)
+        self.file_size: int = -1  # in bytes
         self.views: int = 0
         self.nodes: FileNodes = FileNodes()
 
@@ -75,11 +81,13 @@ class FileStorage:
             storage_logger.info('Created out dir in temp dir')
 
         self._garbage_collector_task = asyncio.create_task(self._garbage_collect_cron())
+        TaskManager.fire_and_forget_task(self._garbage_collector_task)
 
     @classmethod
     def get_instance(cls) -> "FileStorage":
         if cls._instance is None:
-            cls._instance = FileStorage(storage_settings.videos_path)
+            cls._instance = FileStorage(str(storage_settings.videos_path))
+            cls._instance.distribution_controller.start_periodic_reset_task()
         return cls._instance
 
     async def get_file(self, file_hash: str, file_extension: str) -> StoredHashedVideoFile:
@@ -95,6 +103,9 @@ class FileStorage:
         if not (await asyncio.get_event_loop().run_in_executor(None, path.is_file)):
             storage_logger.warning(f"file does not exist: {path}")
             raise FileDoesNotExistError()
+
+        stat = await asyncio.get_event_loop().run_in_executor(None, path.stat)
+        file.file_size = stat.st_size
 
         # Add to cached files, but check if another coroutine added the file meanwhile.
         check_file = self._cached_files.get(file_hash)
@@ -214,14 +225,18 @@ class FileStorage:
         await asyncio.gather(*tasks)
         storage_logger.info(f"Added {thumb_count} thumbnails for file with hash {file.hash} permanently to storage.")
 
-    async def remove(self, file: HashedVideoFile) -> None:
+    async def remove(self, file: StoredHashedVideoFile) -> None:
         file_path = self.get_path(file)[0]
 
         # Run in another thread as there is blocking io.
         if not await asyncio.get_event_loop().run_in_executor(None, self.delete_file, file_path):
             raise FileDoesNotExistError()
 
-        storage_logger.info(f"Removed file with hash {file.hash} permanently from video.")
+        # Remove file from cached files and delete all copies on distributor nodes.
+        self._cached_files.pop(file.hash)
+        self.distribution_controller.remove_video(file)
+
+        storage_logger.info(f"Removed file with hash {file.hash} permanently from storage.")
 
     async def remove_thumbs(self, file: HashedVideoFile) -> None:
         thumb_nr = 0
@@ -270,7 +285,8 @@ class FileStorage:
         if user:
             args = ["-u", user, binary] + args
             binary = "sudo"
-        proc = await asyncio.create_subprocess_exec(binary, *args)
+        proc = await asyncio.create_subprocess_exec(binary, *args, stdout=asyncio.subprocess.DEVNULL,
+                                                    stderr=asyncio.subprocess.DEVNULL)
         try:
             await asyncio.wait_for(proc.wait(), 10)
             if proc.returncode != 0:

@@ -12,11 +12,12 @@ class DistributorStatus(JSONBaseModel):
     tx_total: int  # in MB
     rx_total: int  # in MB
     current_connections: Optional[int]  # HTTP connections serving videos
-    space_free: int  # in MB
+    free_space: int  # in MB
 
 
 class DistributorCopyFile(JSONBaseModel):
-    url: str
+    from_base_url: str
+    file_size: int  # in bytes
 
 
 class DistributorDeleteFiles(JSONBaseModel):
@@ -24,4 +25,8 @@ class DistributorDeleteFiles(JSONBaseModel):
 
 
 class DistributorDeleteFilesResponse(JSONBaseModel):
-    space_free: int  # in MB
+    free_space: int  # in MB
+
+
+class DistributorFileList(JSONBaseModel):
+    files: List[Tuple[str, str]]  # (hash, file extension)

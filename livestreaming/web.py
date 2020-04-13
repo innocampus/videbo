@@ -8,6 +8,7 @@ from time import time
 from aiohttp import web, ClientResponse, ClientSession, ClientError
 from aiohttp.web_exceptions import HTTPException, HTTPBadRequest
 from livestreaming.auth import BaseJWTData, internal_jwt_encode
+from .misc import TaskManager
 
 web_logger = logging.getLogger('livestreaming-web')
 
@@ -22,6 +23,7 @@ def start_web_server(port: int, routes, on_startup: Optional[Callable] = None, o
     if on_cleanup:
         app.on_cleanup.append(on_cleanup)
     app.on_shutdown.append(HTTPClient.close_all)
+    app.on_shutdown.append(TaskManager.cancel_all)
     web.run_app(app, port=port)
 
 
@@ -204,7 +206,7 @@ class HTTPClient:
         Implements a caching mechanism."""
 
         current_time = time()
-        jwt, expiration = cls._cached_jwt.get(role, default=(None, None))
+        jwt, expiration = cls._cached_jwt.get(role, (None, None))
         if jwt and current_time < expiration:
             return jwt
 
@@ -235,6 +237,7 @@ def ensure_url_does_not_end_with_slash(url: str) -> str:
             url = url[0:-1]
         else:
             return url
+    return url
 
 
 # exceptions

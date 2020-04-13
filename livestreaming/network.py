@@ -74,7 +74,6 @@ class NetworkInterfaces:
         self._last_time = 0
         self._do_fetch = False
         self._fetch_task: Optional[asyncio.Task] = None
-        self.start_fetching()
 
     @staticmethod
     def get_instance() -> "NetworkInterfaces":

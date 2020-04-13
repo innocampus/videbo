@@ -12,7 +12,7 @@ from .cloud.server import Server, StaticServer, DynamicServer
 from .cloud.definitions import CloudInstanceDefsController, OrderedInstanceDefinitionsList
 from .cloud.dns_api import DNSManager, get_dns_api_by_provider
 from . import  ManagerSettings, logger
-from .node_types import NodeTypeBase, ContentNode, EncoderNode, BrokerNode, StorageNode
+from .node_types import NodeTypeBase, ContentNode, EncoderNode, BrokerNode, StorageNode, DistributorNode
 
 
 Node_Type_T = TypeVar('Node_Type_T', bound=NodeTypeBase)
@@ -28,6 +28,7 @@ class NodeController:
             EncoderNode: [],
             ContentNode: [],
             StorageNode: [],
+            DistributorNode: [],
         }
         self.broker_node: Optional[BrokerNode] = None
         self.server_by_name: Dict[str, Server] = {}
@@ -157,6 +158,7 @@ class NodeController:
         await self._init_static_nodes_of_type(ContentNode, self.manager_settings.static_content_node_base_urls)
         await self._init_static_nodes_of_type(EncoderNode, self.manager_settings.static_encoder_node_base_urls)
         await self._init_static_nodes_of_type(StorageNode, self.manager_settings.static_storage_node_base_url)
+        await self._init_static_nodes_of_type(DistributorNode, self.manager_settings.static_distributor_node_base_urls)
 
     async def _static_server_lifecycle(self, node: NodeTypeBase):
         """A task that manages the lifecycle of a static server. It tries to reach a server forever."""
