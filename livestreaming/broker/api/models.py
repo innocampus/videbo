@@ -1,4 +1,6 @@
-from typing import List, Dict, Tuple
+from typing import List
+from typing import Dict
+from typing import Tuple
 from livestreaming.broker import broker_logger
 from livestreaming.web import JSONBaseModel
 from livestreaming.web import BaseJWTData
@@ -8,8 +10,9 @@ class BrokerContentNode(JSONBaseModel):
     max_clients: int
     clients: int
     base_url: str
-    _penalty: int
+    penalty: int
 
+    """
     @property
     def penalty(self) -> int:
         return self._penalty
@@ -25,23 +28,36 @@ class BrokerContentNode(JSONBaseModel):
         if self._penalty == 0:
             msg = f"Got penalty 0 for base_url <{self.base_url}>; <{self.base_url}> will always be prioritized"
             broker_logger.warning(msg)
+    """
 
 
-BrokerStreamContents = List[str]
-BrokerStreamCollection = Dict[int, BrokerStreamContents]
-BrokerContentNodeCollection = Dict[str, BrokerContentNode]
+class BrokerStreamContentNode(JSONBaseModel):
+    _stream_id: int
+    node_id: int
+    current_viewers: int
+    max_viewers: int
+
+    @property
+    def stream_id(self) -> int:
+        return self._stream_id
+
+
+# stream id → content nodes to use with resp. number of viewers
+BrokerStreamContentNodeCollection = Dict[int, List[BrokerStreamContentNode]]
+# content node id → content node
+BrokerContentNodeCollection = Dict[int, BrokerContentNode]
 BrokerQueue = List[Tuple[int, float]]  # list of tuples (stream_id, time)
 
 
 class BrokerStateReturnData(JSONBaseModel):
-    streams: BrokerStreamCollection
+    streams: BrokerStreamContentNodeCollection
     content_nodes: BrokerContentNodeCollection
     queue: Dict[int, int]
     "stream_id -> number of waiting clients"
 
 
 class BrokerGridModel(JSONBaseModel):
-    streams: BrokerStreamCollection
+    streams: BrokerStreamContentNodeCollection
     content_nodes: BrokerContentNodeCollection
 
     @staticmethod

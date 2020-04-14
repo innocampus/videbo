@@ -4,20 +4,20 @@ class InsufficientDataException(Exception):
 
 
 class NodeAlreadyRegisteredException(Exception):
-    def __init__(self, node_name: str):
-        super("Node <%s> already registered".format(node_name))
+    def __init__(self, node_id: str):
+        super(f"Node <{node_id}> already registered")
 
 
 class NodeNotFoundException(Exception):
-    def __init__(self, node_name: str):
-        super("Node <%s> does not exist in the pool.".format(node_name))
+    def __init__(self, node_id: int):
+        super(f"Node <{node_id}> does not exist in the pool.")
 
 
 class MissingLinkException(Exception):
-    def __init__(self, node_name: str, encoder_name: str):
-        super("No connection between <%s> and <%s>".format(encoder_name, node_name))
+    def __init__(self, node_id: int, encoder_name: str):
+        super(f"No connection between <{encoder_name}> and <{node_id}>")
 
 
 class ContentNodesEmptyException(Exception):
     def __init__(self, encoder_name: str):
-        super("Encoder Node <%s> has no available connection to any content node".format(encoder_name))
+        super(f"Encoder Node <{encoder_name}> has no available connection to any content node")

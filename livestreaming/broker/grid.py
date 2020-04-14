@@ -17,31 +17,31 @@ class BrokerGrid:
     def update(self, model: BrokerGridModel) -> None:
         self._model = model
 
-    def get_stream(self, stream_id: int) -> BrokerStreamContents:
+    def get_stream_nodes(self, stream_id: int) -> Optional[List[BrokerStreamContentNode]]:
         return self._model.streams.get(stream_id)
 
-    def get_streams(self) -> BrokerStreamCollection:
+    def get_all_stream_nodes(self) -> BrokerStreamContentNodeCollection:
         return self._model.streams
 
-    def get_content_node(self, base_url: str) -> BrokerContentNode:
-        return self._model.content_nodes.get(base_url)
+    def get_content_node(self, node_id: int) -> BrokerContentNode:
+        return self._model.content_nodes.get(node_id)
 
     def get_content_nodes(self) -> BrokerContentNodeCollection:
         return self._model.content_nodes
 
-    def is_available(self, base_url: str) -> bool:
-        node = self._model.content_nodes.get(base_url)
-        return node is not None and node.clients < node.max_clients
+    def is_available(self, node_id: int) -> bool:
+        node: BrokerStreamContentNode = self._model.streams.get(node_id)
+        return node is not None and node.current_viewers < node.max_viewers
 
-    def increment_clients(self, base_url: str):
-        node = self._model.content_nodes.get(base_url)
+    def increment_clients(self, node_id: int):
+        node = self._model.content_nodes.get(node_id)
         if node:
             node.clients += 1
 
-    def get_penalty_ratio(self, base_url: str):
-        node = self._model.content_nodes.get(base_url)
+    def get_penalty_ratio(self, node_id: int):
+        node = self._model.content_nodes.get(node_id)
         if node is None:
-            raise NodeNotFoundException(base_url)
+            raise NodeNotFoundException(node_id)
         return node.penalty * (node.clients / node.max_clients)
 
     def add_to_wait_queue(self, stream: int):
@@ -66,6 +66,6 @@ class BrokerGrid:
             except KeyError:
                 current = 0
             queue_sum[queue_item[0]] = current + 1
-        return BrokerStateReturnData(streams=self.get_streams(),
+        return BrokerStateReturnData(streams=self.get_all_stream_nodes(),
                                      content_nodes=self.get_content_nodes(),
                                      queue=queue_sum)

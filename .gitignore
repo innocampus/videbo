@@ -1,5 +1,6 @@
 /screen.rc
 /config.ini
+/ffmpeg
 __pycache__
 *.pyc
 venv

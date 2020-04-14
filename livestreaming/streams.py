@@ -18,6 +18,7 @@ class StreamState(IntEnum):
     STREAMER_DID_NOT_CONNECT = 101
     UNEXPECTED_STREAM = 104
     NO_ENCODER_AVAILABLE = 105
+    FFMPEG_ERROR = 106  # ffmpeg stopped due error (return code > 0)
 
 
 class Stream:

@@ -3,12 +3,8 @@ from contextlib import asynccontextmanager
 from time import time
 from typing import Optional, Union, Dict, Set, List, TYPE_CHECKING
 from livestreaming.web import HTTPClient, HTTPResponseError
-from livestreaming.auth import BaseJWTData
 from livestreaming.streams import Stream, StreamCollection, StreamState
-from livestreaming.encoder.api.models import NewStreamReturn, NewStreamParams
-from livestreaming.content.api.models import StartStreamDistributionInfo
-from livestreaming.broker.api.models import BrokerContentNode, BrokerGridModel, BrokerStreamCollection,\
-    BrokerContentNodeCollection, BrokerStreamContents
+from livestreaming.broker.api.models import *
 from livestreaming.manager.api.models import StreamStatusFull, StreamStatus
 from . import logger, manager_settings
 from .node_controller import NodeController
@@ -69,7 +65,11 @@ class ManagerStream(Stream):
         self.contents: Dict[ContentNode, int] = {}  # map content node to viewers on that node
 
     def get_estimated_viewers(self):
-        return max(self.viewers + self.ADDITIONAL_CLIENTS_PER_STREAM + self.waiting_clients, self.expected_viewers)
+        current_estimated_users = self.viewers + self.ADDITIONAL_CLIENTS_PER_STREAM + self.waiting_clients
+        if self.expected_viewers:
+            return max(current_estimated_users, self.expected_viewers)
+        else:
+            return current_estimated_users
 
     def update_state(self, new_state: StreamState, last_update: int = time()):
         if new_state != self._state:
@@ -109,10 +109,10 @@ class ManagerStream(Stream):
 
         except EncoderNoStreamSlotAvailable:
             self.update_state(StreamState.NO_ENCODER_AVAILABLE)
-        except:
+        except Exception as e:
             if self.state < StreamState.ERROR:
                 self.update_state(StreamState.ERROR)
-            raise
+            raise e
         finally:
             logger.info(f"<stream {self.stream_id}> ended with status {self.state_name}")
 
@@ -225,16 +225,17 @@ class ManagerStreamCollection(StreamCollection[ManagerStream]):
                         pass
 
                 await asyncio.sleep(2)
-        except:
+        except Exception as e:
             logger.exception("Algorithm task loop exception")
-            raise
+            raise e
 
     async def _compute_diff_content_nodes_and_inform(self, dist: "StreamToContentType"):
         awaitables = []
         for stream_id, new_content_ids in dist:
             stream = self.streams[stream_id]
             new_contents: Set[ContentNode] = set()
-            for new_content_id in new_content_ids:
+            for new_content_id, assigned_viewers in new_content_ids:
+                # TODO: pass assigned viewers
                 node = self.node_controller.node_by_id[new_content_id]
                 if isinstance(node, ContentNode):
                     new_contents.add(node)
@@ -254,25 +255,29 @@ class ManagerStreamCollection(StreamCollection[ManagerStream]):
                 awaitables.append(new_content.start_stream(stream, self.node_controller.broker_node))
                 stream.contents[new_content] = 0
 
-        await asyncio.gather(*awaitables) # TODO handle exceptions
+        await asyncio.gather(*awaitables)  # TODO handle exceptions
 
     async def _tell_broker(self, content_list: List[ContentNode]):
         # get all content nodes
         contents: BrokerContentNodeCollection = {}
         for content in content_list:
-            contents[content.base_url] = BrokerContentNode(clients=content.current_clients,
-                                                           max_clients=content.max_clients,
-                                                           base_url=content.base_url,
-                                                           penalty=1)
+            contents[content.id] = BrokerContentNode(clients=content.current_clients,
+                                                     max_clients=content.max_clients,
+                                                     base_url=content.base_url,
+                                                     penalty=1)
 
         # get all streams
-        all_streams: BrokerStreamCollection = {}
+        all_streams: BrokerStreamContentNodeCollection = {}
         for stream in self.streams.values():
             if stream.state == StreamState.STREAMING:
-                cnodes: BrokerStreamContents = []
-                for content in stream.contents.keys():
-                    cnodes.append(content.base_url)
-                all_streams[stream.stream_id] = cnodes
+                c_nodes: List[BrokerStreamContentNode] = []
+                for content, assigned_viewers in stream.contents.items():
+                    new_node = BrokerStreamContentNode(_stream_id=stream.stream_id,
+                                                       node_id=content.id,
+                                                       max_viewers=assigned_viewers,
+                                                       current_viewers=0)
+                    c_nodes.append(new_node)
+                all_streams[stream.stream_id] = c_nodes
 
         grid = BrokerGridModel(streams=all_streams, content_nodes=contents)
 

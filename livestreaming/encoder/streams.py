@@ -155,6 +155,9 @@ class FFmpeg:
 
                 if self.ffmpeg_process.stdout.at_eof():
                     self.stream.state = StreamState.STOPPED
+                    await asyncio.sleep(0)  # give control to other co-routines
+                    if self.ffmpeg_process.returncode > 0:
+                        self.stream.state = StreamState.FFMPEG_ERROR
                     break
             logger.info(f"watch for stream {self.stream.stream_id} ended")
         except asyncio.CancelledError:
