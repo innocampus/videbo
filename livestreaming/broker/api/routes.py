@@ -3,7 +3,6 @@ from aiohttp.web import HTTPSeeOther
 from aiohttp.web import HTTPForbidden
 from aiohttp.web import HTTPNotFound
 from aiohttp.web import HTTPConflict
-from aiohttp.web import HTTPServiceUnavailable
 from aiohttp.web import HTTPOk
 from aiohttp.web import RouteTableDef
 from livestreaming.auth import BaseJWTData
@@ -11,10 +10,10 @@ from livestreaming.auth import ensure_jwt_data_and_role
 from livestreaming.auth import Role
 from livestreaming.web import register_route_with_cors
 from livestreaming.web import ensure_json_body
+from livestreaming.broker import broker_logger
 from livestreaming.broker.grid import BrokerGrid
 from livestreaming.broker.api.models import BrokerGridModel
 from livestreaming.broker.api.models import BrokerRedirectJWTData
-from livestreaming.broker import broker_settings
 
 routes = RouteTableDef()
 grid = BrokerGrid()
@@ -37,31 +36,19 @@ async def redirect(request: Request, data: BrokerRedirectJWTData):
     if data.stream_id != stream_id:
         raise HTTPForbidden()
 
-    content_nodes = grid.get_stream_nodes(data.stream_id)
-    if content_nodes is None:
-        raise HTTPNotFound()
-    # TODO: filter by max_viewers - current_viewers != 0
-    if len(content_nodes) == 0:
-        grid.add_to_wait_queue(stream_id)
-        raise HTTPServiceUnavailable(headers={"Retry-After": broker_settings.http_retry_after})
-
-    best_node = content_nodes[0]
-    least_penalty = grid.get_penalty_ratio(node_id=best_node.node_id)
-    for i in range(1, len(content_nodes)):
-        node = content_nodes[i]
-        penalty = grid.get_penalty_ratio(node_id=node.node_id)
-        if penalty < least_penalty:
-            best_node = node
-            least_penalty = penalty
-            node.current_viewers += 1
-    node_data = grid.get_content_node(best_node.node_id)
-    if node_data:
-        url = f"{node_data.base_url}/api/content/playlist/" \
-            f"{stream_id}/{playlist}.m3u8?{request.query_string}"
-        grid.increment_clients(node_id=best_node.node_id)
-        raise HTTPSeeOther(location=url)
+    next_stream_node = grid.get_next_stream_content_node(stream_id)
+    if next_stream_node:
+        next_node = grid.get_content_node(next_stream_node.node_id)
+        if next_node:
+            url = f"{next_node.base_url}/api/content/playlist/" \
+                f"{stream_id}/{playlist}.m3u8?{request.query_string}"
+            grid.increment_clients(node_id=next_stream_node.node_id)
+            raise HTTPSeeOther(location=url)
+        else:
+            broker_logger.error(f"BrokerContentNode<{next_stream_node.node_id}> is not available anymore")
+            raise HTTPConflict()
     else:
-        raise HTTPConflict()
+        raise HTTPNotFound()
 
 
 @routes.get("/api/broker/state")

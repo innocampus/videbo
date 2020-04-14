@@ -29,6 +29,31 @@ class BrokerGrid:
     def get_content_nodes(self) -> BrokerContentNodeCollection:
         return self._model.content_nodes
 
+    def filter_available_nodes(self, node: BrokerStreamContentNode) -> bool:
+        if self.get_content_node(node.node_id):
+            if node.max_viewers < 0:
+                return True
+            elif node.max_viewers - node.current_viewers >= 0:
+                return True
+        # else
+        return False
+
+    def get_next_stream_content_node(self, for_stream: int) -> Optional[BrokerStreamContentNode]:
+        available_nodes = list(filter(self.filter_available_nodes, self.get_stream_nodes(for_stream)))
+        if len(available_nodes) == 1:
+            return available_nodes.pop()
+        if len(available_nodes) > 1:
+            best_node = available_nodes[0]
+            best_penalty = self.get_penalty_ratio(best_node.node_id)
+            for i in range(1, len(available_nodes)):
+                comp_id = available_nodes[i].node_id
+                comp_penalty = self.get_penalty_ratio(comp_id)
+                if best_penalty > comp_penalty:
+                    best_node = available_nodes[i]
+                    best_penalty = comp_penalty
+            return best_node
+        return None
+
     def is_available(self, node_id: int) -> bool:
         node: BrokerStreamContentNode = self._model.streams.get(node_id)
         return node is not None and node.current_viewers < node.max_viewers
