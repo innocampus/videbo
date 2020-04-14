@@ -16,6 +16,7 @@ class StreamState(IntEnum):
     DONE = 10  # encoder waits until manager tells to clean up
     ERROR = 100
     STREAMER_DID_NOT_CONNECT = 101
+    STOPPED_FORCEFULLY = 102
     UNEXPECTED_STREAM = 104
     NO_ENCODER_AVAILABLE = 105
     FFMPEG_ERROR = 106  # ffmpeg stopped due error (return code > 0)

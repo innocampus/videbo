@@ -58,7 +58,9 @@ class EncoderNode(NodeTypeBase):
                         for stream_id, stream in self.streams.items():
                             if stream_id in ret.streams:
                                 ret_stream = ret.streams[stream_id]
-                                stream.update_state(ret_stream.state, ret_stream.state_last_update)
+                                # Only update status when we are not already in an error state.
+                                if ret_stream.state < StreamState.ERROR:
+                                    stream.update_state(ret_stream.state, ret_stream.state_last_update)
                             else:
                                 logger.error(f"<Encoder {self.server.name}> should have <stream {stream_id}>, "
                                              f"but did not found in status data.")

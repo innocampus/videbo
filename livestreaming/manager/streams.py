@@ -114,12 +114,18 @@ class ManagerStream(Stream):
 
         except EncoderNoStreamSlotAvailable:
             self.update_state(StreamState.NO_ENCODER_AVAILABLE)
+        except asyncio.CancelledError:
+            self.update_state(StreamState.STOPPED_FORCEFULLY)
         except Exception as e:
             if self.state < StreamState.ERROR:
                 self.update_state(StreamState.ERROR)
             raise e
         finally:
             logger.info(f"<stream {self.stream_id}> ended with status {self.state_name}")
+
+    def stop(self):
+        self.control_task.cancel()
+        logger.info(f"Forcefully stop <stream {self.stream_id}>")
 
     def get_status(self, full: bool) -> Union[StreamStatus, StreamStatusFull]:
         prot = "rtmps" if self.use_rtmps else 'rtmp'

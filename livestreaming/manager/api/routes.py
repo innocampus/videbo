@@ -58,7 +58,7 @@ async def stop_stream(request: Request, _jwt_data: BaseJWTData):
     try:
         stream_id = int(request.match_info['stream_id'])
         stream = stream_collection.get_stream_by_id(stream_id)
-        stream.stop() # TODO
+        stream.stop()
         return Response()
     except KeyError:
         raise HTTPNotFound()
