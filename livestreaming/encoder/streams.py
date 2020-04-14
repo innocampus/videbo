@@ -120,7 +120,7 @@ class FFmpeg:
 
             unexpected_stream_regex = re.compile(r"\[.*\] Unexpected stream")
             open_file_regex = re.compile(r"\[hls.*\] Opening '" + self.STREAM_NAME_PREFIX +
-                                         r"0\.m3u8\.tmp' for writing")
+                                         r"0\.m3u8.*' for writing")
             time_regex = re.compile(r"time=(\d{2}):(\d{2}):(\d{2}).(\d{2})")
 
             while self.stream.state in expected_states:
