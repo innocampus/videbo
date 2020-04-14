@@ -67,3 +67,4 @@ class BrokerGridModel(JSONBaseModel):
 
 class BrokerRedirectJWTData(BaseJWTData):
     stream_id: int
+    rid: str  # string to identify a unique user

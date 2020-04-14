@@ -1,5 +1,5 @@
 import asyncio
-from aiohttp.web import Request, RouteTableDef
+from aiohttp.web import Request, Response, RouteTableDef
 from aiohttp.web_exceptions import HTTPNotFound
 from livestreaming.auth import Role, BaseJWTData, ensure_jwt_data_and_role
 from livestreaming.web import json_response, ensure_json_body
@@ -47,6 +47,19 @@ async def get_stream_status(request: Request, _jwt_data: BaseJWTData):
         stream_id = int(request.match_info['stream_id'])
         stream = stream_collection.get_stream_by_id(stream_id)
         return json_response(stream.get_status(True))
+    except KeyError:
+        raise HTTPNotFound()
+
+
+@routes.get(r'/api/manager/stream/{stream_id:\d+}/stop')
+@ensure_jwt_data_and_role(Role.lms)
+async def stop_stream(request: Request, _jwt_data: BaseJWTData):
+    """Forcefully stop a stream."""
+    try:
+        stream_id = int(request.match_info['stream_id'])
+        stream = stream_collection.get_stream_by_id(stream_id)
+        stream.stop() # TODO
+        return Response()
     except KeyError:
         raise HTTPNotFound()
 

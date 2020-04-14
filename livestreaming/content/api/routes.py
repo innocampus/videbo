@@ -5,16 +5,18 @@ from pathlib import Path
 from livestreaming import settings
 from livestreaming.auth import Role, BaseJWTData, ensure_jwt_data_and_role
 from livestreaming.web import ensure_json_body, register_route_with_cors, json_response
+from livestreaming.broker.api.models import BrokerRedirectJWTData
 from livestreaming.content.streams_fetcher import stream_fetcher_collection, StreamFetcher, AlreadyFetchingStreamError
 from livestreaming.content import content_logger, content_settings
-from .models import StartStreamDistributionInfo, ContentPlaylistJWTData, ContentStatus
+from livestreaming.content.clients import client_collection
+from .models import StartStreamDistributionInfo, ContentStatus
 
 routes = RouteTableDef()
 
 
 @register_route_with_cors(routes, "GET", r"/api/content/playlist/{stream_id:\d+}/{playlist:[a-z0-9]+}.m3u8")
 @ensure_jwt_data_and_role(Role.client)
-async def get_playlist(request: Request, jwt_token: ContentPlaylistJWTData):
+async def get_playlist(request: Request, jwt_token: BrokerRedirectJWTData):
     """Client asks for a playlist."""
     stream_id = int(request.match_info['stream_id'])
     if stream_id != jwt_token.stream_id or 'jwt' not in request.query:
@@ -30,6 +32,9 @@ async def get_playlist(request: Request, jwt_token: ContentPlaylistJWTData):
 
     try:
         stream_fetcher = stream_fetcher_collection.get_fetcher_by_id(stream_id)
+
+        if not client_collection.serve_client(stream_id, jwt_token.rid):
+            raise HTTPSeeOther(location=stream_fetcher_collection.get_broker_url(stream_id, jwt))
 
         playlist = request.match_info['playlist']
         if playlist == 'main':
@@ -68,6 +73,9 @@ async def start_stream(_request: Request, _jwt_data: BaseJWTData, data: StartStr
         new_fetcher = StreamFetcher(data.stream_id, data.encoder_base_url)
         stream_fetcher_collection.start_fetching_stream(new_fetcher)
         stream_fetcher_collection.broker_base_url = data.broker_base_url
+
+        client_collection.add_stream(data.stream_id)
+
         return Response()
 
     except AlreadyFetchingStreamError:
@@ -82,6 +90,7 @@ async def destroy_stream(request: Request, __: BaseJWTData):
         stream_id = int(request.match_info['stream_id'])
     except ValueError:
         raise HTTPNotAcceptable()
+    client_collection.remove_stream(stream_id)
     stream_fetcher_collection.get_fetcher_by_id(stream_id).destroy()
     raise HTTPOk()
 
@@ -89,6 +98,8 @@ async def destroy_stream(request: Request, __: BaseJWTData):
 @routes.get(r'/api/content/status')
 @ensure_jwt_data_and_role(Role.manager)
 async def get_status(_request: Request, _jwt_data: BaseJWTData):
+    client_collection.purge()
+
     streams = {}
     for stream in stream_fetcher_collection.fetcher.values():
         streams[stream.stream_id] = 0  # TODO

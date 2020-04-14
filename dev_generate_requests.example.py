@@ -26,8 +26,8 @@ jwt = internal_jwt_encode(jwt_data, 24*3600)
 # ------------------------
 
 
-from livestreaming.content.api.models import ContentPlaylistJWTData
-jwt_data = ContentPlaylistJWTData.construct(role="manager", stream_id=2)
+from livestreaming.broker.api.models import BrokerRedirectJWTData
+jwt_data = BrokerRedirectJWTData.construct(role="manager", stream_id=2, rid="blub")
 jwt = internal_jwt_encode(jwt_data, 24*3600)
 print(jwt)
 
@@ -48,7 +48,7 @@ print(status)
 print(ret)
 
 if not ret.error:
-    jwt_data = ContentPlaylistJWTData.construct(role="manager", stream_id=ret.stream.stream_id)
+    jwt_data = BrokerRedirectJWTData.construct(role="manager", stream_id=ret.stream.stream_id, rid="blub")
     jwt = internal_jwt_encode(jwt_data, 24*3600)
     print(f"Broker URL: {ret.stream.viewer_broker_url}?jwt={jwt}")
 
