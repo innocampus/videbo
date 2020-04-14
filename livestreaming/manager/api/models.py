@@ -23,7 +23,7 @@ class StreamStatusFull(StreamStatus):
     streamer_url: str
     streamer_key: str
     streamer_ip_restricted: bool
-    streamer_connection_time_left: Optional[int]  # time left (in seconds) to connect to encoder
+    streamer_connection_until: Optional[int]  # time to connect to encoder
     viewer_broker_url: str
 
 

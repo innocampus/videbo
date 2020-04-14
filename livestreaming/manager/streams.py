@@ -134,7 +134,7 @@ class ManagerStream(Stream):
             data['streamer_key'] = self.rtmp_stream_key
             data['streamer_ip_restricted'] = self.is_ip_restricted
             if self.streamer_connection_until:
-                data['streamer_connection_time_left'] = self.streamer_connection_until - time()
+                data['streamer_connection_until'] = self.streamer_connection_until
             data['viewer_broker_url'] = self._stream_collection.get_broker_stream_main_playlist_url(self.stream_id)
             return StreamStatusFull(**data)
         else:
