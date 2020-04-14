@@ -28,7 +28,9 @@ class EncoderToContentReturnStatus:
 
 
 class EncoderToContentAlgorithmBase:
-    async def solve(self, streams: List["ManagerStream"], contents: List["ContentNode"]):
+    async def solve(self,
+                    streams: List["ManagerStream"],
+                    contents: List["ContentNode"]) -> EncoderToContentReturnStatus:
         max_viewers = reduce(lambda c, n: c + n.max_clients, contents, 0)
         clients_sum = reduce(lambda c, s: c + s.get_estimated_viewers(), streams, 0)
         if max_viewers < clients_sum:
@@ -36,7 +38,9 @@ class EncoderToContentAlgorithmBase:
         else:
             return await self._solve(streams, contents)
 
-    async def _solve(self, streams: List["ManagerStream"], contents: List["ContentNode"]):
+    async def _solve(self,
+                     streams: List["ManagerStream"],
+                     contents: List["ContentNode"]) -> EncoderToContentReturnStatus:
         NotImplementedError()
 
 
@@ -47,7 +51,9 @@ class RecursiveEncoderToContentAlgorithm(EncoderToContentAlgorithmBase):
 
     Current assignments will not be changed, though.
     """
-    async def _solve(self, streams: List["ManagerStream"], contents: List["ContentNode"]):
+    async def _solve(self,
+                     streams: List["ManagerStream"],
+                     contents: List["ContentNode"]) -> EncoderToContentReturnStatus:
         # sort nodes by free places
         contents_sorted = sorted(contents, key=lambda c: c.max_clients - c.current_clients, reverse=True)
         content_assignable = {}
@@ -68,19 +74,27 @@ class RecursiveEncoderToContentAlgorithm(EncoderToContentAlgorithmBase):
             # if none is found try to assign less viewers
             return r_assign(int(viewers / 2))
 
+        result = EncoderToContentReturnStatus(clients_left_out=0)
         for stream in sorted(streams, key=lambda s: s.get_estimated_viewers(), reverse=True):
             unassigned_clients = stream.get_estimated_viewers() - sum(stream.contents.values())
             while unassigned_clients > 1:
                 # keep it going until 1, loop may be infinite else
                 node, assigned_clients = r_assign(unassigned_clients)
                 if node is not None:
-                    stream.contents[node] = assigned_clients
+                    if node in stream.contents:
+                        stream.contents[node] += assigned_clients
+                    else:
+                        stream.contents[node] = assigned_clients
                     content_assignable[node] -= assigned_clients
                     unassigned_clients -= assigned_clients
                 else:
                     msg = f"Could not find assignment for stream {stream.stream_id} " \
                         f"({stream.get_estimated_viewers()} viewers)"
                     raise CannotAssignContentNodesToStreamError(msg)
+            for content, assigned_clients in stream.contents:
+                result.stream_to_content.append((content, assigned_clients))
+
+        return result
 
 
 class EncoderToContentFlowAlgorithm(EncoderToContentAlgorithmBase):
@@ -123,15 +137,19 @@ class OptimalEncoderToContentAlgorithm(EncoderToContentAlgorithmBase):
         distribution_coefficient: float
         additional_clients_per_stream: int
 
-    opt_settings: Optional[OptimizationSettings] = None
+    _opt_settings: Optional[OptimizationSettings] = None
 
-    async def solve(self,
-                    streams: List["ManagerStream"],
-                    contents: List["ContentNode"]) -> EncoderToContentReturnStatus:
+    @property
+    def opt_settings(self):
+        return self._opt_settings
+
+    async def _solve(self,
+                     streams: List["ManagerStream"],
+                     contents: List["ContentNode"]) -> EncoderToContentReturnStatus:
         import pulp
-        if self.opt_settings is None:
-            self.opt_settings = self.OptimizationSettings()
-            self.opt_settings.load()
+        if self._opt_settings is None:
+            self._opt_settings = self.OptimizationSettings()
+            self._opt_settings.load()
         prob = pulp.LpProblem(sense=pulp.LpMinimize)
         x_vars: Dict[Tuple[ContentNode, ManagerStream], pulp.LpVariable] = {}
         p_vars: Dict[Tuple[ContentNode, ManagerStream], pulp.LpVariable] = {}
@@ -143,17 +161,17 @@ class OptimalEncoderToContentAlgorithm(EncoderToContentAlgorithmBase):
                 p_vars[i, e] = pulp.LpVariable(f"P_{i.id}_{e.stream_id}", cat=pulp.LpBinary)
         # minimize:
         prob += pulp.lpSum([p_vars[i, e] for i in contents for e in streams]
-                           + [self.opt_settings.distribution_coefficient * c_vars[i] for i in contents])
+                           + [self._opt_settings.distribution_coefficient * c_vars[i] for i in contents])
         # in respect to:
         for i in contents:
-            prob += pulp.lpSum([i.max_clients * c_vars[i] - x_vars[i, e] for e in streams]) >= 0
+            prob += i.max_clients * c_vars[i] - pulp.lpSum([x_vars[i, e] for e in streams]) >= 0
             for e in streams:
                 prob += e.viewers * p_vars[i, e] - x_vars[i, e] >= 0
         for e in streams:
             prob += pulp.lpSum([x_vars[i, e] for i in contents]) - e.get_estimated_viewers() >= 0
 
         # solve
-        solver = pulp.GLPK_CMD(options=["--tmlim", self.opt_settings.glpk_tmlim])
+        solver = pulp.GLPK_CMD(msg=0, options=["--tmlim", self._opt_settings.glpk_tmlim])
         await asyncio.get_event_loop().run_in_executor(None, lambda: prob.solve(solver))
         result = EncoderToContentReturnStatus(clients_left_out=0)
         if prob.status == pulp.LpStatusOptimal:
@@ -180,7 +198,9 @@ class MToNEncoderToContentAlgorithm(EncoderToContentAlgorithmBase):
 
     Current assignments will not be changed, since every streams will link to every node.
     """
-    async def solve(self, streams: List["ManagerStream"], contents: List["ContentNode"]) -> EncoderToContentReturnStatus:
+    async def _solve(self,
+                     streams: List["ManagerStream"],
+                     contents: List["ContentNode"]) -> EncoderToContentReturnStatus:
         # Distribute all streams on all content nodes.
         stream_to_content: StreamToContentType = []
         for stream in streams:
@@ -189,7 +209,6 @@ class MToNEncoderToContentAlgorithm(EncoderToContentAlgorithmBase):
                 all_content_ids.append((content.id, -1))
             stream_to_content.append((stream.stream_id, all_content_ids))
 
-        # Check if every stream can have AVAILABLE_CLIENTS_PER_STREAM
         total_max_clients = reduce(lambda c, n: c + n.max_clients, contents, 0)
         current_clients = reduce(lambda c, s: c + s.get_estimated_viewers(), streams, 0)
         clients_left_out = max(0, current_clients - total_max_clients)
