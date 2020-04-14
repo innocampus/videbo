@@ -36,12 +36,13 @@ class EncoderStatus(JSONBaseModel):
 
 class StreamRecordingMeta(JSONBaseModel):
     """Data that is needed for the LMS that we only passthrough here and do not interpret."""
-    video_availability: int
-    video_title: str
-    video_description: str
-    video_date: int
+    availability: int
+    title: str
+    description: str
+    date: int
+    commentsallowed: int
     lms_user_id_streamer: int
-    lms_instance_id: int
+    lms_collection_id: int
 
 
 class StreamRecordingStartParams(JSONBaseModel):
@@ -50,7 +51,7 @@ class StreamRecordingStartParams(JSONBaseModel):
 
 
 class StreamRecordingStopParams(JSONBaseModel):
-    withdraw_recording: bool
+    withdraw_recording: bool  # do not save video
 
 
 class StreamRecordingState(Enum):
@@ -68,7 +69,6 @@ class StreamRecordingStatus(JSONBaseModel):
     stop_time: Optional[int]
     state: StreamRecordingState
     processing_progress: int # in %
-    lms_url: Optional[str] # after successful upload where to find the video
 
 
 class StreamRecordingsStatusReturn(JSONBaseModel):
