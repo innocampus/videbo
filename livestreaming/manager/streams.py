@@ -6,6 +6,7 @@ from livestreaming.web import HTTPClient, HTTPResponseError
 from livestreaming.streams import Stream, StreamCollection, StreamState
 from livestreaming.broker.api.models import *
 from livestreaming.manager.api.models import StreamStatusFull, StreamStatus
+from livestreaming.misc import TaskManager
 from . import logger, manager_settings
 from .node_controller import NodeController
 from .node_types import EncoderNode, ContentNode
@@ -105,6 +106,10 @@ class ManagerStream(Stream):
 
                 await StreamStateObserver.wait_until(state_watcher, StreamState.STOPPED)
 
+                # Wait shortly until removing all content nodes
+                await asyncio.sleep(2)
+                self.contents.clear()  # ContentNode watchdog will remove the streams
+
                 # encoder.destroy_stream will be called by the context manager
 
         except EncoderNoStreamSlotAvailable:
@@ -147,41 +152,14 @@ class ManagerStreamCollection(StreamCollection[ManagerStream]):
         self.last_stream_id: int = 1
         self.node_controller: Optional[NodeController] = None
         self._streams_control_tasks: Dict[asyncio.Task, ManagerStream] = {}
-        self._new_stream_added_event: asyncio.Event = asyncio.Event()
-        self._watcher_task: Optional[asyncio.Task] = None
         self._algorithm_task: Optional[asyncio.Task] = None
         self._encoder_nodes_controller: EncoderNodesController = EncoderNodesController()
 
     def init(self, node_controller: NodeController):
         self.node_controller = node_controller
-        self._watcher_task = asyncio.create_task(self._watcher())
         self._algorithm_task = asyncio.create_task(self._algorithm_task_loop())
+        TaskManager.fire_and_forget_task(self._algorithm_task)
         self._encoder_nodes_controller.init(node_controller)
-
-    async def _watcher(self):
-        while True:
-            new_stream_added_event_task = asyncio.create_task(self._new_stream_added_event.wait())
-            tasks = [new_stream_added_event_task]
-            tasks = tasks | self._streams_control_tasks.keys()
-            done, pending = await asyncio.wait(tasks, return_when=asyncio.FIRST_COMPLETED)
-            task: asyncio.Task
-            for task in done:
-                if task is not new_stream_added_event_task:
-                    stream = self._streams_control_tasks.pop(task)
-                    stream.encoder = None
-                    stream.contents.clear()
-                    self.streams.pop(stream.stream_id)
-                    try:
-                        # Just call this to get the exception if there was any.
-                        task.result()
-                    except Exception:
-                        logger.exception(f"Exception in stream control task for <stream {stream.stream_id}>")
-                    logger.info(f"Removed stream control task for <stream {stream.stream_id}>")
-
-            self._new_stream_added_event.clear()
-            new_stream_added_event_task.cancel()
-
-        # TODO way to cancel all control tasks
 
     def create_new_stream(self, ip_range: Optional[str], use_rtmps: bool, lms_stream_instance_id: int,
                           expected_viewers: Optional[int]) -> ManagerStream:
@@ -189,9 +167,22 @@ class ManagerStreamCollection(StreamCollection[ManagerStream]):
         new_stream = ManagerStream(self, self.last_stream_id, ip_range, use_rtmps, lms_stream_instance_id,
                                    expected_viewers)
         new_stream.start()
+
+        def stream_control_task_done(future):
+            new_stream.encoder = None
+            new_stream.contents.clear()
+            self.streams.pop(new_stream.stream_id)
+            try:
+                # Just call this to get the exception if there was any.
+                future.result()
+            except asyncio.CancelledError:
+                pass
+            except Exception:
+                logger.exception(f"Exception in stream control task for <stream {new_stream.stream_id}>")
+            logger.info(f"Removed stream control task for <stream {new_stream.stream_id}>")
+
         self.streams[new_stream.stream_id] = new_stream
-        self._streams_control_tasks[new_stream.control_task] = new_stream
-        self._new_stream_added_event.set()
+        new_stream.control_task.add_done_callback(stream_control_task_done)
         return new_stream
 
     @asynccontextmanager
@@ -210,24 +201,21 @@ class ManagerStreamCollection(StreamCollection[ManagerStream]):
 
     async def _algorithm_task_loop(self):
         from .algorithms import get_algorithm
-        try:
-            algorithm = get_algorithm(manager_settings.streams_content_node_distribution_algorithm)
-            while True:
-                contents = self.node_controller.get_operating_nodes(ContentNode)
-                ret = await algorithm.solve(list(self.streams.values()), contents)
-                # TODO ret.clients_left_out
-                if ret.stream_to_content:
-                    await self._compute_diff_content_nodes_and_inform(ret.stream_to_content)
 
-                    try:
-                        await self._tell_broker(contents)
-                    except CouldNotContactBrokerError:
-                        pass
+        algorithm = get_algorithm(manager_settings.streams_content_node_distribution_algorithm)
+        while True:
+            contents = self.node_controller.get_operating_nodes(ContentNode)
+            ret = await algorithm.solve(list(self.streams.values()), contents)
+            # TODO ret.clients_left_out
+            if ret.stream_to_content:
+                await self._compute_diff_content_nodes_and_inform(ret.stream_to_content)
 
-                await asyncio.sleep(2)
-        except Exception as e:
-            logger.exception("Algorithm task loop exception")
-            raise e
+                try:
+                    await self._tell_broker(contents)
+                except CouldNotContactBrokerError:
+                    pass
+
+            await asyncio.sleep(2)
 
     async def _compute_diff_content_nodes_and_inform(self, dist: "StreamToContentType"):
         awaitables = []

@@ -145,6 +145,7 @@ class ContentNode(NodeTypeBase):
                     self.max_clients = ret.max_clients
                     self.current_clients = ret.current_clients
 
+                    awaitables = []
                     async with self.streams_lock:
                         for stream_id, stream in self.streams.items():
                             if stream_id not in ret.streams:
@@ -153,9 +154,13 @@ class ContentNode(NodeTypeBase):
 
                         # Check if all nodes in ret.streams still exist in self.streams and their status is valid.
                         for stream_id in ret.streams.keys():
-                            if stream_id not in self.streams or self.streams[stream_id].state >= StreamState.ERROR:
-                                logger.warn(f"<Content {self.server.name}> force destroy <stream {stream_id}>")
-                                await self.destroy_stream(stream_id, True)
+                            if stream_id not in self.streams or self not in self.streams[stream_id].contents or \
+                                    self.streams[stream_id].state >= StreamState.ERROR:
+                                logger.info(f"<Content {self.server.name}> force destroy <stream {stream_id}>")
+                                awaitables.append(self.destroy_stream(stream_id, True))
+
+                    # run awaitables here to release streams_lock that is needed in destroy_stream
+                    await gather(*awaitables)
 
                     if first_request:
                         logger.info(f"<Content watcher {self.server.name}> max_clients={self.max_clients}, "
