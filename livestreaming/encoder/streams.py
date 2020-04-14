@@ -91,8 +91,9 @@ class FFmpeg:
 
         self.watch_task = asyncio.create_task(self.watch_ffmpeg())
 
-        if encoder_settings.rtmps_cert and self.stream.use_rtmps:
-            args = f"openssl-listen:{self.stream.public_port},cert={encoder_settings.rtmps_cert},verify=0"
+        if self.stream.use_rtmps and settings.general.certificate_crt_path and settings.general.certificate_key_path:
+            args = f"openssl-listen:{self.stream.public_port},cert={settings.general.certificate_crt_path}," \
+                   f"key={settings.general.certificate_key_path},verify=0"
         else:
             args = f"tcp-listen:{self.stream.public_port}"
         if self.stream.ip_range:

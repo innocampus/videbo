@@ -17,7 +17,6 @@ class EncoderSettings(SettingsSectionBase):
     hls_temp_dir: PurePath
     rtmp_internal_ports: str
     rtmp_public_ports: str
-    rtmps_cert: str
     max_streams: int
 
 
@@ -28,10 +27,6 @@ logger = logging.getLogger('livestreaming-encoder')
 def start() -> None:
     from .api.routes import routes
     encoder_settings.load()
-
-    # Use general wildcard certificate if no cert specified.
-    if encoder_settings.rtmps_cert == '':
-        encoder_settings.rtmps_cert = settings.general.wildcard_certificate_path
 
     # ensure temp dir exists and is empty.
     temp_dir = Path(encoder_settings.hls_temp_dir)
