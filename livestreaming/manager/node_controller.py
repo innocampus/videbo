@@ -137,6 +137,10 @@ class NodeController:
     async def _init_static_nodes_of_type(self, node_type: Type[NodeTypeBase], urls: str):
         node_urls = list(map(str.strip, urls.split(',')))
         for url in node_urls:
+            url = url.strip()
+            if len(url) == 0:
+                continue
+
             url_parsed = urlparse(url)
             node = node_type()
             node.base_url = ensure_url_does_not_end_with_slash(url)
