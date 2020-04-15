@@ -9,7 +9,7 @@ from livestreaming.broker.api.models import BrokerRedirectJWTData
 from livestreaming.content.streams_fetcher import stream_fetcher_collection, StreamFetcher, AlreadyFetchingStreamError
 from livestreaming.content import content_logger, content_settings
 from livestreaming.content.clients import client_collection
-from .models import StartStreamDistributionInfo, ContentStatus
+from .models import StartStreamDistributionInfo, ContentStatus, StreamsMaxClients
 
 routes = RouteTableDef()
 
@@ -74,7 +74,8 @@ async def start_stream(_request: Request, _jwt_data: BaseJWTData, data: StartStr
         stream_fetcher_collection.start_fetching_stream(new_fetcher)
         stream_fetcher_collection.broker_base_url = data.broker_base_url
 
-        client_collection.add_stream(data.stream_id)
+        client_stream_info = client_collection.add_stream(data.stream_id)
+        client_stream_info.max_clients = data.max_clients
 
         return Response()
 
@@ -95,14 +96,29 @@ async def destroy_stream(request: Request, __: BaseJWTData):
     raise HTTPOk()
 
 
+@routes.post(r'/api/content/streams/set_max_clients')
+@ensure_jwt_data_and_role(Role.manager)
+@ensure_json_body()
+async def set_max_clients(_request: Request, _jwt_data: BaseJWTData, data: StreamsMaxClients):
+    for stream_id, max_clients in data.max_clients.items():
+        stream = client_collection.streams.get(stream_id)
+        if stream:
+            stream.max_clients = max_clients
+        else:
+            content_logger.warning(f"set_max_clients: could not find <stream {stream_id}>")
+
+    return Response()
+
+
 @routes.get(r'/api/content/status')
 @ensure_jwt_data_and_role(Role.manager)
 async def get_status(_request: Request, _jwt_data: BaseJWTData):
     client_collection.purge()
 
     streams = {}
-    for stream in stream_fetcher_collection.fetcher.values():
-        streams[stream.stream_id] = 0  # TODO
+    for stream in client_collection.streams.values():
+        streams[stream.stream_id] = len(stream.clients)
 
-    ret = ContentStatus(max_clients=100, current_clients=0, streams=streams)  # TODO
+    ret = ContentStatus(max_clients=client_collection.max_clients, current_clients=client_collection.current_clients,
+                        streams=streams)
     return json_response(ret)

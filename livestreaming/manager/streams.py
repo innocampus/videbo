@@ -42,6 +42,12 @@ class StreamStateObserver:
                 return new_state
 
 
+class ContentNodeStream:
+    def __init__(self, max_clients: int = -1):
+        self.current_clients: int = 0
+        self.max_clients: int = max_clients
+
+
 class ManagerStream(Stream):
     MAX_WAIT_UNTIL_CONNECTION = 600
     ADDITIONAL_CLIENTS_PER_STREAM = 10  # always available client slots per stream
@@ -49,7 +55,7 @@ class ManagerStream(Stream):
     def __init__(self, _stream_collection: 'ManagerStreamCollection', stream_id: int, ip_range: Optional[str],
                  use_rtmps: bool, lms_stream_instance_id: int, expected_viewers: Optional[int]):
         super().__init__(stream_id, ip_range, use_rtmps, logger)
-        self._stream_collection: ManagerStreamCollection = _stream_collection
+        self.stream_collection: ManagerStreamCollection = _stream_collection
         self.lms_stream_instance_id = lms_stream_instance_id
         self.encoder_rtmp_port: Optional[int] = None
         self.streamer_connection_until: Optional[int] = None
@@ -64,7 +70,7 @@ class ManagerStream(Stream):
 
         # nodes
         self.encoder: Optional[EncoderNode] = None
-        self.contents: Dict[ContentNode, int] = {}  # map content node to viewers on that node
+        self.contents: Dict[ContentNode, ContentNodeStream] = {}  # map content node to ContentNodeStream
 
     def get_estimated_viewers(self):
         current_estimated_users = self.viewers + self.ADDITIONAL_CLIENTS_PER_STREAM + self.waiting_clients
@@ -89,7 +95,7 @@ class ManagerStream(Stream):
         logger.info(f"Start new <stream {self.stream_id}>")
         state_watcher = self.state_observer.new_watcher()
         try:
-            async with self._stream_collection.hold_encoder_stream_slot(self) as encoder:
+            async with self.stream_collection.hold_encoder_stream_slot(self) as encoder:
                 self.encoder: EncoderNode = encoder
                 ret = await self.encoder.start_stream(self)
                 self.rtmp_stream_key = ret.stream.rtmp_stream_key
@@ -147,7 +153,7 @@ class ManagerStream(Stream):
             data['streamer_ip_restricted'] = self.is_ip_restricted
             if self.streamer_connection_until:
                 data['streamer_connection_until'] = self.streamer_connection_until
-            data['viewer_broker_url'] = self._stream_collection.get_broker_stream_main_playlist_url(self.stream_id)
+            data['viewer_broker_url'] = self.stream_collection.get_broker_stream_main_playlist_url(self.stream_id)
             return StreamStatusFull(**data)
         else:
             return StreamStatus(**data)
@@ -206,6 +212,11 @@ class ManagerStreamCollection(StreamCollection[ManagerStream]):
             return f"{self.node_controller.broker_node.base_url}/api/broker/redirect/{stream_id}/main.m3u8"
         raise BrokerNotFound()
 
+    def get_broker_base_url(self):
+        if self.node_controller.broker_node:
+            return self.node_controller.broker_node.base_url
+        raise BrokerNotFound()
+
     async def _algorithm_task_loop(self):
         from .algorithms import get_algorithm
 
@@ -226,31 +237,22 @@ class ManagerStreamCollection(StreamCollection[ManagerStream]):
 
     async def _compute_diff_content_nodes_and_inform(self, dist: "StreamToContentType"):
         awaitables = []
-        for stream_id, new_content_ids in dist:
-            stream = self.streams[stream_id]
-            new_contents: Set[ContentNode] = set()
-            for new_content_id, assigned_viewers in new_content_ids:
-                # TODO: pass assigned viewers
-                node = self.node_controller.node_by_id[new_content_id]
-                if isinstance(node, ContentNode):
-                    new_contents.add(node)
-                else:
-                    logger.error(f"Algorithm task: Got unexpected node type {type(node).__name__} when expected "
-                                 f"ContentNode")
-
+        for stream, new_contents in dist.items():
             if stream.state != StreamState.STREAMING:
                 continue
 
             # all content nodes that should no longer carry this stream
             for rem_content in [n for n in stream.contents.keys() if n not in new_contents]:
-                awaitables.append(rem_content.destroy_stream(stream.stream_id))
                 stream.contents.pop(rem_content)
+                awaitables.append(rem_content.destroy_stream(stream.stream_id))
             # all content nodes that should start to carry this stream
-            for new_content in [n for n in new_contents if n not in stream.contents]:
-                awaitables.append(new_content.start_stream(stream, self.node_controller.broker_node))
-                stream.contents[new_content] = 0
+            for new_content, max_clients in \
+                    [(n, max_clients) for n, max_clients in new_contents.items() if n not in stream.contents]:
+                stream.contents[new_content] = ContentNodeStream(max_clients)
+                awaitables.append(new_content.start_stream(stream))
 
-        await asyncio.gather(*awaitables)  # TODO handle exceptions
+        await asyncio.gather(*awaitables, return_exceptions=True)
+        # Ignore exceptions. The content watchdog will try to add/remove the streams later again.
 
     async def _tell_broker(self, content_list: List[ContentNode]):
         # get all content nodes
@@ -266,11 +268,11 @@ class ManagerStreamCollection(StreamCollection[ManagerStream]):
         for stream in self.streams.values():
             if stream.state == StreamState.STREAMING:
                 c_nodes: List[BrokerStreamContentNode] = []
-                for content, assigned_viewers in stream.contents.items():
+                for content, viewers in stream.contents.items():
                     new_node = BrokerStreamContentNode(_stream_id=stream.stream_id,
                                                        node_id=content.id,
-                                                       max_viewers=assigned_viewers,
-                                                       current_viewers=0)
+                                                       max_viewers=viewers.max_clients,
+                                                       current_viewers=viewers.current_clients)
                     c_nodes.append(new_node)
                 all_streams[stream.stream_id] = c_nodes
 

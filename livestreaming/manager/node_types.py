@@ -151,18 +151,22 @@ class ContentNode(NodeTypeBase):
                     async with self.streams_lock:
                         for stream_id, stream in self.streams.items():
                             if stream_id not in ret.streams:
-                                logger.error(f"<Content {self.server.name}> should have <stream {stream_id}>, "
-                                             f"but did not found in status data.")
+                                logger.warning(f"<Content {self.server.name}> should have <stream {stream_id}>, "
+                                               f"but did not found in status data.")
+                                awaitables.append(self.start_stream(stream))
 
                         # Check if all nodes in ret.streams still exist in self.streams and their status is valid.
-                        for stream_id in ret.streams.keys():
+                        # And Update viewers.
+                        for stream_id, viewers in ret.streams.items():
                             if stream_id not in self.streams or self not in self.streams[stream_id].contents or \
                                     self.streams[stream_id].state >= StreamState.ERROR:
                                 logger.info(f"<Content {self.server.name}> force destroy <stream {stream_id}>")
                                 awaitables.append(self.destroy_stream(stream_id, True))
+                            else:
+                                self.streams[stream_id].viewers = viewers
 
                     # run awaitables here to release streams_lock that is needed in destroy_stream
-                    await gather(*awaitables)
+                    await gather(*awaitables, return_exceptions=True)
 
                     if first_request:
                         logger.info(f"<Content watcher {self.server.name}> max_clients={self.max_clients}, "
@@ -175,14 +179,23 @@ class ContentNode(NodeTypeBase):
                 logger.exception(f"<Content watcher {self.server.name}> http error")
             await sleep(1)
 
-    async def start_stream(self, stream: "ManagerStream", broker: "BrokerNode"):
+    async def start_stream(self, stream: "ManagerStream"):
+        try:
+            max_clients = stream.contents[self].max_clients
+        except KeyError:
+            logger.error(f"Could not find <Content {self.server.name}> in <stream {stream.stream_id}>")
+            async with self.streams_lock:
+                self.streams.pop(stream.stream_id, None)
+            return
+
         async with self.streams_lock:
             self.streams[stream.stream_id] = stream
 
         url = f"{self.base_url}/api/content/stream/start/{stream.stream_id}"
         encoder_url = f"{stream.encoder.base_url}/data/hls/{stream.stream_id}/{stream.encoder_subdir_name}"
         info = StartStreamDistributionInfo(stream_id=stream.stream_id, encoder_base_url=encoder_url,
-                                           broker_base_url=broker.base_url)
+                                           broker_base_url=stream.stream_collection.get_broker_base_url(),
+                                           max_clients=max_clients)
 
         try:
             status, ret = await HTTPClient.internal_request_manager('POST', url, info)

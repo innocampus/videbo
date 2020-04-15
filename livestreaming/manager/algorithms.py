@@ -13,8 +13,8 @@ if TYPE_CHECKING:
     from .node_types import ContentNode
 
 
-ContentNodeListType = List[Tuple[int, int]]
-StreamToContentType = List[Tuple[int, ContentNodeListType]]  # stream id to list of content node ids
+ToContentNodesType = Dict["ContentNode", int]  # maximum clients on this content node per stream
+StreamToContentType = Dict["ManagerStream", ToContentNodesType]
 
 
 class CannotAssignContentNodesToStreamError(Exception):
@@ -75,24 +75,27 @@ class RecursiveEncoderToContentAlgorithm(EncoderToContentAlgorithmBase):
             return r_assign(int(viewers / 2))
 
         result = EncoderToContentReturnStatus(clients_left_out=0)
+        result.stream_to_content = {}
+
         for stream in sorted(streams, key=lambda s: s.get_estimated_viewers(), reverse=True):
-            unassigned_clients = stream.get_estimated_viewers() - sum(stream.contents.values())
+            unassigned_clients = stream.get_estimated_viewers() - stream.viewers
+            stream_contents: ToContentNodesType = dict(
+                (node, obj.current_clients) for node, obj in stream.contents.items())
             while unassigned_clients > 1:
                 # keep it going until 1, loop may be infinite else
                 node, assigned_clients = r_assign(unassigned_clients)
                 if node is not None:
-                    if node in stream.contents:
-                        stream.contents[node] += assigned_clients
+                    if node in stream_contents:
+                        stream_contents[node] += assigned_clients
                     else:
-                        stream.contents[node] = assigned_clients
+                        stream_contents[node] = assigned_clients
                     content_assignable[node] -= assigned_clients
                     unassigned_clients -= assigned_clients
                 else:
                     msg = f"Could not find assignment for stream {stream.stream_id} " \
                         f"({stream.get_estimated_viewers()} viewers)"
                     raise CannotAssignContentNodesToStreamError(msg)
-            for content, assigned_clients in stream.contents:
-                result.stream_to_content.append((content, assigned_clients))
+            result.stream_to_content[stream] = stream_contents
 
         return result
 
@@ -174,6 +177,7 @@ class OptimalEncoderToContentAlgorithm(EncoderToContentAlgorithmBase):
         solver = pulp.GLPK_CMD(msg=0, options=["--tmlim", self._opt_settings.glpk_tmlim])
         await asyncio.get_event_loop().run_in_executor(None, lambda: prob.solve(solver))
         result = EncoderToContentReturnStatus(clients_left_out=0)
+        """# TODO
         if prob.status == pulp.LpStatusOptimal:
             result.stream_to_content = []
             stream_to_content: Dict[int, ContentNodeListType] = {}
@@ -188,6 +192,7 @@ class OptimalEncoderToContentAlgorithm(EncoderToContentAlgorithmBase):
                     stream_to_content[e.stream_id].append((i.id, val))
             for stream_id, links in stream_to_content.items():
                 result.stream_to_content.append((stream_id, links))
+        """
 
         return result
 
@@ -202,12 +207,12 @@ class MToNEncoderToContentAlgorithm(EncoderToContentAlgorithmBase):
                      streams: List["ManagerStream"],
                      contents: List["ContentNode"]) -> EncoderToContentReturnStatus:
         # Distribute all streams on all content nodes.
-        stream_to_content: StreamToContentType = []
+        stream_to_content: StreamToContentType = {}
         for stream in streams:
-            all_content_ids: List[Tuple[int, int]] = []
+            all_contents: ToContentNodesType = {}
             for content in contents:
-                all_content_ids.append((content.id, -1))
-            stream_to_content.append((stream.stream_id, all_content_ids))
+                all_contents[content] = -1
+            stream_to_content[stream] = all_contents
 
         total_max_clients = reduce(lambda c, n: c + n.max_clients, contents, 0)
         current_clients = reduce(lambda c, s: c + s.get_estimated_viewers(), streams, 0)
