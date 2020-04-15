@@ -20,6 +20,9 @@ from livestreaming.encoder.api.models import StreamRecordingStartParams
 from . import logger
 
 
+MAX_STREAM_DURATION = 6 * 3600  # in seconds
+
+
 class PortType(Enum):
     INTERNAL = 0
     PUBLIC = 1
@@ -153,6 +156,13 @@ class FFmpeg:
                     time = times_found[-1]
                     self.current_time = float(time[0]) * 3600 + float(time[1]) * 60 + float(time[2]) + \
                                         float(time[3]) / 100.0
+
+                    if self.current_time > MAX_STREAM_DURATION:
+                        # The stream lasts too long. Stop it.
+                        logger.info(f"<stream {self.stream.stream_id}> lasts too long, {self.current_time}, stop it")
+                        self.stream.state = StreamState.STOPPED
+                        await self.stop()
+                        break
 
                 if self.ffmpeg_process.stdout.at_eof():
                     self.stream.state = StreamState.STOPPED
