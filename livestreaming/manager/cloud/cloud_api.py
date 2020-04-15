@@ -280,7 +280,7 @@ class OvhAPI(CloudBlockingAPI):
         instance = self.__get_instance(name)
         ips = instance["ipAddresses"]
         if not ips:
-            return "", ""
+            return "127.0.0.1", "::1"
         ipv4 = list(filter(lambda x: x["version"] == 4, ips))[0]["ip"]
         ipv6 = list(filter(lambda x: x["version"] == 6, ips))[0]["ip"]
         return ipv4, ipv6
@@ -292,7 +292,7 @@ class OvhAPI(CloudBlockingAPI):
             for instance in instances:
                 ips = instance["ipAddresses"]
                 if not ips:
-                    ipv4, ipv6 = "", ""
+                    ipv4, ipv6 = "127.0.0.1", "::1"
                 else:
                     ipv4 = list(filter(lambda x: x["version"] == 4, ips))[0]["ip"]
                     ipv6 = list(filter(lambda x: x["version"] == 6, ips))[0]["ip"]
@@ -320,7 +320,7 @@ class OvhAPI(CloudBlockingAPI):
             server_name = server["name"]
             ipv4, ipv6 = self.__get_instance_ip(server_name)
             return DynamicServer(server_name, DeploymentStatus.CREATED, IPv4Address(ipv4),
-                                 IPv6Address(ipv6), self._str_to_vm_status(server.status), definition, server.id,
+                                 IPv6Address(ipv6), self._str_to_vm_status(server["status"]), definition, server["id"],
                                  self.provider)
         except Exception as e:
             pass
