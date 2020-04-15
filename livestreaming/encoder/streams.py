@@ -21,6 +21,7 @@ from . import logger
 
 
 MAX_STREAM_DURATION = 6 * 3600  # in seconds
+RECORDING_MAX_FILE_SIZE = 8 * 1024 * 1024 * 1024  # in Bytes
 
 
 class PortType(Enum):
@@ -127,6 +128,9 @@ class FFmpeg:
                                          r"0\.m3u8.*' for writing")
             time_regex = re.compile(r"time=(\d{2}):(\d{2}):(\d{2}).(\d{2})")
 
+            # last check of recording file size
+            last_recording_check_time = 0.0
+
             while self.stream.state in expected_states:
                 if self.stream.state == StreamState.NOT_YET_STARTED:
                     self.stream.state = StreamState.WAITING_FOR_CONNECTION
@@ -163,6 +167,28 @@ class FFmpeg:
                         self.stream.state = StreamState.STOPPED
                         await self.stop()
                         break
+
+                    if self.stream.recording_file is not None and self.current_time - last_recording_check_time > 30:
+                        # Check recording file size
+                        last_recording_check_time = self.current_time
+                        try:
+                            stat = await asyncio.get_event_loop().run_in_executor(None, self.stream.recording_file.stat)
+                            logger.info(f"<stream {self.stream.stream_id}> recording current size "
+                                        f"{stat.st_size} bytes, duration {self.current_time}")
+                            if stat.st_size > RECORDING_MAX_FILE_SIZE:
+                                logger.info(
+                                    f"<stream {self.stream.stream_id}> recording too large ({stat.st_size} bytes), "
+                                    f"stop whole stream")
+                                self.stream.state = StreamState.STOPPED
+                                await self.stop()
+                                break
+                        except:
+                            logger.exception(
+                                f"Error while getting file size of recording of <stream {self.stream.stream_id}> "
+                                f"stop whole stream")
+                            self.stream.state = StreamState.STOPPED
+                            await self.stop()
+                            break
 
                 if self.ffmpeg_process.stdout.at_eof():
                     self.stream.state = StreamState.STOPPED
