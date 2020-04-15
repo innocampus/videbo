@@ -33,11 +33,12 @@ class StreamStateObserver:
             watcher.put_nowait(new_state)
 
     @staticmethod
-    async def wait_until(queue: asyncio.Queue, state: StreamState, including_errors: bool = True,
-                         timeout: Optional[float] = None) -> StreamState:
+    async def wait_until(queue: asyncio.Queue, state: StreamState, or_greater_state: bool = True,
+                         including_errors: bool = True, timeout: Optional[float] = None) -> StreamState:
         while True:
             new_state = await asyncio.wait_for(queue.get(), timeout)
-            if new_state == state or (including_errors and new_state >= StreamState.ERROR):
+            if new_state == state or (or_greater_state and new_state >= state) or \
+                    (including_errors and new_state >= StreamState.ERROR):
                 return new_state
 
 

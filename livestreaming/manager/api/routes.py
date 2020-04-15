@@ -26,13 +26,15 @@ async def new_stream(request: Request, jwt_data: BaseJWTData, json: LMSNewStream
             return_data = LMSNewStreamReturn(success=False, error="no_encoder_available")
             return json_response(return_data, status=503)
 
-        if stream.state >= StreamState.ERROR:
-            return_data = LMSNewStreamReturn(success=False, error="unknown_error")
-            return json_response(return_data, status=503)
+        if stream.state == StreamState.WAITING_FOR_CONNECTION:
+            # This is the expected state.
+            new_stream_data = stream.get_status(True)
+            return_data = LMSNewStreamReturn(success=True, stream=new_stream_data)
+            return json_response(return_data)
 
-        new_stream_data = stream.get_status(True)
-        return_data = LMSNewStreamReturn(success=True, stream=new_stream_data)
-        return json_response(return_data)
+        return_data = LMSNewStreamReturn(success=False, error="unknown_error")
+        return json_response(return_data, status=503)
+
     except Exception as e:
         error_type = type(e).__name__
         return_data = LMSNewStreamReturn(success=False, error=error_type)
