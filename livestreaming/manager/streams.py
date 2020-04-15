@@ -4,6 +4,7 @@ from time import time
 from typing import Optional, Union, Dict, Set, List, TYPE_CHECKING
 from livestreaming.web import HTTPClient, HTTPResponseError
 from livestreaming.streams import Stream, StreamCollection, StreamState
+from livestreaming.content.api.models import StreamsMaxClients
 from livestreaming.broker.api.models import *
 from livestreaming.manager.api.models import StreamStatusFull, StreamStatus
 from livestreaming.misc import TaskManager
@@ -230,6 +231,7 @@ class ManagerStreamCollection(StreamCollection[ManagerStream]):
 
                 try:
                     await self._tell_broker(contents)
+                    self._tell_content_nodes_max_viewers(contents)
                 except CouldNotContactBrokerError:
                     pass
 
@@ -253,6 +255,26 @@ class ManagerStreamCollection(StreamCollection[ManagerStream]):
 
         await asyncio.gather(*awaitables, return_exceptions=True)
         # Ignore exceptions. The content watchdog will try to add/remove the streams later again.
+
+    def _tell_content_nodes_max_viewers(self, content_list: List[ContentNode]):
+        for content in content_list:
+            streams_max_clients: Dict[int, int] = {}  # maps stream id to max clients
+            for stream_id, stream in content.streams.items():
+                try:
+                    streams_max_clients[stream_id] = stream.contents[content].max_clients
+                except KeyError:
+                    logger.error(f"_tell_content_nodes_max_viewers: Content node not found in stream")
+                    continue
+
+            data = StreamsMaxClients(max_clients=streams_max_clients)
+
+            async def do_request():
+                url = f'{content.base_url}/api/content/streams/set_max_clients'
+                status, ret = await HTTPClient.internal_request_manager('POST', url, data)
+                if status != 200:
+                    logger.error(f"Content set_max_clients error, http status {status}")
+
+            TaskManager.fire_and_forget_task(asyncio.create_task(do_request()))
 
     async def _tell_broker(self, content_list: List[ContentNode]):
         # get all content nodes
