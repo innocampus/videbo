@@ -24,7 +24,7 @@ def start_web_server(port: int, routes, on_startup: Optional[Callable] = None, o
         app.on_cleanup.append(on_cleanup)
     app.on_shutdown.append(HTTPClient.close_all)
     app.on_shutdown.append(TaskManager.cancel_all)
-    web.run_app(app, port=port)
+    web.run_app(app, host="127.0.0.1", port=port)
 
 
 def ensure_json_body(headers: Optional[dict] = None):
