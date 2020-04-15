@@ -22,6 +22,10 @@ from livestreaming.auth import Role, JWT_ISS_INTERNAL
 from livestreaming.auth import BaseJWTData
 from livestreaming.misc import get_free_disk_space
 from livestreaming.network import NetworkInterfaces
+from livestreaming.video import VideoInfo
+from livestreaming.video import VideoValidator
+from livestreaming.video import VideoConfig
+
 from livestreaming.storage.api.models import UploadFileJWTData
 from livestreaming.storage.api.models import SaveFileJWTData
 from livestreaming.storage.api.models import DeleteFileJWTData
@@ -36,8 +40,6 @@ from livestreaming.storage.util import FileTooBigError
 from livestreaming.storage.util import HashedVideoFile, StoredHashedVideoFile
 from livestreaming.storage.util import FFProbeError
 from livestreaming.storage.util import is_allowed_file_ending
-from livestreaming.storage.video import VideoInfo
-from livestreaming.storage.video import VideoValidator
 from livestreaming.storage.exceptions import InvalidMimeTypeError
 from livestreaming.storage.exceptions import InvalidVideoError
 
@@ -149,11 +151,11 @@ async def upload_file(request: Request, jwt_token: UploadFileJWTData):
         raise HTTPInternalServerError()
 
     try:
-        video = VideoInfo(video_file=file.path)
+        video = VideoInfo(video_file=file.path, video_config=VideoConfig(storage_settings))
         validator = VideoValidator(info=video)
-        await video.fetch_mime_type(binary=storage_settings.binary_file, user=storage_settings.check_user)
+        await video.fetch_mime_type()
         validator.check_valid_mime_type()
-        await video.fetch_info(binary=storage_settings.binary_ffprobe, user=storage_settings.check_user)
+        await video.fetch_info() 
         validator.check_valid_video()
 
         video_duration = int(video.get_length())

@@ -4,15 +4,17 @@ import os
 import pathlib
 import tempfile
 import time
-import shutil
 from _sha256 import SHA256Type
 from typing import Optional, Tuple, Dict, BinaryIO
 
 from livestreaming.misc import TaskManager
+from livestreaming.video import VideoInfo
+from livestreaming.video import Video
+from livestreaming.video import VideoConfig
+
 from . import storage_logger
 from . import storage_settings
 from .distribution import DistributionController, FileNodes
-from .video import VideoInfo
 from .exceptions import *
 
 FILE_EXT_WHITELIST = ['.mp4', '.webm']
@@ -122,7 +124,7 @@ class FileStorage:
         thumb_height = storage_settings.thumb_height
         thumb_count = storage_settings.thumb_suggestion_count
 
-        ffmpeg_binary = storage_settings.binary_ffmpeg
+ #       ffmpeg_binary = storage_settings.binary_ffmpeg
         video_check_user = storage_settings.check_user
 
         # Generate thumbnails concurrently
@@ -133,8 +135,7 @@ class FileStorage:
             temp_out_file = None
             if video_check_user is not None:
                 temp_out_file = self.temp_out_dir + "/" + file.hash + "_" + str(thumb_nr) + THUMB_EXT
-            tasks.append(self.save_thumbnail(video.video_file, thumb_path, offset, thumb_height, binary=ffmpeg_binary,
-                                             user=video_check_user, temp_output_file=temp_out_file))
+            tasks.append(Video(video_config= VideoConfig(storage_settings)).save_thumbnail(video.video_file, thumb_path, offset, thumb_height, temp_output_file=temp_out_file))
         await asyncio.gather(*tasks)
 
         return thumb_count
@@ -176,16 +177,6 @@ class FileStorage:
 
         os.remove(file_path)
         return True
-
-    @staticmethod
-    def copy_file(source_file: str, target_file: str) -> None:
-        # Check source file really exists.
-        if not os.path.isfile(source_file):
-            raise FileDoesNotExistError()
-
-        # Copy if destination doesn't exist
-        if not os.path.isfile(target_file):
-            shutil.copyfile(source_file, target_file)
 
     @staticmethod
     def move_file(path: str, new_file_path: str, new_dir_path: str) -> None:
@@ -271,40 +262,6 @@ class FileStorage:
                 storage_logger.info(f"Run GC of temp folder: Removed {files_deleted} file(s).")
 
             await asyncio.sleep(self.GC_ITERATION_SECS)
-
-    async def save_thumbnail(self, video_in: str, thumbnail_out: str, offset: int, height: int, binary: str = "ffmpeg",
-                             user: str = None, temp_output_file: str = None) -> None:
-        """Call ffmpeg and save scaled frame at specified offset."""
-        output_file = thumbnail_out
-        if temp_output_file is not None:
-            output_file = temp_output_file
-
-        args = ["-ss", str(offset), "-i", video_in, "-vframes", "1", "-an", "-vf",
-                "scale=-1:{0}".format(height), "-y", output_file]
-        # Run ffmpeg
-        if user:
-            args = ["-u", user, binary] + args
-            binary = "sudo"
-        proc = await asyncio.create_subprocess_exec(binary, *args, stdout=asyncio.subprocess.DEVNULL,
-                                                    stderr=asyncio.subprocess.DEVNULL)
-        try:
-            await asyncio.wait_for(proc.wait(), 10)
-            if proc.returncode != 0:
-                raise FFMpegError(False)
-
-            if output_file != thumbnail_out:
-                # Copy temp file to target
-                await asyncio.get_event_loop().run_in_executor(None, self.copy_file, output_file, thumbnail_out)
-
-        except asyncio.TimeoutError:
-            proc.kill()
-            raise FFMpegError(True)
-
-        finally:
-            if output_file != thumbnail_out:
-                # Delete temp file
-                await asyncio.get_event_loop().run_in_executor(None, self.delete_file, output_file)
-
 
 class TempFile:
     """Used to handle files that are getting uploaded right now or were just uploaded, but not yet added to the
