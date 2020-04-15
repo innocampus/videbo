@@ -1,5 +1,5 @@
 from asyncio import get_event_loop, sleep
-from typing import List, Dict, Optional
+from typing import List, Dict, Optional, Tuple
 from hcloud import Client
 from hcloud import APIException
 from hcloud.actions.domain import ActionFailedException, ActionTimeoutException
@@ -7,14 +7,17 @@ from hcloud.images.domain import Image
 from hcloud.server_types.domain import ServerType
 from hcloud.ssh_keys.domain import SSHKey
 from hcloud.locations.domain import Location
-from ipaddress import IPv4Address, IPv6Network
+import ovh
+import json
+from ipaddress import IPv4Address, IPv6Network, IPv6Address
 import logging
 import pickle
 from random import choice
 import secrets
 
 from livestreaming.manager import manager_settings
-from .definitions import CloudInstanceDefsController, InstanceDefinition, HetznerApiKeyDefinition, UnknownProviderError
+from .definitions import CloudInstanceDefsController, InstanceDefinition, HetznerApiKeyDefinition, OvhApiKeyDefinition, \
+    UnknownProviderError
 from .status import DeploymentStatus, VmStatus
 from .server import Server, DynamicServer
 
@@ -140,7 +143,7 @@ class HetznerAPI(CloudBlockingAPI):
 
     def __init__(self, hetzner_def: HetznerApiKeyDefinition):
         self.token: str = hetzner_def.key
-        self.ssh_key_name: str =hetzner_def.ssh_key_name
+        self.ssh_key_name: str = hetzner_def.ssh_key_name
         self.client = Client(token=self.token)
 
     def get_all_locations(self):
@@ -212,6 +215,149 @@ class HetznerAPI(CloudBlockingAPI):
             server = self.client.servers.get_by_name(node.name)
             cloud_logger.debug(f"Got vm state from Hetzner ({node.name}) status: {server.status}")
             return self._str_to_vm_status(server.status)
+        except Exception as e:
+            return VmStatus.ERROR
+
+    def _validate_instance_definition(self, definition: InstanceDefinition) -> None:
+        raise NotImplementedError() # TODO
+
+
+class OvhAPI(CloudBlockingAPI):
+    provider: str = "ovh"
+    region: str = "DE1"
+    ostype: str = "linux"
+    os: str = "Debian 10"
+    flavor_type: str = "b2-7"
+
+    def __init__(self, ovh_def: OvhApiKeyDefinition):
+        self.client = ovh.Client(
+                                    endpoint='ovh-eu',
+                                    application_key=ovh_def.application_key,
+                                    application_secret=ovh_def.application_secret,
+                                    consumer_key=ovh_def.consumer_key
+                                )
+        self.service = ovh_def.service
+        self.ssh_key = ovh_def.ssh_key_name
+
+    def __get_ssh_key_id(self, key_name: str) -> str:
+        keys = self.client.get(f"/cloud/project/{self.service}/sshkey")
+        keys_filtered = list(filter(lambda x: x["name"] == key_name, keys))
+        if not keys_filtered:
+            raise Exception(f"OVH: ssh key with name {key_name} not found")
+        return keys_filtered[0]["id"]
+
+    def __get_image_id(self, flavor_type: str) -> str:
+        images = self.client.get(f"/cloud/project/{self.service}/image",
+                                 flavorType=flavor_type,
+                                 osType=self.ostype,
+                                 region=self.region
+                                 )
+        images_filtered = list(filter(lambda x: x["name"] == self.os, images))
+        if not images_filtered:
+            raise Exception(f"OVH: no image for flavor type {flavor_type}, os type {self.ostype}, region {self.region}")
+        return images_filtered[0]["id"]
+
+    def __get_flavor_id(self, flavor_type: str) -> str:
+        flavor_list = self.client.get(f"/cloud/project/{self.service}/flavor", region=self.region)
+        flavor_filtered = list(filter(lambda x: x["name"] == flavor_type and x["osType"] == self.ostype, flavor_list))
+        if not flavor_filtered:
+            raise Exception(f"OVH: flavor type {flavor_type} for os type {self.ostype} not found")
+        return flavor_filtered[0]["id"]
+
+    def __get_instance_id(self, name: str) -> str:
+        instances = self.client.get(f"/cloud/project/{self.service}/instance")
+        instances_filtered = list(filter(lambda x: x["name"] == name, instances))
+        if not instances_filtered:
+            raise Exception(f"OVH: instance with name {name} not found")
+        return instances_filtered[0]["id"]
+
+    def __get_instance(self, name: str) -> dict:
+        instance_id = self.__get_instance_id(name)
+        instance = self.client.get(f"/cloud/project/{self.service}/instance/{instance_id}")
+        return instance
+
+    def __get_instance_ip(self, name: str) -> Tuple[str, str]:
+        instance = self.__get_instance(name)
+        ips = instance["ipAddresses"]
+        if not ips:
+            return "", ""
+        ipv4 = list(filter(lambda x: x["version"] == 4, ips))[0]["ip"]
+        ipv6 = list(filter(lambda x: x["version"] == 6, ips))[0]["ip"]
+        return ipv4, ipv6
+
+    def _get_all_nodes(self) -> List[DynamicServer]:
+        try:
+            instances = self.client.get(f"/cloud/project/{self.service}/instance")
+            nodes = []
+            for instance in instances:
+                ips = instance["ipAddresses"]
+                if not ips:
+                    ipv4, ipv6 = "", ""
+                else:
+                    ipv4 = list(filter(lambda x: x["version"] == 4, ips))[0]["ip"]
+                    ipv6 = list(filter(lambda x: x["version"] == 6, ips))[0]["ip"]
+                nodes.append(DynamicServer(instance["name"], DeploymentStatus.UNKNOWN, IPv4Address(ipv4),
+                                           IPv6Address(ipv6), self._str_to_vm_status(instance["status"]),
+                                           None, instance["id"], self.provider))
+            return nodes
+        except Exception as e:
+            pass
+
+        return []
+
+    def _create_node(self, definition: InstanceDefinition, name: Optional[str] = None) -> DynamicServer:
+        try:
+            flavor_id = self.__get_flavor_id(definition.server_type)
+            image_id = self.__get_image_id(definition.server_type)
+            sshkey_id = self.__get_ssh_key_id(self.ssh_key)
+            server = self.client.post(f"/cloud/project/{self.service}/instance",
+                                      flavorId=flavor_id,
+                                      name=name,
+                                      region=self.region,
+                                      imageId=image_id,
+                                      sshKeyId=sshkey_id
+                                      )
+            server_name = server["name"]
+            ipv4, ipv6 = self.__get_instance_ip(server_name)
+            return DynamicServer(server_name, DeploymentStatus.CREATED, IPv4Address(ipv4),
+                                 IPv6Address(ipv6), self._str_to_vm_status(server.status), definition, server.id,
+                                 self.provider)
+        except Exception as e:
+            pass
+
+        raise NodeCreateError()
+
+    def _delete_node(self, node: DynamicServer) -> None:
+        try:
+            cloud_logger.info(f"Delete node at OVH ({node.name})")
+            instance_id = self.__get_instance_id(node.name)
+            self.client.delete(f"/cloud/project/{self.service}/instance/{instance_id}")
+        except Exception as e:  # handle exceptions
+            pass
+
+    @staticmethod
+    def _str_to_vm_status(s_status) -> VmStatus:
+        """
+        possible values:
+                             "ACTIVE" "BUILDING" "DELETED" "DELETING" "ERROR" "HARD_REBOOT" "PASSWORD"
+                             "PAUSED" "REBOOT" "REBUILD" "RESCUED" "RESIZED" "REVERT_RESIZE" "SOFT_DELETED"
+                             "STOPPED" "SUSPENDED" "UNKNOWN" "VERIFY_RESIZE" "MIGRATING" "RESIZE" "BUILD"
+                             "SHUTOFF" "RESCUE" "SHELVED" "SHELVED_OFFLOADED" "RESCUING" "UNRESCUING"
+                             "SNAPSHOTTING" "RESUMING"
+        """
+        if s_status == "ACTIVE":
+            status = VmStatus.RUNNING
+        elif s_status == "BUILDING" or s_status == "BUILD":
+            status = VmStatus.INIT
+        else:
+            status = VmStatus.ERROR
+        return status
+
+    def _get_vm_state(self, node: DynamicServer) -> VmStatus:
+        try:
+            instance = self.__get_instance(node.name)
+            cloud_logger.debug(f"Got vm state from OVH ({node.name}) status: {instance['status']}")
+            return self._str_to_vm_status(instance['status'])
         except Exception as e:
             return VmStatus.ERROR
 

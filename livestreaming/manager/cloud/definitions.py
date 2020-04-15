@@ -20,6 +20,16 @@ class HetznerApiKeyDefinition(ProviderApiKeyDefinition):
     pass
 
 
+class OvhApiKeyDefinition(ProviderApiKeyDefinition):
+    def __init__(self, application_key: str, application_secret: str, consumer_key: str,
+                 service: str, ssh_key_name: str):
+        self.application_key = application_key
+        self.application_secret = application_secret
+        self.consumer_key = consumer_key
+        self.service = service
+        self.ssh_key_name = ssh_key_name
+
+
 class INWXApiAuthDefinition(ProviderDefinition):
     def __init__(self, username: str, password: str):
         self.username: str = username
@@ -86,6 +96,13 @@ class CloudInstanceDefsController:
             if provider == 'hetzner':
                 definition = HetznerApiKeyDefinition(config.get_config('cloud-hetzner', 'api_token'),
                                                      config.get_config('cloud-hetzner', 'ssh_key_name'))
+            elif provider == 'ovh':
+                definition = OvhApiKeyDefinition(config.get_config('cloud-ovh', 'application_key'),
+                                                 config.get_config('cloud-ovh', 'application_secret'),
+                                                 config.get_config('cloud-ovh', 'consumer_key'),
+                                                 config.get_config('cloud-ovh', 'service'),
+                                                 config.get_config('cloud-ovh', 'ssh_key_name')
+                                                 )
             else:
                 raise UnknownProviderError(provider)
             self.provider_definitions[provider] = definition
