@@ -8,6 +8,7 @@ from time import time
 from aiohttp import web, ClientResponse, ClientSession, ClientError
 from aiohttp.web_exceptions import HTTPException, HTTPBadRequest
 from livestreaming.auth import BaseJWTData, internal_jwt_encode
+from . import settings
 from .misc import TaskManager
 
 web_logger = logging.getLogger('livestreaming-web')
@@ -22,9 +23,13 @@ def start_web_server(port: int, routes, on_startup: Optional[Callable] = None, o
         app.on_startup.append(on_startup)
     if on_cleanup:
         app.on_cleanup.append(on_cleanup)
+    access_logger = logging.getLogger("aiohttp.access")
+    if not settings.general.dev_mode:
+        # reduce verbosity on production servers
+        access_logger.setLevel(logging.ERROR)
     app.on_shutdown.append(HTTPClient.close_all)
     app.on_shutdown.append(TaskManager.cancel_all)
-    web.run_app(app, host="127.0.0.1", port=port)
+    web.run_app(app, host="127.0.0.1", port=port, access_log=access_logger)
 
 
 def ensure_json_body(headers: Optional[dict] = None):
