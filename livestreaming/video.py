@@ -19,7 +19,7 @@ class VideoConfig:
         self.user =  settings.check_user
         self.binary_ffmpeg = settings.binary_ffmpeg
         self.binary_ffprobe = settings.binary_ffprobe
-        self.binary_file = settings.binary_ffprobe
+        self.binary_file = settings.binary_file
         self.video_check_user = settings.check_user
 
     async def create_sudo_subprocess(self, args: List[str], binary: str = None, stdout: int = asyncio.subprocess.DEVNULL,
@@ -28,6 +28,8 @@ class VideoConfig:
             program = self.binary_file
         elif binary == "ffprobe":
             program = self.binary_ffprobe
+        else:
+            raise UnknownProgramError()
 
         # Run as different user
         if self.user:
@@ -35,6 +37,7 @@ class VideoConfig:
             args = ["-u", self.user, binary] + args
 
         return await asyncio.create_subprocess_exec(program, *args, stdout=stdout, stderr=stderr)
+
 
 class VideoInfo:
     """Wrapper for the ffprobe application to get information about a video file."""
@@ -46,7 +49,6 @@ class VideoInfo:
         self.mime_type = None
         self.streams: List[Dict] = []
         self.format: Optional[Dict] = None
-
 
     async def fetch_mime_type(self) -> None:
         """Call file and fetch mime type."""
@@ -122,7 +124,6 @@ class VideoInfo:
         raise InvalidVideoError()
 
 
-
 class VideoValidator:
     def __init__(self, info: VideoInfo):
         self._info = info
@@ -160,6 +161,7 @@ class VideoValidator:
         if not valid_format or not valid_video or not valid_audio:
             raise InvalidVideoError(','.join(formats), video_codec, audio_codec)
 
+
 class Video:
     def __init__(self, video_config: VideoConfig):
         self.video_config = video_config
@@ -176,6 +178,8 @@ class Video:
         if self.video_config.user:
             args = ["-u", self.video_config.user, self.video_config.binary_ffmpeg] + args
             binary = "sudo"
+        else:
+            binary = self.video_config.binary_ffmpeg
         proc = await asyncio.create_subprocess_exec(binary, *args, stdout=asyncio.subprocess.DEVNULL,
                                                     stderr=asyncio.subprocess.DEVNULL)
         try:
@@ -220,22 +224,34 @@ class FileCmdError(Exception):
     def __init__(self, timeout):
         self.timeout = timeout
 
+
 class FFMpegError(Exception):
     def __init__(self, timeout, stderr=None):
         self.timeout = timeout
         self.stderr = stderr
+
 
 class FFProbeError(Exception):
     def __init__(self, timeout, stderr=None):
         self.timeout = timeout
         self.stderr = stderr
 
+
 class InvalidMimeTypeError(Exception):
     def __init__(self, mimetype: str):
         self.mime_type = mimetype
+
 
 class InvalidVideoError(Exception):
     def __init__(self, container: str = "", video_codec: str = "", audio_codec: str = ""):
         self.container = container
         self.video_codec = video_codec
         self.audio_codec = audio_codec
+
+
+class UnknownProgramError(Exception):
+    pass
+
+
+class FileDoesNotExistError(Exception):
+    pass
