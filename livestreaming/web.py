@@ -14,7 +14,18 @@ from .misc import TaskManager
 web_logger = logging.getLogger('livestreaming-web')
 
 
-def start_web_server(port: int, routes, on_startup: Optional[Callable] = None, on_cleanup: Optional[Callable] = None):
+def start_web_server(port: int, routes, on_startup: Optional[Callable] = None, on_cleanup: Optional[Callable] = None,
+                     access_logger: Optional[logging.Logger] = None):
+    """
+    Starts a web server
+    :param port: int
+    :param routes: Any
+    :param on_startup: Optional[Callable]
+    :param on_cleanup: Optional[Callable]
+    :param access_logger: Optional[Logger]
+        If access_logger is None, default aiohttp logger - with less verbosity on production - will be used instead.
+    :return:
+    """
     HTTPClient.create_client_session()
 
     app = web.Application()
@@ -23,10 +34,11 @@ def start_web_server(port: int, routes, on_startup: Optional[Callable] = None, o
         app.on_startup.append(on_startup)
     if on_cleanup:
         app.on_cleanup.append(on_cleanup)
-    access_logger = logging.getLogger("aiohttp.access")
-    if not settings.general.dev_mode:
-        # reduce verbosity on production servers
-        access_logger.setLevel(logging.ERROR)
+    if access_logger is None:
+        access_logger = logging.getLogger("aiohttp.access")
+        if not settings.general.dev_mode:
+            # reduce verbosity on production servers
+            access_logger.setLevel(logging.ERROR)
     app.on_shutdown.append(HTTPClient.close_all)
     app.on_shutdown.append(TaskManager.cancel_all)
     web.run_app(app, host="127.0.0.1", port=port, access_log=access_logger)
