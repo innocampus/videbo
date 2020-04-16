@@ -262,7 +262,8 @@ class EncoderStream(Stream):
             async with EncoderStream._start_new_stream_lock:
                 self.port = get_unused_port(port_type=PortType.INTERNAL)
                 self.public_port = get_unused_port(port_type=PortType.PUBLIC)
-                logger.info(f"Start ffmpeg on port {self.port} for stream id {self.stream_id}")
+                logger.info(f"Start ffmpeg on port {self.port} and socat on port {self.public_port} "
+                            f"for stream id {self.stream_id}")
                 self.state = StreamState.NOT_YET_STARTED
                 self.ffmpeg = FFmpeg(self)
                 await self.ffmpeg.start()
