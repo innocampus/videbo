@@ -20,7 +20,7 @@ class HetznerApiKeyDefinition(ProviderApiKeyDefinition):
     pass
 
 
-class OvhApiKeyDefinition(ProviderApiKeyDefinition):
+class OvhApiKeyDefinition(ProviderDefinition):
     def __init__(self, application_key: str, application_secret: str, consumer_key: str,
                  service: str, ssh_key_name: str):
         self.application_key = application_key

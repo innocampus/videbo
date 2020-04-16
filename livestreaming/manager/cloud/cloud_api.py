@@ -101,6 +101,8 @@ class CombinedCloudAPI(CloudAPI):
         for _, definition in self.definitions.provider_definitions.items():
             if isinstance(definition, HetznerApiKeyDefinition):
                 self.provider_apis["hetzner"] = HetznerAPI(definition)
+            elif isinstance(definition, OvhApiKeyDefinition):
+                self.provider_apis["ovh"] = OvhAPI(definition)
             else:
                 raise UnknownProviderError(str(definition))
 
