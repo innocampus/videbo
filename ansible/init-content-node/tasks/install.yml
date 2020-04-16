@@ -1,13 +1,29 @@
 ---
+- name: create livestreaming user
+  user:
+    name: livestreaming
+    state: present
+
+- name: give user project ownership
+  file:
+    path: "{{ project_path }}"
+    owner: livestreaming
+    group: livestreaming
+    recurse: true
+
 - name: create venv
   command:
     cmd: "python3 -m venv venv"
     creates: "{{ project_path }}/venv"
     chdir: "{{ project_path }}"
+  become: true
+  become_user: livestreaming
 
 - name: install python dependencies
   command:
     cmd: "{{ project_path }}/venv/bin/pip install -r {{ project_path }}/requirements.txt"
+  become: true
+  become_user: livestreaming
 
 - name: copy systemd unit
   template:

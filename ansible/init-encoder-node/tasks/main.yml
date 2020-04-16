@@ -2,6 +2,7 @@
 - name: install required packages
   apt:
     pkg:
+    - "sudo"
     - "python3"
     - "python3-venv"
     - "python3-pip"

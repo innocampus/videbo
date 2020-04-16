@@ -5,7 +5,7 @@ After=network.target
 [Service]
 WorkingDirectory=/opt/livestreaming-server
 ExecStart=/opt/livestreaming-server/venv/bin/python3 -m livestreaming content
-
+User=livestreaming
 Restart=on-failure
 RestartSec=10s
 
