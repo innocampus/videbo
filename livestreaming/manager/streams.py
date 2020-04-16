@@ -115,7 +115,7 @@ class ManagerStream(Stream):
                 await StreamStateObserver.wait_until(state_watcher, StreamState.STOPPED)
 
                 # Wait shortly until removing all content nodes
-                await asyncio.sleep(2)
+                await asyncio.sleep(6)
                 self.contents.clear()  # ContentNode watchdog will remove the streams
 
                 # encoder.destroy_stream will be called by the context manager
