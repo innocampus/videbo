@@ -223,8 +223,10 @@ class ManagerStreamCollection(StreamCollection[ManagerStream]):
 
         algorithm = get_algorithm(manager_settings.streams_content_node_distribution_algorithm)
         while True:
+            # Get all streams that need a content node.
+            streams = [s for s in self.streams.values() if StreamState.BUFFERING <= s.state < StreamState.STOPPED]
             contents = self.node_controller.get_operating_nodes(ContentNode)
-            ret = await algorithm.solve(list(self.streams.values()), contents)
+            ret = await algorithm.solve(streams, contents)
             # TODO ret.clients_left_out
             if ret.stream_to_content:
                 await self._compute_diff_content_nodes_and_inform(ret.stream_to_content)
@@ -240,9 +242,6 @@ class ManagerStreamCollection(StreamCollection[ManagerStream]):
     async def _compute_diff_content_nodes_and_inform(self, dist: "StreamToContentType"):
         awaitables = []
         for stream, new_contents in dist.items():
-            if stream.state != StreamState.STREAMING:
-                continue
-
             # all content nodes that should no longer carry this stream
             for rem_content in [n for n in stream.contents.keys() if n not in new_contents]:
                 stream.contents.pop(rem_content)
