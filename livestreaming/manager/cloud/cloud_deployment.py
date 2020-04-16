@@ -16,14 +16,17 @@ async def init_node(node: DynamicServer):
 
 
 async def init_content_node(host: str, definition: ContentInstanceDefinition):
-    # TODO: handle node config
     domain = ""
     ramdisk_size = "1G"
     internal_api_secret = "secure"
     api_secret = "secure"
+    become = ""
+
+    if definition.user != "root":
+        become = "--become"
 
     cmd_ret = os.system(f"export ANSIBLE_HOST_KEY_CHECKING=False;"
-                        f" ansible-playbook -i root@{host}, ansible/init_content_node.yml"
+                        f" ansible-playbook {become} -i {definition.user}@{host}, ansible/init_content_node.yml"
                         f"--extra-vars \""
                         f"domain={domain} "
                         f"ramdisk_size={ramdisk_size} "

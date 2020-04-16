@@ -43,6 +43,7 @@ class InstanceDefinition:
         self.section_name: str = section_name
         self.provider: str = config.get_config(section_name, 'provider')
         self.location: str = config.get_config(section_name, 'location')
+        self.user: str = config.get_config(section_name, 'login_user')
         self.server_type: str = config.get_config(section_name, 'server_type')
         self.priority: int = int(config.get_config(section_name, 'priority'))
 
