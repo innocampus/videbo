@@ -17,6 +17,7 @@ class StorageSettings(SettingsSectionBase):
     binary_ffmpeg: str
     binary_ffprobe: str
     tx_max_rate_mbit: int
+    server_status_page: str
 
     def load(self):
         super().load()
@@ -34,7 +35,7 @@ def start() -> None:
 
     async def on_http_startup(app):
         from .util import FileStorage
-        NetworkInterfaces.get_instance().start_fetching()
+        NetworkInterfaces.get_instance().start_fetching(storage_settings.server_status_page, storage_logger)
         FileStorage.get_instance()  # init instance
 
     async def on_http_cleanup(app):

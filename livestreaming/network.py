@@ -1,13 +1,26 @@
 import asyncio
 import re
+from logging import Logger
 from time import time
 from typing import Optional
 from typing import Dict
 from typing import List
 from typing import Union
+from livestreaming.web import HTTPClient
+from livestreaming.web import HTTPResponseError
+from livestreaming.misc import TaskManager
 
 
-class NetworkInterface:
+class PureDataType:
+    def __repr__(self):
+        return self.__str__()
+
+    def __str__(self):
+        # TODO: make it pretty
+        return f"{self.__dict__}"
+
+
+class NetworkInterface(PureDataType):
     """
     Pure data holder for NetworkInterfaces
     """
@@ -32,22 +45,31 @@ class NetworkInterface:
         self.tx_compr = 0
         self.tx_multicast = 0
 
-    def __repr__(self):
-        return self.__str__()
 
-    def __str__(self):
-        # TODO: make it pretty
-        return f"{self.__dict__}"
+class StubStatus(PureDataType):
+    """
+    Pure data holder for server status
+    """
+    def __init__(self):
+        self.reading: int = 0
+        self.waiting: int = 0
+        self.writing: int = 0
+        self.server_type: str = "Unknown"
+
+
+class UnknownServerStatusFormatError(Exception):
+    def __init__(self, url: str, server_type: str):
+        super().__init__(f"data received from {url} could not fulfill expected server type ({server_type})")
 
 
 class NetworkInterfaces:
     """
     NetworkInterfaces: a class to monitor your interfaces
     """
-    _instance: Optional["NetworkInterfaces"] = None
-
     # make _interfaces a singleton since they can be shared on one system
+    _instance: Optional["NetworkInterfaces"] = None
     _interfaces: Dict[str, NetworkInterface] = {}
+
     # A regular expression which separates the interesting fields and saves them in named groups
     # @see https://stackoverflow.com/questions/24897608/how-to-find-network-usage-in-linux-programatically
     _pattern = re.compile(r"\s*"
@@ -69,11 +91,14 @@ class NetworkInterfaces:
                           r"(?P<tx_compr>\d+)\s+"
                           r"(?P<tx_multicast>\d+)\s*")
 
+    _html_pattern = re.compile(r"\s*<(!DOCTYPE|html).*>.*")
+
     def __init__(self, interval: int = 2):
         self.interval = interval
         self._last_time = 0
         self._do_fetch = False
         self._fetch_task: Optional[asyncio.Task] = None
+        self._server_status: Optional[StubStatus] = None
 
     @staticmethod
     def get_instance() -> "NetworkInterfaces":
@@ -81,10 +106,23 @@ class NetworkInterfaces:
             NetworkInterfaces._instance = NetworkInterfaces()
         return NetworkInterfaces._instance
 
-
     @property
     def is_fetching(self):
         return self._do_fetch and self._fetch_task is not None
+
+    @property
+    def is_running(self):
+        return self.is_fetching
+
+    def get_server_status(self, attribute: str = "writing") -> int:
+        if self._server_status is None:
+            raise KeyError("server status was never fetched")
+        return getattr(self._server_status, attribute, 0)
+
+    def get_server_type(self):
+        if self._server_status is None:
+            raise KeyError("server type was never fetched")
+        return getattr(self._server_status, "server_type", "Unknown")
 
     def get_interface_names(self) -> List[str]:
         return list(self._interfaces.keys())
@@ -115,6 +153,74 @@ class NetworkInterfaces:
                             self._set_interface_attr(name, f"{cls}_throughput", throughput)
                 a = f.readline()
 
+    async def _fetch_server_status(self, url: str, logger: Optional[Logger]):
+        if not url:
+            return
+        status: int
+        ret: bytes
+        try:
+            status, ret = await HTTPClient.internal_request("GET", url)
+        except HTTPResponseError:
+            if logger:
+                logger.warning(f"error while handling internal request")
+            return
+        except ConnectionRefusedError:
+            if logger:
+                logger.warning(f"could not connect to {url}")
+            return
+        if status == 200:
+            text = ret.decode("utf-8")
+            lines = text.split("\n")
+            if re.match(self._html_pattern, text):
+                # Apache2 server status
+                scan = False
+                text_to_scan = ""
+                updated = False
+                for line in lines:
+                    if re.match(r"<pre>[A-Z_.]+", line):
+                        scan = True
+                    if scan:
+                        text_to_scan += line
+                    if re.match(r"[A-Z_.]*</pre>.*", line):
+                        # scan for first <pre> only
+                        if self._server_status is None:
+                            self._server_status = StubStatus()
+                        self._server_status.writing = text_to_scan.count("W") - 1
+                        self._server_status.reading = text_to_scan.count("R")
+                        self._server_status.waiting = text_to_scan.count("_")
+                        self._server_status.server_type = "Apache2"
+                        updated = True
+                        break
+                if not updated:
+                    err = UnknownServerStatusFormatError(url, "apache2")
+                    if logger:
+                        logger.warning(err.__str__())
+                    raise err
+            else:
+                # nginx stub status
+                try:
+                    match = re.match(r"Reading:\s*(?P<reading>\d+)\s+"
+                                     r"Writing:\s*(?P<writing>\d+)\s+"
+                                     r"Waiting:\s*(?P<waiting>\d+)\s*", lines[3])
+                except KeyError:
+                    if logger:
+                        logger.error(f"response to {url} has less than 4 lines: unexpected nginx stub status format")
+                    raise UnknownServerStatusFormatError(url, "nginx")
+                if match:
+                    self._server_status = StubStatus()
+                    self._server_status.writing = int(match.group("writing")) - 1
+                    self._server_status.reading = int(match.group("reading"))
+                    self._server_status.waiting = int(match.group("waiting"))
+                    self._server_status.server_type = "nginx"
+                else:
+                    err = UnknownServerStatusFormatError(url, "nginx")
+                    if logger:
+                        logger.error(err.__str__())
+                    raise err
+        else:
+            if logger:
+                logger.warning(f"unexpected response from {url} (return code {status})")
+
     async def stop_fetching(self):
         """Stops the fetching process"""
         if self._fetch_task is not None:
@@ -126,7 +232,7 @@ class NetworkInterfaces:
         else:
             self._do_fetch = False
 
-    def start_fetching(self):
+    def start_fetching(self, status_page: Optional[str] = None, logger: Optional[Logger] = None):
         """Starts the fetching process"""
         if self._fetch_task is None:
             self._do_fetch = True
@@ -134,14 +240,20 @@ class NetworkInterfaces:
             async def fetcher():
                 try:
                     # fetch in advance to avoid high throughput values
+                    if logger:
+                        logger.info("start fetch for network resources")
                     await self._fetch_proc_info()
                     while self._do_fetch:
                         await self._fetch_proc_info()
+                        await self._fetch_server_status(url=status_page, logger=logger)
                         await asyncio.sleep(self.interval)
                 finally:
+                    if logger:
+                        logger.info("fetch for network resource information stopped")
                     self._fetch_task = None
                     self._do_fetch = False
             self._fetch_task = asyncio.create_task(fetcher())
+            TaskManager.fire_and_forget_task(self._fetch_task)
 
     def get_interface(self, interface: str) -> Optional[NetworkInterface]:
         return self._interfaces.get(interface)

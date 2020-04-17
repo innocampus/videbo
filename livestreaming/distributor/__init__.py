@@ -13,11 +13,13 @@ class DistributorSettings(SettingsSectionBase):
     leave_free_space_mb: int
     nginx_x_accel_location: str
     nginx_x_accel_limit_rate_kbit: int
+    server_status_page: str
 
     def load(self):
         super().load()
         self.bound_to_storage_base_url = ensure_url_does_not_end_with_slash(self.bound_to_storage_base_url)
         self.nginx_x_accel_location = ensure_url_does_not_end_with_slash(self.nginx_x_accel_location)
+
 
 logger = logging.getLogger('livestreaming-distributor')
 distributor_settings = DistributorSettings()
@@ -35,7 +37,7 @@ def start() -> None:
     file_controller.load_file_list(path)
 
     async def on_http_startup(app):
-        NetworkInterfaces.get_instance().start_fetching()
+        NetworkInterfaces.get_instance().start_fetching(distributor_settings.server_status_page, logger)
 
     async def on_http_cleanup(app):
         await NetworkInterfaces.get_instance().stop_fetching()
