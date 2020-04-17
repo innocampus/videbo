@@ -95,7 +95,7 @@ class NodeController:
 
             if node.server is None:
                 logger.error("Could not create a new node")
-                await self._stop_dynamic_server(node)
+                # Node will be stopped/removed in finally clause.
                 return
 
             await wait_for(self.api.wait_node_running(node.server), 60)

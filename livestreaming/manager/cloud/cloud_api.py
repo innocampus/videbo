@@ -14,6 +14,8 @@ import logging
 import pickle
 from random import choice
 import secrets
+import time
+import threading
 
 from livestreaming.manager import manager_settings
 from .definitions import CloudInstanceDefsController, InstanceDefinition, HetznerApiKeyDefinition, OvhApiKeyDefinition, \
@@ -226,10 +228,8 @@ class HetznerAPI(CloudBlockingAPI):
 
 class OvhAPI(CloudBlockingAPI):
     provider: str = "ovh"
-    region: str = "DE1"
     ostype: str = "linux"
     os: str = "Debian 10"
-    flavor_type: str = "b2-7"
 
     def __init__(self, ovh_def: OvhApiKeyDefinition):
         self.client = ovh.Client(
@@ -240,56 +240,72 @@ class OvhAPI(CloudBlockingAPI):
                                 )
         self.service = ovh_def.service
         self.ssh_key = ovh_def.ssh_key_name
+        self.client_lock = threading.RLock()
 
     def __get_ssh_key_id(self, key_name: str) -> str:
-        keys = self.client.get(f"/cloud/project/{self.service}/sshkey")
+        with self.client_lock:
+            keys = self.client.get(f"/cloud/project/{self.service}/sshkey")
         keys_filtered = list(filter(lambda x: x["name"] == key_name, keys))
         if not keys_filtered:
             raise Exception(f"OVH: ssh key with name {key_name} not found")
         return keys_filtered[0]["id"]
 
-    def __get_image_id(self, flavor_type: str) -> str:
-        images = self.client.get(f"/cloud/project/{self.service}/image",
-                                 flavorType=flavor_type,
-                                 osType=self.ostype,
-                                 region=self.region
-                                 )
+    def __get_image_id(self, flavor_type: str, region: str) -> str:
+        with self.client_lock:
+            images = self.client.get(f"/cloud/project/{self.service}/image",
+                                     flavorType=flavor_type,
+                                     osType=self.ostype,
+                                     region=region
+                                     )
         images_filtered = list(filter(lambda x: x["name"] == self.os, images))
         if not images_filtered:
-            raise Exception(f"OVH: no image for flavor type {flavor_type}, os type {self.ostype}, region {self.region}")
+            raise Exception(f"OVH: no image for flavor type {flavor_type}, os type {self.ostype}, region {region}")
         return images_filtered[0]["id"]
 
-    def __get_flavor_id(self, flavor_type: str) -> str:
-        flavor_list = self.client.get(f"/cloud/project/{self.service}/flavor", region=self.region)
+    def __get_flavor_id(self, flavor_type: str, region: str) -> str:
+        with self.client_lock:
+            flavor_list = self.client.get(f"/cloud/project/{self.service}/flavor", region=region)
         flavor_filtered = list(filter(lambda x: x["name"] == flavor_type and x["osType"] == self.ostype, flavor_list))
         if not flavor_filtered:
             raise Exception(f"OVH: flavor type {flavor_type} for os type {self.ostype} not found")
         return flavor_filtered[0]["id"]
 
     def __get_instance_id(self, name: str) -> str:
-        instances = self.client.get(f"/cloud/project/{self.service}/instance")
+        with self.client_lock:
+            instances = self.client.get(f"/cloud/project/{self.service}/instance")
         instances_filtered = list(filter(lambda x: x["name"] == name, instances))
         if not instances_filtered:
             raise Exception(f"OVH: instance with name {name} not found")
         return instances_filtered[0]["id"]
 
-    def __get_instance(self, name: str) -> dict:
-        instance_id = self.__get_instance_id(name)
-        instance = self.client.get(f"/cloud/project/{self.service}/instance/{instance_id}")
-        return instance
+    def __get_instance(self, instance_id: str) -> dict:
+        with self.client_lock:
+            instance = self.client.get(f"/cloud/project/{self.service}/instance/{instance_id}")
+            return instance
 
-    def __get_instance_ip(self, name: str) -> Tuple[str, str]:
-        instance = self.__get_instance(name)
-        ips = instance["ipAddresses"]
-        if not ips:
-            return "127.0.0.1", "::1"
-        ipv4 = list(filter(lambda x: x["version"] == 4, ips))[0]["ip"]
-        ipv6 = list(filter(lambda x: x["version"] == 6, ips))[0]["ip"]
-        return ipv4, ipv6
+    def __get_instance_ip(self, instance_id: str) -> Tuple[str, str]:
+        tries_left = 60
+        while tries_left > 0:
+            instance = self.__get_instance(instance_id)
+            ips = instance["ipAddresses"]
+            if ips:
+                ipv4 = list(filter(lambda x: x["version"] == 4, ips))[0]["ip"]
+                ipv6 = list(filter(lambda x: x["version"] == 6, ips))[0]["ip"]
+                return ipv4, ipv6
+
+            # Try again later.
+            tries_left -= 1
+            if tries_left < 0:
+                cloud_logger.error(f"Could not get OVH instance ip, stopped trying.")
+                raise OVHCouldNotGetIPError()
+
+            cloud_logger.debug(f"Could not get OVH instance ip, retrying.")
+            time.sleep(1)
 
     def _get_all_nodes(self) -> List[DynamicServer]:
         try:
-            instances = self.client.get(f"/cloud/project/{self.service}/instance")
+            with self.client_lock:
+                instances = self.client.get(f"/cloud/project/{self.service}/instance")
             nodes = []
             for instance in instances:
                 ips = instance["ipAddresses"]
@@ -303,29 +319,37 @@ class OvhAPI(CloudBlockingAPI):
                                            None, instance["id"], self.provider))
             return nodes
         except Exception as e:
-            pass
+            cloud_logger.exception("")
 
         return []
 
     def _create_node(self, definition: InstanceDefinition, name: Optional[str] = None) -> DynamicServer:
         try:
-            flavor_id = self.__get_flavor_id(definition.server_type)
-            image_id = self.__get_image_id(definition.server_type)
+            cloud_logger.info(f"Create a new node at OVH (server type {definition.server_type})")
+            flavor_id = self.__get_flavor_id(definition.server_type, definition.location)
+            image_id = self.__get_image_id(definition.server_type, definition.location)
             sshkey_id = self.__get_ssh_key_id(self.ssh_key)
-            server = self.client.post(f"/cloud/project/{self.service}/instance",
-                                      flavorId=flavor_id,
-                                      name=name,
-                                      region=self.region,
-                                      imageId=image_id,
-                                      sshKeyId=sshkey_id
-                                      )
+            with self.client_lock:
+                server = self.client.post(f"/cloud/project/{self.service}/instance",
+                                          flavorId=flavor_id,
+                                          name=name,
+                                          region=definition.location,
+                                          imageId=image_id,
+                                          sshKeyId=sshkey_id
+                                          )
+
             server_name = server["name"]
-            ipv4, ipv6 = self.__get_instance_ip(server_name)
+            cloud_logger.info(f"Created new node at OVH (name {server_name}, id: {server['id']}, "
+                              f"server type {definition.server_type})")
+            time.sleep(2)  # The ip is not immediately available.
+            ipv4, ipv6 = self.__get_instance_ip(server["id"])
+            cloud_logger.info(f"Got ips {ipv4} and {ipv6} for node {server_name}")
+
             return DynamicServer(server_name, DeploymentStatus.CREATED, IPv4Address(ipv4),
                                  IPv6Address(ipv6), self._str_to_vm_status(server["status"]), definition, server["id"],
                                  self.provider)
         except Exception as e:
-            pass
+            cloud_logger.exception(f"Error while creating a new node at OVH (server type {definition.server_type})")
 
         raise NodeCreateError()
 
@@ -333,9 +357,10 @@ class OvhAPI(CloudBlockingAPI):
         try:
             cloud_logger.info(f"Delete node at OVH ({node.name})")
             instance_id = self.__get_instance_id(node.name)
-            self.client.delete(f"/cloud/project/{self.service}/instance/{instance_id}")
+            with self.client_lock:
+                self.client.delete(f"/cloud/project/{self.service}/instance/{instance_id}")
         except Exception as e:  # handle exceptions
-            pass
+            cloud_logger.exception("")
 
     @staticmethod
     def _str_to_vm_status(s_status) -> VmStatus:
@@ -357,7 +382,7 @@ class OvhAPI(CloudBlockingAPI):
 
     def _get_vm_state(self, node: DynamicServer) -> VmStatus:
         try:
-            instance = self.__get_instance(node.name)
+            instance = self.__get_instance(node.id)
             cloud_logger.debug(f"Got vm state from OVH ({node.name}) status: {instance['status']}")
             return self._str_to_vm_status(instance['status'])
         except Exception as e:
@@ -380,4 +405,7 @@ class InstanceValidationError(Exception):
 
 
 class NodeCreateError(Exception):
+    pass
+
+class OVHCouldNotGetIPError(Exception):
     pass
