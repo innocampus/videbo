@@ -61,7 +61,7 @@ class FileStorage:
     def __init__(self, path: str):
         if not os.path.isdir(path):
             storage_logger.fatal(f"videos dir {path} does not exist")
-            raise NotADirectoryError()
+            raise NotADirectoryError(path)
 
         self.path: str = path
         self.tempdir: str = path + '/temp'
