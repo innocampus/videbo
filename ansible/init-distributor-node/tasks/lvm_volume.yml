@@ -1,0 +1,9 @@
+---
+- name: copy lvm script
+  template:
+    src: "create_lvm_volume.sh.j2"
+    dest: "/usr/local/bin/create_lvm_volume.sh"
+    mode: 0700
+
+- name: run lvm script
+  shell: "/usr/local/bin/create_lvm_volume.sh"

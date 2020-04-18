@@ -10,4 +10,6 @@ nginx_root: "/var/livestreams"
 bound_to_storage_base_url: ""
 tx_max_rate_mbit: "200"
 leave_free_space_mb: "2500"
+lvm_mount_path: "/video"
+lvm_dev_pattern: "nvme[0-9]n1"
 

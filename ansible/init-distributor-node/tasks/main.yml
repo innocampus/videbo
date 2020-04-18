@@ -8,9 +8,12 @@
     - "python3-venv"
     - "python3-pip"
     - "apt-transport-https"
+    - "lvm2"
+    - "xfsprogs"
     state: present
     update_cache: yes
 
+- include: lvm_volume.yml
 - include: ramdisk.yml
 - include: copy_project.yml
 - include: install.yml

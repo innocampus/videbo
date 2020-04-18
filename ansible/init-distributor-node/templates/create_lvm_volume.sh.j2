@@ -1,0 +1,30 @@
+#!/bin/bash
+
+# script to automatically create lvm volume spanning multiple drives.
+# Depends: lvm2, xfsprogs
+
+DEV_PATTERN="{{ lvm_dev_pattern }}"
+MOUNT_PATH="{{ lvm_mount_path }}"
+
+if vgdisplay | grep -q 'video_vg'; then
+	  >&2 echo "volume group already exists"
+	  exit 1
+fi
+
+devices=$(ls /dev/* | grep -E "$DEV_PATTERN")
+
+pvcreate ${devices[@]}
+
+vgcreate video_vg ${devices[@]}
+
+lvcreate -l 100%VG -n video_lv video_vg
+
+mkfs.xfs /dev/video_vg/video_lv
+
+mkdir "$MOUNT_PATH"
+
+mount /dev/video_vg/video_lv /video
+
+if ! grep -q "/video_lv" /etc/fstab; then
+	printf "/dev/video_vg/video_lv	$MOUNT_PATH	xfs	defaults	0	0\n" >> /etc/fstab
+fi
