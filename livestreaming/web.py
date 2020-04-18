@@ -191,13 +191,13 @@ class HTTPClient:
                     else:
                         return response.status, json
                 elif expected_return_type:
-                    web_logger.warning("Got unexpected data while internal web request")
+                    web_logger.warning(f"Got unexpected data while internal web request ({url}).")
                     raise HTTPResponseError()
                 else:
                     some_data = await response.read()
                     return response.status, some_data
         except (ClientError, UnicodeDecodeError, pydantic.ValidationError, JSONDecodeError) as error:
-            web_logger.exception("Error while internal web request.")
+            web_logger.exception(f"Error while internal web request ({url}).")
             raise HTTPResponseError()
 
     @classmethod

@@ -1,0 +1,13 @@
+---
+ramdisk_path: "/var/livestreams"
+ramdisk_size: "1G"
+deployment_tar_path: "/opt/livestreaming-server/livestream_deploy.tar.gz"
+project_path: "/opt/livestreaming-server"
+domain: ""
+internal_api_secret: "secure"
+api_secret: "secure"
+nginx_root: "/var/livestreams"
+bound_to_storage_base_url: ""
+tx_max_rate_mbit: "200"
+leave_free_space_mb: "2500"
+

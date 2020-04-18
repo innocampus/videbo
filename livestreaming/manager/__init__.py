@@ -56,7 +56,8 @@ def start() -> None:
         storage_controller.init(nc)
 
         if manager_settings.cloud_deployment:
-            node = await nc.start_content_node(1)
+            #node = await nc.start_content_node(1)
+            node = await nc.start_distributor_node(0, 'https://example.com')
             app['contentnode'] = node
 
     async def on_http_cleanup(app):

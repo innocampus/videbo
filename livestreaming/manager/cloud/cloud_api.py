@@ -128,8 +128,20 @@ class CombinedCloudAPI(CloudAPI):
         await self.provider_apis[provider].update_vm_state(node)
 
     async def delete_node(self, node: DynamicServer) -> None:
-        provider = node.provider
-        await self.provider_apis[provider].delete_node(node)
+        tries = 50
+        while tries > 0:
+            provider = node.provider
+            try:
+                await self.provider_apis[provider].delete_node(node)
+                return
+            except:
+                tries -= 1
+                if tries < 0:
+                    cloud_logger.exception(f"Error while deleting node {node.name}, giving up")
+                    raise
+                else:
+                    cloud_logger.exception(f"Error while deleting node {node.name}, retry")
+                await sleep(5)
 
     def _pick_node_name(self):
         hash = secrets.token_hex(4)

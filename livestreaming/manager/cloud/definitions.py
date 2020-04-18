@@ -68,6 +68,15 @@ class EncoderInstanceDefinition(InstanceDefinition):
         self.max_streams: int = int(config.get_config(section_name, 'max_streams'))
 
 
+class DistributorInstanceDefinition(InstanceDefinition):
+    section_name_prefix: str = "cloud-distributor-"
+
+    def __init__(self, config: Settings, section_name: str):
+        super().__init__(config, section_name)
+        self.tx_max_rate_mbit: int = int(config.get_config(section_name, 'tx_max_rate_mbit'))
+        self.leave_free_space_mb: int = int(config.get_config(section_name, 'leave_free_space_mb'))
+
+
 OrderedInstanceDefinitionsList = List[InstanceDefinition]
 
 
@@ -84,11 +93,13 @@ class CloudInstanceDefsController:
         self.domain = None
         self.content_definitions = {}
         self.encoder_definitions = {}
+        self.distributor_definitions = {}
 
     def init_from_config(self, config: Settings):
         self._init_provider_definitions(config)
         self._init_node_definitions(config, self.content_definitions, ContentInstanceDefinition)
         self._init_node_definitions(config, self.encoder_definitions, EncoderInstanceDefinition)
+        self._init_node_definitions(config, self.distributor_definitions, DistributorInstanceDefinition)
 
     def _init_provider_definitions(self, config: Settings):
         providers = config.get_config('manager', 'cloud_providers')
@@ -136,6 +147,10 @@ class CloudInstanceDefsController:
 
     def get_matching_encoder_defs(self, streams: int) -> List[EncoderInstanceDefinition]:
         return self._get_matching_defs(self.encoder_definitions, 'max_streams', streams)
+
+    def get_matching_distributor_defs(self, min_tx_rate_mbit: int) -> List[DistributorInstanceDefinition]:
+        """Get a list of possible content instances in the order that we should try to buy."""
+        return self._get_matching_defs(self.distributor_definitions, 'tx_max_rate_mbit', min_tx_rate_mbit)
 
     def _get_matching_defs(self, collection: Dict[int, List[InstanceDefinition]], key: str, min_value: int):
         list: List = []

@@ -6,7 +6,7 @@ import time
 
 from livestreaming.web import ensure_url_does_not_end_with_slash
 from .cloud import CombinedCloudAPI, NodeCreateError
-from .cloud import init_node
+from .cloud.cloud_deployment import init_node, remove_ssh_key
 from .cloud import DeploymentStatus, VmStatus
 from .cloud.server import Server, StaticServer, DynamicServer
 from .cloud.definitions import CloudInstanceDefsController, OrderedInstanceDefinitionsList
@@ -75,6 +75,17 @@ class NodeController:
         new_node.lifecycle_task = create_task(self._dynamic_server_lifecycle(list, new_node))
         return new_node
 
+    async def start_distributor_node(self, min_tx_rate_mbit: int,
+                                     bound_to_storage_node_base_url: str) -> DistributorNode:
+        """Start a new distributor node that should be able to deal with at least the given clients."""
+        list = self.definitions.get_matching_distributor_defs(min_tx_rate_mbit)
+        new_node = DistributorNode()
+        new_node.bound_to_storage_node_base_url = bound_to_storage_node_base_url
+        self.nodes[DistributorNode].append(new_node)
+        self.node_by_id[new_node.id] = new_node
+        new_node.lifecycle_task = create_task(self._dynamic_server_lifecycle(list, new_node))
+        return new_node
+
     async def _start_dynamic_server(self, ordered_defs: OrderedInstanceDefinitionsList) -> DynamicServer:
         if not self.manager_settings.cloud_deployment:
             raise CloudDeploymentDisabledError()
@@ -85,6 +96,7 @@ class NodeController:
                 self.server_by_name[server.name] = server
                 return server
             except NodeCreateError:
+                logger.info(f"Could not create node with definition {definition.section_name}")
                 pass
 
     async def _dynamic_server_lifecycle(self, ordered_defs: OrderedInstanceDefinitionsList, node: NodeTypeBase):
@@ -99,11 +111,12 @@ class NodeController:
                 return
 
             await wait_for(self.api.wait_node_running(node.server), 60)
+            logger.info(f"Created node with definition {node.server.instance_definition.section_name}")
 
             tasks = []
             if self.dns_manager:
                 tasks.append(node.server.set_domain_and_records(self.dns_manager))
-            tasks.append(init_node(node.server))
+            tasks.append(init_node(node))
             await gather(*tasks)
 
             node.base_url = "https://" + node.server.domain
@@ -133,6 +146,7 @@ class NodeController:
         if node.server and isinstance(node.server, DynamicServer):
             await self.api.delete_node(node.server)
             self.server_by_name.pop(node.server.name)
+            await remove_ssh_key(node.server.host)
 
     async def _init_static_nodes_of_type(self, node_type: Type[NodeTypeBase], urls: str):
         node_urls = list(map(str.strip, urls.split(',')))
