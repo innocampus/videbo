@@ -131,7 +131,7 @@ class FFmpeg:
             # last check of recording file size
             last_recording_check_time = 0.0
 
-            while self.stream.state in expected_states:
+            while self.stream.state in expected_states and self.ffmpeg_process:
                 if self.stream.state == StreamState.NOT_YET_STARTED:
                     self.stream.state = StreamState.WAITING_FOR_CONNECTION
 
@@ -182,10 +182,10 @@ class FFmpeg:
                                 self.stream.state = StreamState.STOPPED
                                 await self.stop()
                                 break
-                        except:
-                            logger.exception(
-                                f"Error while getting file size of recording of <stream {self.stream.stream_id}> "
-                                f"stop whole stream")
+                        except Exception as e:
+                            logger.exception(e)
+                            logger.error(f"Error while getting file size of recording of "
+                                         f"<stream {self.stream.stream_id}> stop whole stream")
                             self.stream.state = StreamState.STOPPED
                             await self.stop()
                             break
@@ -202,11 +202,13 @@ class FFmpeg:
             self.watch_task = None
 
     async def wait(self):
-        # never wait for watch_task since it waits itself
-        await self.ffmpeg_process.wait()
-        await self.socat_process.wait()
+        aws = {self.ffmpeg_process.wait(), self.socat_process.wait()}
+        # socat can stop before ffmpeg
+        await asyncio.wait(aws, return_when=asyncio.FIRST_COMPLETED)
 
     async def stop(self, kill_in: float = 2.0):
+        if self.watch_task:
+            self.watch_task.cancel()
         for process_name in ['ffmpeg_process', 'socat_process']:
             process: asyncio.subprocess.Process = getattr(self, process_name, None)
             if process and process.pid:
@@ -223,8 +225,6 @@ class FFmpeg:
                     # The process most probably already does not exist anymore.
                     pass
             setattr(self, process_name, None)
-        if self.watch_task:
-            self.watch_task.cancel()
 
     async def kill(self):
         await self.stop(kill_in=0)
@@ -267,9 +267,8 @@ class EncoderStream(Stream):
                 self.state = StreamState.NOT_YET_STARTED
                 self.ffmpeg = FFmpeg(self)
                 await self.ffmpeg.start()
-
-            self.waiting_for_connection_event.set()
-            await self.ffmpeg.wait()
+                self.waiting_for_connection_event.set()
+            await self.ffmpeg.wait()  # Wait for socat or ffmpeg to exit.
             logger.info(f"ffmpeg on port {self.port} for stream id {self.stream_id} ended")
             await asyncio.sleep(5)
             if self.ffmpeg.watch_task and not self.ffmpeg.watch_task.done():
@@ -277,13 +276,17 @@ class EncoderStream(Stream):
                 self.ffmpeg.watch_task.cancel()
 
         except asyncio.CancelledError:
-            if self.ffmpeg:
-                await self.ffmpeg.stop()
+            pass
         except Exception as err:
-            logger.error(f"Error in stream controller: {str(err)}")
+            logger.warning(f"error in stream controller: {str(err)}")
+            logger.exception(err)
             self.state = StreamState.ERROR
+        finally:
+            self.waiting_for_connection_event.set()
             if self.ffmpeg:
                 await self.ffmpeg.stop()
+            if self.state < StreamState.STOPPED:
+                self.state = StreamState.ERROR
 
     async def create_temp_path(self):
         """Create a temporary directory for the stream.

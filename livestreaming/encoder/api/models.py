@@ -1,5 +1,5 @@
 from enum import Enum
-from typing import Optional, List, Dict
+from typing import Optional, Dict
 from livestreaming.streams import StreamState
 from livestreaming.web import JSONBaseModel
 

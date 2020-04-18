@@ -1,12 +1,28 @@
 import asyncio
-from aiohttp.web import Request, RouteTableDef
-from aiohttp.web_exceptions import HTTPNotFound, HTTPNotAcceptable, HTTPOk
-from livestreaming.auth import Role, BaseJWTData, ensure_jwt_data_and_role
-from livestreaming.web import json_response, ensure_json_body
+from aiohttp.web import RouteTableDef
+from aiohttp.web import Request
+from aiohttp.web_exceptions import HTTPNotAcceptable
+from aiohttp.web_exceptions import HTTPOk
+from aiohttp.web_exceptions import HTTPInternalServerError
+from aiohttp.web_exceptions import HTTPConflict
+from livestreaming.auth import Role
+from livestreaming.auth import BaseJWTData
+from livestreaming.auth import ensure_jwt_data_and_role
+from livestreaming.web import ensure_json_body
+from livestreaming.web import json_response
 from livestreaming.encoder import encoder_settings
-from livestreaming.encoder.streams import stream_collection, StreamIdAlreadyExistsError, EncoderStream
-from .models import NewStreamCreated, NewStreamReturn, NewStreamParams, EncoderStreamStatus, EncoderStatus,\
-    StreamRecordingStartParams, StreamRecordingStopParams, StreamRecordingMeta
+from livestreaming.encoder.streams import stream_collection
+from livestreaming.encoder.streams import StreamIdAlreadyExistsError
+from livestreaming.encoder.streams import EncoderStream
+from livestreaming.streams import StreamState
+from .models import NewStreamParams
+from .models import EncoderStatus
+from .models import EncoderStreamStatus
+from .models import NewStreamReturn
+from .models import NewStreamCreated
+from .models import StreamRecordingStartParams
+from .models import StreamRecordingStopParams
+from .models import StreamRecordingMeta
 
 routes = RouteTableDef()
 
@@ -24,14 +40,19 @@ async def new_stream(request: Request, _jwt_data: BaseJWTData, json: NewStreamPa
         await asyncio.wait([stream.waiting_for_connection_event.wait(), stream.control_task],
                            return_when=asyncio.FIRST_COMPLETED)
 
-        new_stream_data = NewStreamCreated(rtmp_port=stream.public_port,
-                                           rtmp_stream_key=stream.rtmp_stream_key,
-                                           encoder_subdir_name=stream.encoder_subdir_name)
-        return_data = NewStreamReturn(success=True, stream=new_stream_data)
-        return json_response(return_data)
+        if stream.state < StreamState.ERROR:
+            new_stream_data = NewStreamCreated(rtmp_port=stream.public_port,
+                                               rtmp_stream_key=stream.rtmp_stream_key,
+                                               encoder_subdir_name=stream.encoder_subdir_name)
+            return_data = NewStreamReturn(success=True, stream=new_stream_data)
+            return json_response(return_data)
+        else:
+            return json_response(NewStreamReturn(success=False, error=f"unknown_error ({stream.state})"),
+                                 status=HTTPInternalServerError.status_code)
+
     except StreamIdAlreadyExistsError:
         return_data = NewStreamReturn(success=False, error="stream_id_already_exists")
-        return json_response(return_data, status=409)
+        return json_response(return_data, status=HTTPConflict.status_code)
 
 
 @routes.get(r'/api/encoder/status')

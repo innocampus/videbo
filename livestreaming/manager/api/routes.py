@@ -26,6 +26,10 @@ async def new_stream(request: Request, jwt_data: BaseJWTData, json: LMSNewStream
             return_data = LMSNewStreamReturn(success=False, error="no_encoder_available")
             return json_response(return_data, status=503)
 
+        if stream.state == StreamState.FFMPEG_ERROR:
+            return_data = LMSNewStreamParams(success=False, error="ffmpeg_error")
+            return json_response(return_data, status=500)
+
         if stream.state == StreamState.WAITING_FOR_CONNECTION:
             # This is the expected state.
             new_stream_data = stream.get_status(True)
