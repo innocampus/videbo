@@ -21,14 +21,15 @@ async def get_status(request: Request, _jwt_data: BaseJWTData):
     status = DistributorStatus.construct()
     status.bound_to_storage_node_base_url = distributor_settings.bound_to_storage_base_url
 
-    if 'get_connections' in request.query:
-        status.current_connections = 0  # TODO
-
     status.free_space = await file_controller.get_free_space()
 
     status.tx_max_rate = distributor_settings.tx_max_rate_mbit
     network = NetworkInterfaces.get_instance()
     interfaces = network.get_interface_names()
+
+    if distributor_settings.server_status_page:
+        status.current_connections = network.get_server_status()
+
     if len(interfaces) > 0:
         # Just take the first network interface.
         iface = network.get_interface(interfaces[0])

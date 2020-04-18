@@ -114,9 +114,9 @@ class NetworkInterfaces:
     def is_running(self):
         return self.is_fetching
 
-    def get_server_status(self, attribute: str = "writing") -> int:
+    def get_server_status(self, attribute: str = "writing") -> Optional[int]:
         if self._server_status is None:
-            raise KeyError("server status was never fetched")
+            return None
         return getattr(self._server_status, attribute, 0)
 
     def get_server_type(self):

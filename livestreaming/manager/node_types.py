@@ -254,7 +254,7 @@ class StorageNode(NodeTypeBase):
         self.load_threshold_exceeded_since: Optional[float] = None
 
     async def watchdog(self):
-        status_url = f"{self.base_url}/api/storage/status?get_connections=1"
+        status_url = f"{self.base_url}/api/storage/status"
         first_request = True
         while True:
             try:
@@ -352,7 +352,7 @@ class DistributorNode(NodeTypeBase):
         self.storage_node: Optional[StorageNode] = None
 
     async def watchdog(self):
-        status_url = f"{self.base_url}/api/distributor/status?get_connections=1"
+        status_url = f"{self.base_url}/api/distributor/status"
         first_request = True
         while True:
             try:
