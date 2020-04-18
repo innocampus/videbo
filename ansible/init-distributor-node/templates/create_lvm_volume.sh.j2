@@ -23,7 +23,7 @@ mkfs.xfs /dev/video_vg/video_lv
 
 mkdir "$MOUNT_PATH"
 
-mount /dev/video_vg/video_lv /video
+mount /dev/video_vg/video_lv "$MOUNT_PATH"
 
 if ! grep -q "/video_lv" /etc/fstab; then
 	printf "/dev/video_vg/video_lv	$MOUNT_PATH	xfs	defaults	0	0\n" >> /etc/fstab
