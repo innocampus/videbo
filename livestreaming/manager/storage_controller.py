@@ -4,6 +4,7 @@ from typing import Optional, Dict
 from livestreaming.misc import TaskManager
 from .node_controller import NodeController
 from .node_types import StorageNode, DistributorNode, AddDistributorError
+from . import logger
 
 
 class StorageDistributorController:
@@ -23,10 +24,14 @@ class StorageDistributorController:
 
             storage_by_base_url: Dict[str, StorageNode] = {}
             for node in storage_nodes:
+                logger.info(f"Storage node {node.base_url} tx current rate {node.tx_current_rate} ({node.tx_load}), "
+                            f"current connections {node.current_connections}")
                 storage_by_base_url[node.base_url] = node
 
             # Check all dist nodes are connected to their storage.
             for node in dist_nodes:
+                logger.info(f"distributor node {node.base_url} tx current rate {node.tx_current_rate} ({node.tx_load}), "
+                            f"current connections {node.current_connections}")
                 storage_node = storage_by_base_url.get(node.bound_to_storage_node_base_url)
                 if node.storage_node is None and storage_node:
                     try:
@@ -34,10 +39,10 @@ class StorageDistributorController:
                     except AddDistributorError:
                         pass
 
-            for node in storage_nodes:
-                await self._check_storage_dists_load(node)
+            #for node in storage_nodes:
+            #    await self._check_storage_dists_load(node)
 
-            await asyncio.sleep(6)
+            await asyncio.sleep(20)
 
     async def _check_storage_dists_load(self, storage: StorageNode):
         total_tx_current_rate = storage.tx_current_rate
