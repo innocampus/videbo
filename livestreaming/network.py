@@ -177,11 +177,11 @@ class NetworkInterfaces:
                 text_to_scan = ""
                 updated = False
                 for line in lines:
-                    if re.match(r"<pre>[A-Z_.]+", line):
+                    if re.match(r".*<pre>[A-Z_.]+", line):
                         scan = True
                     if scan:
                         text_to_scan += line
-                    if re.match(r"[A-Z_.]*</pre>.*", line):
+                    if scan and re.match(r"[A-Z_.]*</pre>.*", line):
                         # scan for first <pre> only
                         if self._server_status is None:
                             self._server_status = StubStatus()
@@ -243,9 +243,22 @@ class NetworkInterfaces:
                     if logger:
                         logger.info("start fetch for network resources")
                     await self._fetch_proc_info()
+
                     while self._do_fetch:
-                        await self._fetch_proc_info()
-                        await self._fetch_server_status(url=status_page, logger=logger)
+                        try:
+                            await self._fetch_proc_info()
+                        except asyncio.CancelledError:
+                            pass
+                        except Exception:
+                            logger.exception("Error in network _fetch_proc_info")
+
+                        try:
+                            await self._fetch_server_status(url=status_page, logger=logger)
+                        except asyncio.CancelledError:
+                            pass
+                        except Exception:
+                            logger.exception("Error in network _fetch_server_status")
+
                         await asyncio.sleep(self.interval)
                 finally:
                     if logger:

@@ -196,7 +196,7 @@ class HTTPClient:
                 else:
                     some_data = await response.read()
                     return response.status, some_data
-        except (ClientError, UnicodeDecodeError, pydantic.ValidationError, JSONDecodeError, ConnectionRefusedError) \
+        except (ClientError, UnicodeDecodeError, pydantic.ValidationError, JSONDecodeError, ConnectionError) \
                 as error:
             web_logger.exception(f"Error while internal web request ({url}).")
             raise HTTPResponseError()
