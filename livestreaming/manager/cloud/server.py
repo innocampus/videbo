@@ -16,7 +16,7 @@ class Server:
 
 class StaticServer(Server):
     def __repr__(self):
-        return f"[StaticNode name: {self.name}; host: {self.host}] "
+        return f"[StaticServer name: {self.name}; host: {self.host}] "
 
     def is_operational(self) -> bool:
         return True # TODO
@@ -39,7 +39,7 @@ class DynamicServer(Server):
         self.domain: Optional[str] = None
 
     def __str__(self):
-        return f"[DynamicNode name: {self.name}; host: {self.host}; " \
+        return f"[DynamicServer name: {self.name}; host: {self.host}; " \
                f"deployment status: {self.deployment_status}; vm status: {self.vm_status}; " \
                f"ipv4: {self.ipv4}; ipv6: {self.ipv6}; id: {self.id}, provider: {self.provider}] "
 

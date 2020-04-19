@@ -8,3 +8,5 @@ venv
 dev_generate_requests.py
 config.ini.j2
 .lego
+/ansible/*.retry
+manager.db

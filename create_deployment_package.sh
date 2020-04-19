@@ -47,7 +47,9 @@ sed -i "s/^internal_api_secret =.*/internal_api_secret = {{ internal_api_secret 
 sed -i "s/^api_secret =.*/api_secret = {{ api_secret }}/" distributor.config.ini
 sed -i "s/^bound_to_storage_base_url =.*/bound_to_storage_base_url = {{ bound_to_storage_base_url }}/" distributor.config.ini
 sed -i "s/^tx_max_rate_mbit =.*/tx_max_rate_mbit = {{ tx_max_rate_mbit }}/" distributor.config.ini
+sed -i "s/^files_path =.*/files_path = \/video/" distributor.config.ini
 sed -i "s/^leave_free_space_mb =.*/leave_free_space_mb = {{ leave_free_space_mb }}/" distributor.config.ini
+sed -i "s/^server_status_page =.*/server_status_page = http:\/\/127.0.0.1\/basic_status/" distributor.config.ini
 
 mv distributor.config.ini ansible/init-distributor-node/templates/config.ini.j2
 

@@ -13,14 +13,13 @@ if TYPE_CHECKING:
 
 
 class NodeTypeBase:
-    _last_id: int = 1
-
     def __init__(self):
         self.lifecycle_task: Optional[Task] = None
         self.server: Optional[Server] = None
         self.base_url: Optional[str] = None  # does not end with a slash
-        self.id: int = NodeTypeBase._last_id  # internal id of the node
-        NodeTypeBase._last_id += 1
+        self.id: Optional[int] = None  # internal id of the node
+        self.created_manually: bool = False  # node was created explicitly by the admin but it is not a static node
+        self.shutdown: bool = False  # shut down when watchdog is cancelled
 
     async def watchdog(self):
         raise NotImplementedError()
@@ -336,7 +335,7 @@ class StorageNode(NodeTypeBase):
 
 
 class DistributorNode(NodeTypeBase):
-    def __init__(self):
+    def __init__(self, loop=None):
         super().__init__()
         self.bound_to_storage_node_base_url: str = ''
         self.tx_current_rate: int = 0  # in Mbit/s
@@ -348,7 +347,7 @@ class DistributorNode(NodeTypeBase):
         self.free_space: int = 0  # in MB
         self.tx_load: float = 0.0  # tx_current_rate / tx_max_rate
 
-        self.first_request_done: Event = Event()
+        self.first_request_done: Event = Event(loop=loop)
         self.storage_node: Optional[StorageNode] = None
 
     async def watchdog(self):

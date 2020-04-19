@@ -21,6 +21,7 @@ class ManagerSettings(SettingsSectionBase):
     remove_orphaned_nodes: bool
     dynamic_node_name_prefix: str  # always ends with - (a hyphen)
     streams_content_node_distribution_algorithm: str
+    db_file: PurePath
 
     def load(self):
         super().load()
@@ -38,6 +39,7 @@ def start() -> None:
     from .node_controller import NodeController
     from .streams import stream_collection
     from .storage_controller import StorageDistributorController
+    from .db import Database
 
     manager_settings.load()
 
@@ -45,7 +47,10 @@ def start() -> None:
     cloud_definitions = CloudInstanceDefsController()
     cloud_definitions.init_from_config(settings)
 
-    nc = NodeController(manager_settings, cloud_definitions)
+    db = Database()
+    db.connect(str(manager_settings.db_file))
+
+    nc = NodeController(manager_settings, cloud_definitions, db)
     storage_controller = StorageDistributorController()
 
     async def on_http_startup(app):
@@ -57,11 +62,13 @@ def start() -> None:
 
         if manager_settings.cloud_deployment:
             #node = await nc.start_content_node(1)
-            node = await nc.start_distributor_node(0, 'https://example.com')
-            app['contentnode'] = node
+            #node = await nc.start_distributor_node(0, 'https://test1.com')
+            #node = await nc.start_distributor_node(0, 'https://test2.com')
+            #app['contentnode'] = node
+            pass
 
     async def on_http_cleanup(app):
-        pass
+        await db.disconnect()
 
     start_web_server(manager_settings.http_port, routes, on_http_startup, on_http_cleanup)
 

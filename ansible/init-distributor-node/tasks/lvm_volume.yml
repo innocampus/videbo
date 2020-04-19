@@ -5,5 +5,12 @@
     dest: "/usr/local/bin/create_lvm_volume.sh"
     mode: 0700
 
+- name: Create video directory
+  file:
+    path: "{{ lvm_video_path }}"
+    state: directory
+    mode: '0755'
+
 - name: run lvm script
   shell: "/usr/local/bin/create_lvm_volume.sh"
+

@@ -10,6 +10,7 @@
     - "apt-transport-https"
     - "lvm2"
     - "xfsprogs"
+    - "nginx-light"
     state: present
     update_cache: yes
 

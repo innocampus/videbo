@@ -11,6 +11,13 @@
     group: livestreaming
     recurse: true
 
+- name: give user video directory ownership
+  file:
+    path: "{{ lvm_video_path }}"
+    owner: livestreaming
+    group: livestreaming
+    recurse: true
+
 - name: create venv
   command:
     cmd: "python3 -m venv venv"
@@ -36,3 +43,4 @@
     state: started
     enabled: true
     name: livestreaming-distributor-node
+
