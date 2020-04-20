@@ -326,7 +326,7 @@ def video_check_redirect(request: Request, file: StoredHashedVideoFile) -> None:
                 else:
                     if own_tx_load > 0.4:
                         # Redirect to node where the client needs to wait until the node downloaded the file.
-                        video_redirect_to_node(request, to_node)
+                        video_redirect_to_node(request, to_node, file)
                     else:
                         # Serve file.
                         return
@@ -336,12 +336,12 @@ def video_check_redirect(request: Request, file: StoredHashedVideoFile) -> None:
             return
     elif has_complete_file:
         # One distribution node that can serve the file.
-        video_redirect_to_node(request, node)
+        video_redirect_to_node(request, node, file)
     else:
         # There is only a distribution node that is downloading the file however.
         if own_tx_load > 0.4:
             # Redirect to node where the client needs to wait until the node downloaded the file.
-            video_redirect_to_node(request, node)
+            video_redirect_to_node(request, node, file)
         else:
             # Serve file.
             return
@@ -349,8 +349,8 @@ def video_check_redirect(request: Request, file: StoredHashedVideoFile) -> None:
     raise Exception("video_check_redirect: should not reach this line")
 
 
-def video_redirect_to_node(request: Request, node: DistributionNodeInfo):
-    storage_logger.info(f"Redirect user to {node.base_url}")
+def video_redirect_to_node(request: Request, node: DistributionNodeInfo, file: StoredHashedVideoFile):
+    storage_logger.info(f"Redirect user to {node.base_url} for video {file}")
     jwt = request.query['jwt']
     url = f"{node.base_url}/file?jwt={jwt}"
     raise HTTPFound(url)
