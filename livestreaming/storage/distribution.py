@@ -92,13 +92,15 @@ class DistributionNodeInfo:
 
         async def copy_file_task():
             try:
+                from_url = ""
                 if from_node:
                     from_url = from_node.base_url
                 else:
                     from_url = storage_settings.public_base_url
                 url = f"{self.base_url}/api/distributor/copy/{file.hash}{file.file_extension}"
                 data = DistributorCopyFile(from_base_url=from_url, file_size=file.file_size)
-                status, ret = await asyncio.wait_for(HTTPClient.internal_request_node("POST", url, data), 600)
+                storage_logger.info(f"Asking distributor to copy {file.hash} from {from_url} to {self.base_url}")
+                status, ret = await asyncio.wait_for(HTTPClient.internal_request_node("POST", url, data), 900)
                 if status == 200:
                     self.stored_videos.add(file)
                     storage_logger.info(f"Copied video {file.hash} from {from_url} to {self.base_url}")

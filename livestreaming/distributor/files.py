@@ -85,6 +85,7 @@ class DistributorFileController:
             # File is already there or it is downloaded right now.
             return
 
+        logger.info(f"Start copying file {file} from {from_url}")
         event = Event()
         new_file = DistributorHashedVideoFile(file.hash, file.file_extension)
         new_file.event = event
