@@ -1,4 +1,5 @@
 import os
+from aiohttp import ClientTimeout
 from asyncio import get_running_loop, Event, wait_for, TimeoutError
 from pathlib import Path
 from typing import Optional, Dict, Union
@@ -106,8 +107,9 @@ class DistributorFileController:
                                                     file_ext=file.file_extension, rid="", role="node")
             jwt = internal_jwt_encode(jwt_data)
             headers = { "Authorization": "Bearer " + jwt }
+            timeout = ClientTimeout(total=30*60)
 
-            async with HTTPClient.session.request("GET", from_url + "/file", headers=headers) as response:
+            async with HTTPClient.session.request("GET", from_url + "/file", headers=headers, timeout=timeout) as response:
                 if response.status != 200:
                     logger.error(f"Error when copying file {file} from {from_url}: got http status {response.status}")
                     raise CopyFileError()
