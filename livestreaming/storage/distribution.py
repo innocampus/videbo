@@ -78,10 +78,6 @@ class DistributionNodeInfo:
 
     async def stop_watching(self):
         self.watcher_task.cancel()
-        try:
-            await self.watcher_task
-        except:
-            storage_logger.exception(f"Error in watcher task for <Distribution watcher {self.base_url}>")
         self.watcher_task = None
 
     def put_video(self, file: "StoredHashedVideoFile", from_node: Optional["DistributionNodeInfo"]) -> None:
