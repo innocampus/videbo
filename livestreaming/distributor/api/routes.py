@@ -8,7 +8,7 @@ from livestreaming.web import json_response, ensure_json_body
 from livestreaming.storage.api.models import RequestFileJWTData, FileType
 from livestreaming.storage.util import HashedVideoFile
 from livestreaming.distributor import logger, distributor_settings
-from livestreaming.distributor.files import file_controller
+from livestreaming.distributor.files import file_controller, TooManyWaitingClients
 from .models import DistributorStatus, DistributorCopyFile, DistributorDeleteFiles, DistributorDeleteFilesResponse,\
     DistributorFileList
 
@@ -93,6 +93,9 @@ async def request_file(_: Request, jwt_data: RequestFileJWTData):
             raise HTTPNotFound()
     except asyncio.TimeoutError:
         logger.info(f"Waited for file, but timeout reached, file {video.hash}")
+        raise HTTPServiceUnavailable()
+    except TooManyWaitingClients:
+        logger.info(f"Too many waiting users, file {video.hash}")
         raise HTTPServiceUnavailable()
 
     headers = {
