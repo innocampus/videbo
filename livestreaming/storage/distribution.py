@@ -63,6 +63,7 @@ class DistributionNodeInfo:
                     try:
                         file = await storage.get_file(file_hash, file_extension)
                         self.stored_videos.add(file)
+                        file.nodes.add_node(self)
                     except FileDoesNotExistError:
                         remove_unknown_files.append((file_hash, file_extension))
 

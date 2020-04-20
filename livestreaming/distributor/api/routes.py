@@ -103,7 +103,7 @@ async def request_file(_: Request, jwt_data: RequestFileJWTData):
         # Check rate limit
         rate_limit = distributor_settings.nginx_x_accel_limit_rate_kbit
         if rate_limit:
-            headers["X-Accel-Limit-Rate"] = rate_limit * 1024 / 8
+            headers["X-Accel-Limit-Rate"] = str(int(rate_limit * 1024 / 8))
 
     path = file_controller.get_path_or_nginx_redirect(video)
     if isinstance(path, str):

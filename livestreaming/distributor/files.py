@@ -31,9 +31,9 @@ class DistributorFileController:
     def load_file_list(self, base_path: Path):
         """Initialize object and load all existing file names."""
         self.base_path = base_path
-        for obj in base_path.iterdir():
+        for obj in base_path.glob('**/*'):
             if obj.is_file():
-                file_split = obj.name.split('.')[0]
+                file_split = obj.name.split('.')
                 file_hash = file_split[0]
                 if file_split[-1] == 'tmp':
                     # Do not consider .tmp files. Delete them.
