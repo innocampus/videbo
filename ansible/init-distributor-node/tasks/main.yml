@@ -19,3 +19,4 @@
 - include: copy_project.yml
 - include: install.yml
 - include: config_nginx.yml
+- include: monitoring.yml
