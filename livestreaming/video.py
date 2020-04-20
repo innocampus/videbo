@@ -220,6 +220,13 @@ class Video:
             shutil.copyfile(source_file, target_file)
 
 
+def get_content_type_for_video(file_ext: str):
+    if file_ext == ".mp4":
+        return "video/mp4"
+    if file_ext == ".webm":
+        return "video/webm"
+
+
 class FileCmdError(Exception):
     def __init__(self, timeout):
         self.timeout = timeout

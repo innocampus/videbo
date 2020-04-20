@@ -21,7 +21,7 @@ class DistributorHashedVideoFile(HashedVideoFile):
 
 
 class DistributorFileController:
-    MAX_WAITING_CLIENTS = 30
+    MAX_WAITING_CLIENTS = 60
 
     def __init__(self):
         # file hash -> Event if the node is still downloading the file right now (event is fired when load completed)
@@ -63,13 +63,13 @@ class DistributorFileController:
         """
         found = self.files.get(file.hash)
         if found:
-            if isinstance(found, Event):
+            if found.event:
                 if self.waiting >= self.MAX_WAITING_CLIENTS:
                     raise TooManyWaitingClients()
 
                 try:
                     self.waiting += 1
-                    await wait_for(found.wait(), wait)
+                    await wait_for(found.event.wait(), wait)
                 finally:
                     self.waiting -= 1
             return True

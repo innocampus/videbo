@@ -4,6 +4,7 @@ from aiohttp.web_exceptions import HTTPNotFound, HTTPNotAcceptable, HTTPOk, HTTP
 from typing import List, Tuple
 from livestreaming.auth import Role, BaseJWTData, ensure_jwt_data_and_role, JWT_ISS_INTERNAL
 from livestreaming.network import NetworkInterfaces
+from livestreaming.video import get_content_type_for_video
 from livestreaming.web import json_response, ensure_json_body
 from livestreaming.storage.api.models import RequestFileJWTData, FileType
 from livestreaming.storage.util import HashedVideoFile
@@ -111,6 +112,7 @@ async def request_file(_: Request, jwt_data: RequestFileJWTData):
     path = file_controller.get_path_or_nginx_redirect(video)
     if isinstance(path, str):
         headers["X-Accel-Redirect"] = path
-        return Response(headers=headers)
+        content_type = get_content_type_for_video(video.file_extension)
+        return Response(headers=headers, content_type=content_type)
 
     return FileResponse(path, headers=headers)
