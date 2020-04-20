@@ -34,19 +34,27 @@ class DistributionNodeInfo:
                         self.tx_max_rate = ret.tx_max_rate
                         self.tx_load = self.tx_current_rate / self.tx_max_rate
                         self.free_space = ret.free_space
-                        self.good = True
+                        await self.set_node_status(True)
                     else:
                         storage_logger.error(f"<Distribution watcher {self.base_url}> http status {status}")
-                        self.good = False
+                        await self.set_node_status(False)
                 except HTTPResponseError:
                     storage_logger.exception(f"<Distribution watcher {self.base_url}> http error")
-                    self.good = False
+                    await self.set_node_status(False)
 
                 await asyncio.sleep(2)
 
-        await self._load_file_list()
+        # File list is loaded before node status switches to good.
         self.watcher_task = asyncio.create_task(watcher())
         TaskManager.fire_and_forget_task(self.watcher_task)
+
+    async def set_node_status(self, new_is_in_good_state: bool):
+        if self.good and not new_is_in_good_state:
+            await self.unlink_node(False)
+        elif not self.good and new_is_in_good_state:
+            await self._load_file_list()
+
+        self.good = new_is_in_good_state
 
     async def _load_file_list(self):
         """Fetch a list of all files that the node currently has."""
@@ -62,6 +70,7 @@ class DistributionNodeInfo:
                 for file_hash, file_extension in ret.files:
                     try:
                         file = await storage.get_file(file_hash, file_extension)
+                        storage_logger.info(f"Found file {file.hash}{file.file_extension}")
                         self.stored_videos.add(file)
                         file.nodes.add_node(self)
                     except FileDoesNotExistError:
@@ -109,7 +118,7 @@ class DistributionNodeInfo:
                 storage_logger.exception(f"Error when copying video {file.hash} from {from_url} to {self.base_url}")
                 raise
             finally:
-                self.loading.remove(file)
+                self.loading.discard(file)
                 file.nodes.copying = False
 
         self.loading.add(file)
@@ -136,17 +145,18 @@ class DistributionNodeInfo:
         rem_files = []
         for file in files:
             rem_files.append((file.hash, file.file_extension))
-            self.stored_videos.remove(file)
+            self.stored_videos.discard(file)
             file.nodes.remove_node(self)
 
         await self._remove_files(rem_files)
 
-    async def unlink_node(self):
+    async def unlink_node(self, stop_watching: bool = True):
         """Do not remove videos on this node, but remove all local references to this node."""
         for file in self.stored_videos:
             file.nodes.remove_node(self)
         self.stored_videos.clear()
-        await self.stop_watching()
+        if stop_watching:
+            await self.stop_watching()
 
     def __lt__(self, other: "DistributionNodeInfo"):
         return self.tx_load < other.tx_load
@@ -167,7 +177,7 @@ class FileNodes:
         self.nodes.add(node)
 
     def remove_node(self, node: "DistributionNodeInfo"):
-        self.nodes.remove(node)
+        self.nodes.discard(node)
 
     def find_good_node(self, file: "StoredHashedVideoFile") -> Tuple[Optional[DistributionNodeInfo], bool]:
         """Find a node that can serve the file and that is not too busy. May also return a node that is currently
