@@ -267,7 +267,7 @@ async def request_file(request: Request, jwt_data: RequestFileJWTData):
         # Only consider redirecting the client when it is an external request.
         if jwt_data.iss != JWT_ISS_INTERNAL:
             file_storage.distribution_controller.count_file_access(video, jwt_data.rid)
-            video_check_redirect(request, video)
+            await video_check_redirect(request, video)
 
         storage_logger.info(f"serve video with hash {video}")
         path = file_storage.get_path(video)[0]
@@ -301,7 +301,7 @@ async def request_file(request: Request, jwt_data: RequestFileJWTData):
     return FileResponse(path, headers={"Cache-Control": "private, max-age=50400"})
 
 
-def video_check_redirect(request: Request, file: StoredHashedVideoFile) -> None:
+async def video_check_redirect(request: Request, file: StoredHashedVideoFile) -> None:
     own_tx_load = get_own_tx_load()
     node, has_complete_file = file.nodes.find_good_node(file)
     if node is None:
@@ -326,6 +326,8 @@ def video_check_redirect(request: Request, file: StoredHashedVideoFile) -> None:
                 else:
                     if own_tx_load > 0.4:
                         # Redirect to node where the client needs to wait until the node downloaded the file.
+                        # Wait a moment to give distributor node time getting notified to copy the file.
+                        await asyncio.sleep(1)
                         video_redirect_to_node(request, to_node, file)
                     else:
                         # Serve file.
@@ -341,6 +343,8 @@ def video_check_redirect(request: Request, file: StoredHashedVideoFile) -> None:
         # There is only a distribution node that is downloading the file however.
         if own_tx_load > 0.4:
             # Redirect to node where the client needs to wait until the node downloaded the file.
+            # Wait a moment to give distributor node time getting notified to copy the file.
+            await asyncio.sleep(1)
             video_redirect_to_node(request, node, file)
         else:
             # Serve file.
