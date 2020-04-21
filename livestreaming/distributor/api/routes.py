@@ -1,6 +1,7 @@
 import asyncio
 from aiohttp.web import Request, Response, RouteTableDef, FileResponse
-from aiohttp.web_exceptions import HTTPNotFound, HTTPNotAcceptable, HTTPOk, HTTPServiceUnavailable
+from aiohttp.web_exceptions import HTTPNotFound, HTTPNotAcceptable, HTTPOk, HTTPServiceUnavailable, \
+    HTTPInternalServerError
 from typing import List, Tuple
 from livestreaming.auth import Role, BaseJWTData, ensure_jwt_data_and_role, JWT_ISS_INTERNAL
 from livestreaming.network import NetworkInterfaces
@@ -63,7 +64,13 @@ async def get_all_files(_request: Request, _jwt_data: BaseJWTData):
 @ensure_json_body()
 async def copy_file(request: Request, _jwt_data: BaseJWTData, data: DistributorCopyFile):
     file = HashedVideoFile(request.match_info['hash'], request.match_info['file_ext'])
-    await file_controller.copy_file(file, data.from_base_url, data.file_size)
+    new_file = file_controller.copy_file(file, data.from_base_url, data.file_size)
+    if new_file.event:
+        await asyncio.wait_for(new_file.event.wait(), 60*60)
+        # Recheck that file really exists now.
+        video = HashedVideoFile(request.match_info['hash'], request.match_info['file_ext'])
+        if not (await file_controller.file_exists(video, 1)):
+            raise HTTPInternalServerError()
     raise HTTPOk()
 
 

@@ -1,10 +1,12 @@
+import asyncio
 import os
 from aiohttp import ClientTimeout
 from asyncio import get_running_loop, Event, wait_for, TimeoutError
 from pathlib import Path
+from time import time
 from typing import Optional, Dict, Union
 from livestreaming.auth import internal_jwt_encode
-from livestreaming.misc import get_free_disk_space
+from livestreaming.misc import get_free_disk_space, TaskManager
 from livestreaming.web import HTTPClient
 from livestreaming.storage.util import HashedVideoFile
 from livestreaming.storage.api.models import RequestFileJWTData, FileType
@@ -81,74 +83,97 @@ class DistributorFileController:
         free = await get_free_disk_space(str(self.base_path))
         return max(free - distributor_settings.leave_free_space_mb, 0)
 
-    async def copy_file(self, file: HashedVideoFile, from_url: str, expected_file_size: int) -> None:
+    def copy_file(self, file: HashedVideoFile, from_url: str, expected_file_size: int) \
+            -> DistributorHashedVideoFile:
         if file.hash in self.files:
             # File is already there or it is downloaded right now.
-            return
+            logger.info(f"File {file} is already there or it is downloaded right now.")
+            return self.files[file.hash]
 
         logger.info(f"Start copying file {file} from {from_url}")
         event = Event()
         new_file = DistributorHashedVideoFile(file.hash, file.file_extension)
         new_file.event = event
         self.files[file.hash] = new_file
-        # load file
-        temp_path = self.get_path(file, True)
-        file_obj = None
-        try:
-            # ensure dir exists
-            await get_running_loop().run_in_executor(None, os.makedirs, temp_path.parent, 0o755, True)
 
-            # open file
-            file_obj = await get_running_loop().run_in_executor(None, temp_path.open, 'wb', 0)
-            free_space = await self.get_free_space()
+        async def do_copy():
+            # load file
+            temp_path = self.get_path(file, True)
+            file_obj = None
+            try:
+                # ensure dir exists
+                await get_running_loop().run_in_executor(None, os.makedirs, temp_path.parent, 0o755, True)
 
-            # prepare request
-            jwt_data = RequestFileJWTData.construct(type=FileType.VIDEO.value, hash=file.hash,
-                                                    file_ext=file.file_extension, rid="", role="node")
-            jwt = internal_jwt_encode(jwt_data)
-            headers = { "Authorization": "Bearer " + jwt }
-            timeout = ClientTimeout(total=30*60)
+                # open file
+                file_obj = await get_running_loop().run_in_executor(None, temp_path.open, 'wb', 0)
+                free_space = await self.get_free_space()
 
-            async with HTTPClient.session.request("GET", from_url + "/file", headers=headers, timeout=timeout) as response:
-                if response.status != 200:
-                    logger.error(f"Error when copying file {file} from {from_url}: got http status {response.status}")
-                    raise CopyFileError()
+                # prepare request
+                jwt_data = RequestFileJWTData.construct(type=FileType.VIDEO.value, hash=file.hash,
+                                                        file_ext=file.file_extension, rid="", role="node")
+                jwt = internal_jwt_encode(jwt_data)
+                headers = { "Authorization": "Bearer " + jwt }
+                timeout = ClientTimeout(total=120*60)
 
-                # Check if we have enough space for this file.
-                file_size = int(response.headers.getone("Content-Length", 0)) / 1024 / 1024
-                if file_size > free_space:
-                    logger.error(f"Error when copying file {file} from {from_url}: Not enough space, "
-                                 f"free space {free_space} MB, file is {file_size} MB")
-                    raise CopyFileError()
+                async with HTTPClient.session.request("GET", from_url + "/file", headers=headers,
+                                                      timeout=timeout) as response:
+                    if response.status != 200:
+                        logger.error(f"Error when copying file {file} from {from_url}: got http status {response.status}")
+                        raise CopyFileError()
 
-                # Load file
-                loaded_bytes = 0
-                while True:
-                    data = await response.content.read(1024 * 1024)
-                    if len(data) == 0:
-                        break
-                    loaded_bytes += len(data)
-                    await get_running_loop().run_in_executor(None, file_obj.write, data)
-                if loaded_bytes != expected_file_size:
-                    logger.error(f"Error when copying file {file} from {from_url}: Loaded {loaded_bytes} bytes,"
-                                 f"but expected {expected_file_size} bytes.")
-                    raise CopyFileError()
-                logger.info(f"Copied file {file} from {from_url}")
-        except:
-            # Set event to wake up all waiting tasks even though we don't have the file.
+                    # Check if we have enough space for this file.
+                    file_size_mb = int(response.headers.getone("Content-Length", 0)) / 1024 / 1024
+                    if file_size_mb > free_space:
+                        logger.error(f"Error when copying file {file} from {from_url}: Not enough space, "
+                                     f"free space {free_space} MB, file is {file_size_mb} MB")
+                        raise CopyFileError()
+
+                    # Load file
+                    loaded_bytes = 0
+                    last_update_time = time()
+                    while True:
+                        data = await response.content.read(1024 * 1024)
+                        if len(data) == 0:
+                            break
+                        loaded_bytes += len(data)
+                        await get_running_loop().run_in_executor(None, file_obj.write, data)
+
+                        # If the download takes much time, periodically print status.
+                        if (time() - last_update_time) > 120:
+                            last_update_time = time()
+                            loaded_mb = loaded_bytes / 1024 / 1024
+                            percent = loaded_bytes / expected_file_size
+                            logger.info(f"Still copying, copied {loaded_mb}/{file_size_mb} MB ({percent:.1f} %) until "
+                                        f"now of file {file}")
+
+                    if loaded_bytes != expected_file_size:
+                        logger.error(f"Error when copying file {file} from {from_url}: Loaded {loaded_bytes} bytes,"
+                                     f"but expected {expected_file_size} bytes.")
+                        raise CopyFileError()
+                    logger.info(f"Copied file {file} ({file_size_mb:.1f} MB) from {from_url}")
+            except:
+                # Set event to wake up all waiting tasks even though we don't have the file.
+                event.set()
+                self.files.pop(file.hash)
+                logger.exception(f"Error when copying file {file} from {from_url}")
+                raise CopyFileError()
+            finally:
+                if file_obj:
+                    await get_running_loop().run_in_executor(None, file_obj.close)
+
+            # move to final location (without .tmp suffix)
+            final_path = self.get_path(file)
+            try:
+                await get_running_loop().run_in_executor(None, temp_path.rename, final_path)
+            except OSError:
+                logger.exception(f"Error when renaming file {temp_path} to {final_path}")
+                self.files.pop(file.hash)
             event.set()
-            self.files.pop(file.hash)
-            logger.exception(f"Error when copying file {file} from {from_url}")
-            raise CopyFileError()
-        finally:
-            if file_obj:
-                await get_running_loop().run_in_executor(None, file_obj.close)
+            new_file.event = None
 
-        # move to final location (without .tmp suffix)
-        final_path = self.get_path(file)
-        await get_running_loop().run_in_executor(None, temp_path.rename, final_path)
-        event.set()
-        self.files[file.hash].event = None
+        task = asyncio.create_task(do_copy())
+        TaskManager.fire_and_forget_task(task)
+        return new_file
 
     async def delete_file(self, file: HashedVideoFile) -> None:
         try:
