@@ -1,7 +1,7 @@
 import asyncio
 from typing import Dict
 from livestreaming import settings
-from livestreaming.manager import logger
+from livestreaming.manager import logger, manager_settings
 from livestreaming.manager.node_types import NodeTypeBase, DistributorNode
 from .definitions import InstanceDefinition, ContentInstanceDefinition, DistributorInstanceDefinition
 from .status import DeploymentStatus
@@ -74,6 +74,12 @@ async def run_ansible(node_type: str, host: str, definition: InstanceDefinition,
     become = ""
     if definition.user != "root":
         become = "--become"
+
+    # Add common vars for all nodes
+    vars["influx_url"] = manager_settings.influx_url
+    vars["influx_database"] = manager_settings.influx_database
+    vars["influx_username"] = manager_settings.influx_username
+    vars["influx_password"] = manager_settings.influx_password
 
     shell_cmd = "export ANSIBLE_HOST_KEY_CHECKING=False;" \
                 f" ansible-playbook {become} -i {definition.user}@{host}, ansible/init_{node_type}_node.yml " \

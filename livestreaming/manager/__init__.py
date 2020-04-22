@@ -22,6 +22,10 @@ class ManagerSettings(SettingsSectionBase):
     dynamic_node_name_prefix: str  # always ends with - (a hyphen)
     streams_content_node_distribution_algorithm: str
     db_file: PurePath
+    influx_url: str
+    influx_database: str
+    influx_username: str
+    influx_password: str
 
     def load(self):
         super().load()
