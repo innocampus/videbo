@@ -157,6 +157,9 @@ class VideoValidator:
         if audio_stream:
             audio_codec = audio_stream["codec_name"]
             valid_audio = audio_codec in AUDIO_CODEC_WHITELIST
+        else:
+            # Accept videos without an audio stream.
+            valid_audio = True
 
         if not valid_format or not valid_video or not valid_audio:
             raise InvalidVideoError(','.join(formats), video_codec, audio_codec)
