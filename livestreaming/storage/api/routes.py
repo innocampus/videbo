@@ -110,7 +110,7 @@ async def read_data(request: Request) -> TempFile:
             await file.delete()
             raise FileTooBigError()
 
-        data = await field.read_chunk(50 * 1024)
+        data = await field.read_chunk(300 * 1024)
         if len(data) == 0:
             # eof reached
             break
