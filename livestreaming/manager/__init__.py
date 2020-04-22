@@ -44,6 +44,7 @@ def start() -> None:
     from .streams import stream_collection
     from .storage_controller import StorageDistributorController
     from .db import Database
+    from .monitoring import Monitoring
 
     manager_settings.load()
 
@@ -57,12 +58,16 @@ def start() -> None:
     nc = NodeController(manager_settings, cloud_definitions, db)
     storage_controller = StorageDistributorController()
 
+    mon = Monitoring(nc)
+
     async def on_http_startup(app):
         from .node_types import ContentNode
 
         stream_collection.init(nc)
         await nc.start()
         storage_controller.init(nc)
+
+        await mon.run()
 
         if manager_settings.cloud_deployment:
             #node = await nc.start_content_node(1)
