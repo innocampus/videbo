@@ -298,7 +298,13 @@ async def request_file(request: Request, jwt_data: RequestFileJWTData):
         storage_logger.warn(f"file does not exist: {path}")
         raise HTTPNotFound()
 
-    return FileResponse(path, headers={"Cache-Control": "private, max-age=50400"})
+    headers = {"Cache-Control": "private, max-age=50400"}
+
+    if "downloadas" in request.query:
+        filename = request.query["downloadas"]
+        headers["Content-Disposition"] = f"attachment; filename=\"{filename}\""
+
+    return FileResponse(path, headers=headers)
 
 
 async def video_check_redirect(request: Request, file: StoredHashedVideoFile) -> None:
