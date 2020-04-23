@@ -5,8 +5,8 @@ server {
         root {{ nginx_root }};
         index index.html;
 
-        listen [::]:443 ssl ipv6only=on; # managed by Certbot
-        listen 443 ssl; # managed by Certbot
+        listen [::]:443 ssl reuseport; # managed by Certbot
+        listen 443 ssl reuseport; # managed by Certbot
         ssl_certificate /etc/livestreaming-certs/_.tu-berlin-streaming.de.crt;
         ssl_certificate_key /etc/livestreaming-certs/_.tu-berlin-streaming.de.key;
 
