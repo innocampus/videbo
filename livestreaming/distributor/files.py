@@ -125,7 +125,7 @@ class DistributorFileController:
                     file_size_mb = int(response.headers.getone("Content-Length", 0)) / 1024 / 1024
                     if file_size_mb > free_space:
                         logger.error(f"Error when copying file {file} from {from_url}: Not enough space, "
-                                     f"free space {free_space} MB, file is {file_size_mb} MB")
+                                     f"free space {free_space:.1f} MB, file is {file_size_mb:.1f} MB")
                         raise CopyFileError()
 
                     # Load file
@@ -142,9 +142,9 @@ class DistributorFileController:
                         if (time() - last_update_time) > 120:
                             last_update_time = time()
                             loaded_mb = loaded_bytes / 1024 / 1024
-                            percent = loaded_bytes / expected_file_size
-                            logger.info(f"Still copying, copied {loaded_mb}/{file_size_mb} MB ({percent:.1f} %) until "
-                                        f"now of file {file}")
+                            percent = 100 * (loaded_bytes / expected_file_size)
+                            logger.info(f"Still copying, copied {loaded_mb:.1f}/{file_size_mb:.1f} MB "
+                                        f"({percent:.1f} %) until now of file {file}")
 
                     if loaded_bytes != expected_file_size:
                         logger.error(f"Error when copying file {file} from {from_url}: Loaded {loaded_bytes} bytes,"
