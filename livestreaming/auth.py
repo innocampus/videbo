@@ -126,7 +126,11 @@ def check_jwt_auth_save_data(request: web.Request, min_role_level: int, model: T
     except NoJWTFoundError:
         logger.info('No JWT found in request.')
     except jwt.InvalidTokenError as error:
-        logger.info('Invalid JWT error: ' + str(error))
+        msg = f"Invalid JWT error: {error} ({request.url}), min role level {min_role_level}"
+        if min_role_level >= Role.lms:
+            logger.info(msg)
+        else:
+            logger.debug(msg)
     except InvalidRoleIssuedError:
         logger.info('JWT has a role that the issuer is not allowed to take on')
 
@@ -172,7 +176,6 @@ def ensure_jwt_data_and_role(min_role_level: int, headers: Optional[dict] = None
             """Wrapper around the actual function call."""
 
             if not check_jwt_auth_save_data(request, min_role_level, jwt_data_model_arg_model):
-                logger.info('Unauthenticated request')
                 raise HTTPUnauthorized(headers=headers)
 
             kwargs[jwt_data_model_arg_name] = request['jwt_data']
