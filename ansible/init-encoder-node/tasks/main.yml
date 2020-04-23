@@ -16,3 +16,4 @@
 - include: config_nginx.yml
 - include: install.yml
 - include: monitoring.yml
+  when: influx_url|length > 0
