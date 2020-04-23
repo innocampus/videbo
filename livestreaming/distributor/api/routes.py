@@ -7,6 +7,7 @@ from livestreaming.auth import Role, BaseJWTData, ensure_jwt_data_and_role, JWT_
 from livestreaming.network import NetworkInterfaces
 from livestreaming.video import get_content_type_for_video
 from livestreaming.web import json_response, ensure_json_body
+from livestreaming.misc import sanitize_filename
 from livestreaming.storage.api.models import RequestFileJWTData, FileType
 from livestreaming.storage.util import HashedVideoFile
 from livestreaming.distributor import logger, distributor_settings
@@ -89,7 +90,7 @@ async def delete_files(_request: Request, _jwt_data: BaseJWTData, data: Distribu
 
 @routes.get('/file')
 @ensure_jwt_data_and_role(Role.client)
-async def request_file(_: Request, jwt_data: RequestFileJWTData):
+async def request_file(request: Request, jwt_data: RequestFileJWTData):
     if jwt_data.type != FileType.VIDEO:
         logger.info(f"Invalid request type: {jwt_data.type}")
         raise HTTPNotFound()
@@ -121,5 +122,9 @@ async def request_file(_: Request, jwt_data: RequestFileJWTData):
         headers["X-Accel-Redirect"] = path
         content_type = get_content_type_for_video(video.file_extension)
         return Response(headers=headers, content_type=content_type)
+
+    if "downloadas" in request.query:
+        filename = sanitize_filename(request.query["downloadas"])
+        headers["Content-Disposition"] = f"attachment; filename=\"{filename}\""
 
     return FileResponse(path, headers=headers)

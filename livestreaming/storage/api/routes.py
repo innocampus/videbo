@@ -21,6 +21,7 @@ from livestreaming.auth import ensure_jwt_data_and_role
 from livestreaming.auth import Role, JWT_ISS_INTERNAL
 from livestreaming.auth import BaseJWTData
 from livestreaming.misc import get_free_disk_space
+from livestreaming.misc import sanitize_filename
 from livestreaming.network import NetworkInterfaces
 from livestreaming.video import VideoInfo
 from livestreaming.video import VideoValidator
@@ -298,10 +299,12 @@ async def request_file(request: Request, jwt_data: RequestFileJWTData):
         storage_logger.warn(f"file does not exist: {path}")
         raise HTTPNotFound()
 
-    headers = {"Cache-Control": "private, max-age=50400"}
+    headers = {
+        "Cache-Control": "private, max-age=50400"
+    }
 
     if "downloadas" in request.query:
-        filename = request.query["downloadas"]
+        filename = sanitize_filename(request.query["downloadas"])
         headers["Content-Disposition"] = f"attachment; filename=\"{filename}\""
 
     return FileResponse(path, headers=headers)

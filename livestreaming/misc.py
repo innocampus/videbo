@@ -1,6 +1,7 @@
 import asyncio
 import os
 import logging
+import re
 from typing import Set, Any
 
 logger = logging.getLogger('livestreaming-misc')
@@ -12,6 +13,10 @@ async def get_free_disk_space(path: str) -> int:
     free_bytes = st.f_bavail * st.f_frsize
     return int(free_bytes / 1024 / 1024)
 
+def sanitize_filename(filename: str) -> str:
+    filename = re.sub(r"[^\w\s\d\-_~,;\[\]().]", "", filename)
+    filename = re.sub(r"[.]{2,}", ".", filename)
+    return filename
 
 class TaskManager:
     _tasks: Set[asyncio.Task] = set()
