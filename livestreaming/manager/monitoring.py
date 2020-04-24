@@ -6,8 +6,9 @@ from typing import Dict
 from typing import NamedTuple
 import re
 
+from livestreaming.misc import TaskManager
 from .node_controller import NodeController
-from .node_types import EncoderNode
+from .node_types import EncoderNode, DistributorNode
 
 from . import logger, manager_settings
 
@@ -69,6 +70,22 @@ class Monitoring:
                                    fields=fields, time=datetime.now(timezone.utc).isoformat())
             await self.influx.write_data_point(data_point)
 
+    async def distributor_stats(self):
+        nodes = self.nc.get_operating_nodes(DistributorNode)
+        for node in nodes:
+            fields = {
+                'tx_current_rate': node.tx_current_rate,
+                'tx_max_rate': node.tx_max_rate,
+                'tx_total': node.tx_total,
+                'rx_total': node.rx_total,
+                'current_connections': node.current_connections,
+                'free_space': node.free_space,
+            }
+
+            data_point = DataPoint(measurement='mgmt_distributor_stats', tags={'distributor_name': node.server.name},
+                                   fields=fields, time=datetime.now(timezone.utc).isoformat())
+            await self.influx.write_data_point(data_point)
+
     async def _monitoring_loop(self):
         self.operational = True
         delay = 0
@@ -77,10 +94,12 @@ class Monitoring:
             measurements_start = datetime.now()
 
             await self.encoder_stats()
+            await self.distributor_stats()
 
             measurements_end = datetime.now()
             delay = (measurements_end - measurements_start).total_seconds()
 
     async def run(self):
         if self.nc.manager_settings.influx_url:
-            asyncio.create_task(self._monitoring_loop())
+            task = asyncio.create_task(self._monitoring_loop())
+            TaskManager.fire_and_forget_task(task)
