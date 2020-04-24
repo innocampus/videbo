@@ -111,6 +111,10 @@ async def request_file(request: Request, jwt_data: RequestFileJWTData):
         "Cache-Control": "private, max-age=50400",
     }
 
+    if "downloadas" in request.query:
+        filename = sanitize_filename(request.query["downloadas"])
+        headers["Content-Disposition"] = f"attachment; filename=\"{filename}\""
+
     if jwt_data.iss != JWT_ISS_INTERNAL:
         # Check rate limit
         rate_limit = distributor_settings.nginx_x_accel_limit_rate_kbit
@@ -122,9 +126,5 @@ async def request_file(request: Request, jwt_data: RequestFileJWTData):
         headers["X-Accel-Redirect"] = path
         content_type = get_content_type_for_video(video.file_extension)
         return Response(headers=headers, content_type=content_type)
-
-    if "downloadas" in request.query:
-        filename = sanitize_filename(request.query["downloadas"])
-        headers["Content-Disposition"] = f"attachment; filename=\"{filename}\""
 
     return FileResponse(path, headers=headers)
