@@ -65,7 +65,7 @@ class DistributionNodeInfo:
 
             url = f"{self.base_url}/api/distributor/files"
             ret: DistributorFileList
-            status, ret = await HTTPClient.internal_request_node("GET", url, None, DistributorFileList)
+            status, ret = await HTTPClient.internal_request_node("GET", url, None, DistributorFileList, timeout=30*60)
             if status == 200:
                 for file_hash, file_extension in ret.files:
                     try:

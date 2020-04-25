@@ -5,7 +5,7 @@ import pydantic
 from json import JSONDecodeError
 from typing import Optional, Type, List, Dict, Union, Any, Tuple, Callable
 from time import time
-from aiohttp import web, ClientResponse, ClientSession, ClientError
+from aiohttp import web, ClientResponse, ClientSession, ClientError, ClientTimeout
 from aiohttp.web_exceptions import HTTPException, HTTPBadRequest
 from livestreaming.auth import BaseJWTData, internal_jwt_encode
 from . import settings
@@ -164,7 +164,8 @@ class HTTPClient:
     @classmethod
     async def internal_request(cls, method: str, url: str, jwt_data: Union[BaseJWTData, str, None] = None,
                                json_data: Optional[JSONBaseModel] = None,
-                               expected_return_type: Optional[Type[JSONBaseModel]] = None) -> Tuple[int, Any]:
+                               expected_return_type: Optional[Type[JSONBaseModel]] = None,
+                               timeout: Union[ClientTimeout, int, None] = None) -> Tuple[int, Any]:
         """Do an internal HTTP request, i.e. a request to another node with a JWT using the internal secret.
 
         You may transmit json data and specify the expected return type."""
@@ -182,8 +183,15 @@ class HTTPClient:
             headers['Content-Type'] = 'application/json'
             data = json_data.json()
 
+        if isinstance(timeout, int):
+            timeout_obj = ClientTimeout(total=timeout)
+        elif isinstance(timeout, ClientTimeout):
+            timeout_obj = timeout
+        else:
+            timeout_obj = ClientTimeout(total=15*60)
+
         try:
-            async with cls.session.request(method, url, data=data, headers=headers) as response:
+            async with cls.session.request(method, url, data=data, headers=headers, timeout=timeout_obj) as response:
                 if response.content_type == 'application/json':
                     json = await response.json()
                     if expected_return_type:
@@ -204,18 +212,20 @@ class HTTPClient:
     @classmethod
     async def internal_request_manager(cls, method: str, url: str,
                                        json_data: Optional[JSONBaseModel] = None,
-                                       expected_return_type: Optional[Type[JSONBaseModel]] = None) -> Tuple[int, Any]:
+                                       expected_return_type: Optional[Type[JSONBaseModel]] = None,
+                                       timeout: Union[ClientTimeout, int, None] = None) -> Tuple[int, Any]:
         """Do an internal request with the manager role (without having to specify jwt_data)."""
         jwt = cls.get_standard_jwt_with_role('manager')
-        return await cls.internal_request(method, url, jwt, json_data, expected_return_type)
+        return await cls.internal_request(method, url, jwt, json_data, expected_return_type, timeout)
 
     @classmethod
     async def internal_request_node(cls, method: str, url: str,
                                        json_data: Optional[JSONBaseModel] = None,
-                                       expected_return_type: Optional[Type[JSONBaseModel]] = None) -> Tuple[int, Any]:
+                                       expected_return_type: Optional[Type[JSONBaseModel]] = None,
+                                       timeout: Union[ClientTimeout, int, None] = None) -> Tuple[int, Any]:
         """Do an internal request with the node role (without having to specify jwt_data)."""
         jwt = cls.get_standard_jwt_with_role('node')
-        return await cls.internal_request(method, url, jwt, json_data, expected_return_type)
+        return await cls.internal_request(method, url, jwt, json_data, expected_return_type, timeout)
 
     @classmethod
     def get_standard_jwt_with_role(cls, role: str) -> str:
