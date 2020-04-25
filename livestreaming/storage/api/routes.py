@@ -1,5 +1,6 @@
 import asyncio
 import pathlib
+import urllib.parse
 from aiohttp import BodyPartReader
 from aiohttp.web import Request, Response
 from aiohttp.web import FileResponse
@@ -305,7 +306,8 @@ async def request_file(request: Request, jwt_data: RequestFileJWTData):
 
     if "downloadas" in request.query:
         filename = sanitize_filename(request.query["downloadas"])
-        headers["Content-Disposition"] = f"attachment; filename=\"{filename}\""
+        filename = urllib.parse.quote(filename)
+        headers["Content-Disposition"] = f'attachment; filename="{filename}"'
 
     return FileResponse(path, headers=headers)
 
@@ -366,6 +368,9 @@ def video_redirect_to_node(request: Request, node: DistributionNodeInfo, file: S
     storage_logger.info(f"Redirect user to {node.base_url} for video {file}")
     jwt = request.query['jwt']
     url = f"{node.base_url}/file?jwt={jwt}"
+    downloadas = request.query.getone("downloadas", None)
+    if downloadas:
+        url += "&downloadas=" + urllib.parse.quote(downloadas)
     raise HTTPFound(url)
 
 

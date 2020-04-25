@@ -1,4 +1,5 @@
 import asyncio
+import urllib.parse
 from aiohttp.web import Request, Response, RouteTableDef, FileResponse
 from aiohttp.web_exceptions import HTTPNotFound, HTTPNotAcceptable, HTTPOk, HTTPServiceUnavailable, \
     HTTPInternalServerError
@@ -130,7 +131,8 @@ async def request_file(request: Request, jwt_data: RequestFileJWTData):
 
     if "downloadas" in request.query:
         filename = sanitize_filename(request.query["downloadas"])
-        headers["Content-Disposition"] = f"attachment; filename=\"{filename}\""
+        filename = urllib.parse.quote(filename)
+        headers["Content-Disposition"] = f'attachment; filename="{filename}"'
 
     if jwt_data.iss != JWT_ISS_INTERNAL:
         # Check rate limit
