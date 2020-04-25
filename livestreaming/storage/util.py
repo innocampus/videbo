@@ -95,21 +95,24 @@ class FileStorage:
 
     def load_file_list(self):
         """Load all video files in memory"""
-        path = pathlib.Path(self.path)
-        for obj in path.glob('**/*'):
-            if obj.is_file():
-                file_split = obj.name.split('.')
-                if len(file_split) == 2:
-                    file_hash = file_split[0]
-                    file_ext = "." + file_split[1]
-                    if file_ext in FILE_EXT_WHITELIST:
-                        self._add_video_to_cache(file_hash, file_ext)
-                        if len(self._cached_files) < 20:
-                            storage_logger.info(f"Found video {file_hash}{file_ext}")
+        try:
+            path = pathlib.Path(self.path)
+            for obj in path.glob('**/*'):
+                if obj.is_file():
+                    file_split = obj.name.split('.')
+                    if len(file_split) == 2:
+                        file_hash = file_split[0]
+                        file_ext = "." + file_split[1]
+                        if file_ext in FILE_EXT_WHITELIST:
+                            self._add_video_to_cache(file_hash, file_ext)
+                            if len(self._cached_files) < 20:
+                                storage_logger.info(f"Found video {file_hash}{file_ext}")
 
-        if len(self._cached_files) >= 20:
-            storage_logger.info("Skip logging the other files that were found")
-        storage_logger.info(f"Found {len(self._cached_files)} videos in storage")
+            if len(self._cached_files) >= 20:
+                storage_logger.info("Skip logging the other files that were found")
+            storage_logger.info(f"Found {len(self._cached_files)} videos in storage")
+        except:
+            storage_logger.exception("Error in load_file_list")
 
     def _add_video_to_cache(self, file_hash: str, file_extension: str):
         file = StoredHashedVideoFile(file_hash, file_extension)
