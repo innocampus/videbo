@@ -117,11 +117,14 @@ class FileStorage:
     def _add_video_to_cache(self, file_hash: str, file_extension: str):
         file = StoredHashedVideoFile(file_hash, file_extension)
         video_path = pathlib.Path(self.get_path(file)[0])
-        stat = video_path.stat()
-        file.file_size = stat.st_size
-        self._cached_files[file.hash] = file
-        self._cached_files_total_size += file.file_size
-        self.distribution_controller.add_video(file)
+        try:
+            stat = video_path.stat()
+            file.file_size = stat.st_size
+            self._cached_files[file.hash] = file
+            self._cached_files_total_size += file.file_size
+            self.distribution_controller.add_video(file)
+        except FileNotFoundError:
+            storage_logger.exception("FileNotFoundError in _add_video_to_cache")
 
     def get_files_total_size_mb(self) -> int:
         return int(self._cached_files_total_size / 1024 / 1024)
