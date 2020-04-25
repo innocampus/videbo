@@ -183,6 +183,7 @@ class DistributorFileController:
                 raise CopyFileError()
             finally:
                 self.files_being_copied.discard(new_file)
+                self.files_total_size += expected_file_size
                 if file_obj:
                     await get_running_loop().run_in_executor(None, file_obj.close)
 
