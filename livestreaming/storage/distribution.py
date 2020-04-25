@@ -65,7 +65,7 @@ class DistributionNodeInfo:
 
             url = f"{self.base_url}/api/distributor/files"
             ret: DistributorFileList
-            status, ret = await HTTPClient.internal_request_node("GET", url, None, DistributorFileList, timeout=30*60)
+            status, ret = await HTTPClient.internal_request_node("GET", url, None, DistributorFileList)
             if status == 200:
                 for file_hash, file_extension in ret.files:
                     try:
@@ -108,7 +108,8 @@ class DistributionNodeInfo:
                 url = f"{self.base_url}/api/distributor/copy/{file.hash}{file.file_extension}"
                 data = DistributorCopyFile(from_base_url=from_url, file_size=file.file_size)
                 storage_logger.info(f"Asking distributor to copy {file.hash} from {from_url} to {self.base_url}")
-                status, ret = await asyncio.wait_for(HTTPClient.internal_request_node("POST", url, data), 1800)
+                fut_request = HTTPClient.internal_request_node("POST", url, data, timeout=1800)
+                status, ret = await asyncio.wait_for(fut_request, 1800)
                 if status == 200:
                     self.stored_videos.add(file)
                     storage_logger.info(f"Copied video {file.hash} from {from_url} to {self.base_url}")
