@@ -4,7 +4,7 @@ from aiohttp import ClientTimeout
 from asyncio import get_running_loop, Event, wait_for, TimeoutError
 from pathlib import Path
 from time import time
-from typing import Optional, Dict, Union
+from typing import Optional, Dict, Union, Set
 from livestreaming.auth import internal_jwt_encode
 from livestreaming.misc import get_free_disk_space, TaskManager
 from livestreaming.web import HTTPClient
@@ -13,13 +13,23 @@ from livestreaming.storage.api.models import RequestFileJWTData, FileType
 from . import logger, distributor_settings
 
 
+class CopyFileStatus:
+    def __init__(self):
+        self.event: Event = Event()  # When event is fired, we know that the file was downloaded completely.
+        self.loaded_bytes: int = 0
+        self.started: float = time()
+
+    async def wait_for(self, max_time: float):
+        await wait_for(self.event.wait(), max_time)
+
+
 class DistributorHashedVideoFile(HashedVideoFile):
-    __slots__ = "event"
+    __slots__ = "copy_status", "file_size"
 
     def __init__(self, file_hash: str, file_extension: str):
         super().__init__(file_hash, file_extension)
-        # When event is set, we know that the file was not yet downloaded completely.
-        self.event: Optional[Event] = None
+        self.copy_status: Optional[CopyFileStatus] = None
+        self.file_size: int = -1  # in bytes
 
 
 class DistributorFileController:
@@ -28,8 +38,10 @@ class DistributorFileController:
     def __init__(self):
         # file hash -> Event if the node is still downloading the file right now (event is fired when load completed)
         self.files: Dict[str, DistributorHashedVideoFile] = {}
+        self.files_total_size: int = 0  # in bytes
+        self.files_being_copied: Set[DistributorHashedVideoFile] = set()
         self.base_path: Optional[Path] = None
-        self.waiting: int = 0  # number of clients clients waiting for a file being downloaded
+        self.waiting: int = 0  # number of clients waiting for a file being downloaded
 
     def load_file_list(self, base_path: Path):
         """Initialize object and load all existing file names."""
@@ -42,7 +54,17 @@ class DistributorFileController:
                     # Do not consider .tmp files. Delete them.
                     obj.unlink()
                     continue
-                self.files[file_hash] = DistributorHashedVideoFile(file_hash, "." + file_split[1])
+
+                file = DistributorHashedVideoFile(file_hash, "." + file_split[1])
+                file.file_size = obj.stat().st_size
+                self.files[file_hash] = file
+                self.files_total_size += file.file_size
+                if len(self.files) < 20:
+                    logger.info(f"Found video {obj}")
+
+        if len(self.files) >= 20:
+            logger.info("Skip logging the other files that were found")
+        logger.info(f"Found {len(self.files)} videos")
 
     def get_path(self, file: HashedVideoFile, temp: bool = False) -> Path:
         if temp:
@@ -65,13 +87,13 @@ class DistributorFileController:
         """
         found = self.files.get(file.hash)
         if found:
-            if found.event:
+            if found.copy_status:
                 if self.waiting >= self.MAX_WAITING_CLIENTS:
                     raise TooManyWaitingClients()
 
                 try:
                     self.waiting += 1
-                    await wait_for(found.event.wait(), wait)
+                    await found.copy_status.wait_for(wait)
                 finally:
                     self.waiting -= 1
             return True
@@ -91,10 +113,11 @@ class DistributorFileController:
             return self.files[file.hash]
 
         logger.info(f"Start copying file {file} from {from_url}")
-        event = Event()
+        copy_status = CopyFileStatus()
         new_file = DistributorHashedVideoFile(file.hash, file.file_extension)
-        new_file.event = event
+        new_file.copy_status = copy_status
         self.files[file.hash] = new_file
+        self.files_being_copied.add(new_file)
 
         async def do_copy():
             # load file
@@ -122,42 +145,44 @@ class DistributorFileController:
                         raise CopyFileError()
 
                     # Check if we have enough space for this file.
-                    file_size_mb = int(response.headers.getone("Content-Length", 0)) / 1024 / 1024
+                    new_file.file_size = expected_file_size
+                    file_size_mb = new_file.file_size / 1024 / 1024
                     if file_size_mb > free_space:
                         logger.error(f"Error when copying file {file} from {from_url}: Not enough space, "
                                      f"free space {free_space:.1f} MB, file is {file_size_mb:.1f} MB")
                         raise CopyFileError()
 
                     # Load file
-                    loaded_bytes = 0
                     last_update_time = time()
                     while True:
                         data = await response.content.read(1024 * 1024)
                         if len(data) == 0:
                             break
-                        loaded_bytes += len(data)
+                        copy_status.loaded_bytes += len(data)
                         await get_running_loop().run_in_executor(None, file_obj.write, data)
 
-                        # If the download takes much time, periodically print status.
+                        # If the download is taking much time, periodically print status.
                         if (time() - last_update_time) > 120:
                             last_update_time = time()
-                            loaded_mb = loaded_bytes / 1024 / 1024
-                            percent = 100 * (loaded_bytes / expected_file_size)
+                            loaded_mb = copy_status.loaded_bytes / 1024 / 1024
+                            percent = 100 * (copy_status.loaded_bytes / expected_file_size)
                             logger.info(f"Still copying, copied {loaded_mb:.1f}/{file_size_mb:.1f} MB "
                                         f"({percent:.1f} %) until now of file {file}")
 
-                    if loaded_bytes != expected_file_size:
-                        logger.error(f"Error when copying file {file} from {from_url}: Loaded {loaded_bytes} bytes,"
+                    if copy_status.loaded_bytes != expected_file_size:
+                        logger.error(f"Error when copying file {file} from {from_url}: Loaded "
+                                     f"{copy_status.loaded_bytes} bytes,"
                                      f"but expected {expected_file_size} bytes.")
                         raise CopyFileError()
                     logger.info(f"Copied file {file} ({file_size_mb:.1f} MB) from {from_url}")
             except:
                 # Set event to wake up all waiting tasks even though we don't have the file.
-                event.set()
+                copy_status.event.set()
                 self.files.pop(file.hash)
                 logger.exception(f"Error when copying file {file} from {from_url}")
                 raise CopyFileError()
             finally:
+                self.files_being_copied.discard(new_file)
                 if file_obj:
                     await get_running_loop().run_in_executor(None, file_obj.close)
 
@@ -168,8 +193,8 @@ class DistributorFileController:
             except OSError:
                 logger.exception(f"Error when renaming file {temp_path} to {final_path}")
                 self.files.pop(file.hash)
-            event.set()
-            new_file.event = None
+            copy_status.event.set()
+            new_file.copy_status = None
 
         task = asyncio.create_task(do_copy())
         TaskManager.fire_and_forget_task(task)
@@ -177,11 +202,12 @@ class DistributorFileController:
 
     async def delete_file(self, file: HashedVideoFile) -> None:
         try:
-            self.files.pop(file.hash)
+            dist_file = self.files.pop(file.hash)
         except KeyError:
             return
 
-        path = self.get_path(file)
+        self.files_total_size -= dist_file.file_size
+        path = self.get_path(dist_file)
         await get_running_loop().run_in_executor(None, path.unlink)
 
 

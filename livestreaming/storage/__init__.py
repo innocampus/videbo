@@ -36,7 +36,8 @@ def start() -> None:
     async def on_http_startup(app):
         from .util import FileStorage
         NetworkInterfaces.get_instance().start_fetching(storage_settings.server_status_page, storage_logger)
-        FileStorage.get_instance()  # init instance
+        storage = FileStorage.get_instance()  # init instance
+        storage.load_file_list()  # This actually does blocking io, but it is only done once.
 
     async def on_http_cleanup(app):
         await NetworkInterfaces.get_instance().stop_fetching()

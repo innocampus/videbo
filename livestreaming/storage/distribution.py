@@ -70,13 +70,14 @@ class DistributionNodeInfo:
                 for file_hash, file_extension in ret.files:
                     try:
                         file = await storage.get_file(file_hash, file_extension)
-                        storage_logger.info(f"Found file {file.hash}{file.file_extension} on {self.base_url}")
                         self.stored_videos.add(file)
                         file.nodes.add_node(self)
                     except FileDoesNotExistError:
                         storage_logger.info(f"Remove file {file_hash}{file_extension} on {self.base_url} "
                                             f"since file does not exist on storage.")
                         remove_unknown_files.append((file_hash, file_extension))
+
+                storage_logger.info(f"Found {len(self.stored_videos)} files on {self.base_url}")
 
             else:
                 storage_logger.error(f"<Distribution watcher {self.base_url}> http status {status}")

@@ -38,6 +38,8 @@ class StorageStatus(JSONBaseModel):
     tx_total: int  # in MB
     rx_total: int  # in MB
     current_connections: Optional[int]  # HTTP connections serving videos
+    files_total_size: int  # in MB
+    files_count: int
     free_space: int  # in MB
     distributor_nodes: List[str]  # list of base_urls
 

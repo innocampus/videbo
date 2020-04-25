@@ -8,7 +8,7 @@ import re
 
 from livestreaming.misc import TaskManager
 from .node_controller import NodeController
-from .node_types import EncoderNode, DistributorNode
+from .node_types import EncoderNode, DistributorNode, StorageNode
 
 from . import logger, manager_settings
 
@@ -74,30 +74,101 @@ class Monitoring:
         nodes = self.nc.get_operating_nodes(DistributorNode)
         for node in nodes:
             fields = {
-                'tx_current_rate': node.tx_current_rate,
-                'tx_max_rate': node.tx_max_rate,
-                'tx_total': node.tx_total,
-                'rx_total': node.rx_total,
-                'current_connections': node.current_connections,
-                'free_space': node.free_space,
+                'tx_current_rate': node.tx_current_rate,  # in Mbit/s
+                'tx_max_rate': node.tx_max_rate,  # in Mbit/s
+                'rx_current_rate': node.rx_current_rate,  # in Mbit/s
+                'tx_total': node.tx_total,  # in MB
+                'rx_total': node.rx_total,  # in MB
+                'current_connections': node.current_connections,  # HTTP connections serving videos
+                'waiting_clients': node.waiting_clients,  # number of clients waiting for a file being downloaded
+                'files_total_size': node.files_total_size,  # in MB
+                'files_count': node.files_count,
+                'free_space': node.free_space,  # in MB
+                'copying_files_count': len(node.copy_files_status),  # how many files are being copied right now
             }
 
             data_point = DataPoint(measurement='mgmt_distributor_stats', tags={'distributor_name': node.server.name},
                                    fields=fields, time=datetime.now(timezone.utc).isoformat())
             await self.influx.write_data_point(data_point)
 
+    async def storage_stats(self):
+        nodes = self.nc.get_operating_nodes(StorageNode)
+        for node in nodes:
+            fields = {
+                'tx_current_rate': node.tx_current_rate,  # in Mbit/s
+                'tx_max_rate': node.tx_max_rate,  # in Mbit/s
+                'rx_current_rate': node.rx_current_rate,  # in Mbit/s
+                'tx_total': node.tx_total,  # in MB
+                'rx_total': node.rx_total,  # in MB
+                'current_connections': node.current_connections,  # HTTP connections serving videos
+                'files_total_size': node.files_total_size,  # in MB
+                'files_count': node.files_count,
+                'free_space': node.free_space,  # in MB
+                'dist_nodes_count': len(node.dist_nodes),
+            }
+
+            data_point = DataPoint(measurement='mgmt_storage_stats', tags={'storage_name': node.server.name},
+                                   fields=fields, time=datetime.now(timezone.utc).isoformat())
+            await self.influx.write_data_point(data_point)
+
+    async def overall_stats(self):
+        tx_current_rate = 0
+        tx_max_rate = 0
+        videos_current_connections = 0
+        videos_waiting_clients = 0
+        videos_files_total_size = 0
+        videos_files_count = 0
+        videos_copying = 0
+
+        nodes = self.nc.get_operating_nodes(DistributorNode)
+        for node in nodes:
+            tx_current_rate += node.tx_current_rate
+            tx_max_rate += node.tx_max_rate
+            if node.current_connections:
+                videos_current_connections += node.current_connections
+            videos_waiting_clients += node.waiting_clients
+            videos_copying += len(node.copy_files_status)
+
+        nodes = self.nc.get_operating_nodes(StorageNode)
+        for node in nodes:
+            tx_current_rate += node.tx_current_rate
+            tx_max_rate += node.tx_max_rate
+            if node.current_connections:
+                videos_current_connections += node.current_connections
+            videos_files_total_size += node.files_total_size
+            videos_files_count += node.files_count
+
+        fields = {
+            'tx_current_rate': tx_current_rate,  # in Mbit/s
+            'tx_max_rate': tx_max_rate,  # in Mbit/s
+            'videos_current_connections': videos_current_connections,
+            'videos_waiting_clients': videos_waiting_clients,
+            'videos_files_total_size': videos_files_total_size,
+            'videos_files_count': videos_files_count,
+            'videos_copying': videos_copying,
+        }
+
+        data_point = DataPoint(measurement='mgmt_overall_stats', tags=dict(),
+                               fields=fields, time=datetime.now(timezone.utc).isoformat())
+        await self.influx.write_data_point(data_point)
+
     async def _monitoring_loop(self):
         self.operational = True
         delay = 0
-        while self.operational:
-            await asyncio.sleep(15 - delay)
-            measurements_start = datetime.now()
+        try:
+            while self.operational:
+                await asyncio.sleep(15 - delay)
+                measurements_start = datetime.now()
 
-            await self.encoder_stats()
-            await self.distributor_stats()
+                await self.encoder_stats()
+                await self.distributor_stats()
+                await self.storage_stats()
+                await self.overall_stats()
 
-            measurements_end = datetime.now()
-            delay = (measurements_end - measurements_start).total_seconds()
+                measurements_end = datetime.now()
+                delay = (measurements_end - measurements_start).total_seconds()
+        finally:
+            await self.influx.close()
 
     async def run(self):
         if self.nc.manager_settings.influx_url:

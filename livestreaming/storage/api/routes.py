@@ -398,7 +398,10 @@ async def remove_dist_node(_request: Request, _jwt_data: BaseJWTData, data: Dist
 @ensure_jwt_data_and_role(Role.manager)
 async def get_status(request: Request, _jwt_data: BaseJWTData):
     status = StorageStatus.construct()
+    storage = FileStorage.get_instance()
 
+    status.files_total_size = storage.get_files_total_size_mb()
+    status.files_count = storage.get_files_count()
     status.free_space = await get_free_disk_space(str(storage_settings.videos_path))
 
     status.tx_max_rate = storage_settings.tx_max_rate_mbit
@@ -422,6 +425,6 @@ async def get_status(request: Request, _jwt_data: BaseJWTData):
         status.rx_total = 0
         storage_logger.error("No network interface found!")
 
-    status.distributor_nodes = FileStorage.get_instance().distribution_controller.get_dist_node_base_urls()
+    status.distributor_nodes = storage.distribution_controller.get_dist_node_base_urls()
 
     return model_json_response(status)

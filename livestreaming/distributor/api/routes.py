@@ -2,6 +2,7 @@ import asyncio
 from aiohttp.web import Request, Response, RouteTableDef, FileResponse
 from aiohttp.web_exceptions import HTTPNotFound, HTTPNotAcceptable, HTTPOk, HTTPServiceUnavailable, \
     HTTPInternalServerError
+from time import time
 from typing import List, Tuple
 from livestreaming.auth import Role, BaseJWTData, ensure_jwt_data_and_role, JWT_ISS_INTERNAL
 from livestreaming.network import NetworkInterfaces
@@ -13,7 +14,7 @@ from livestreaming.storage.util import HashedVideoFile
 from livestreaming.distributor import logger, distributor_settings
 from livestreaming.distributor.files import file_controller, TooManyWaitingClients
 from .models import DistributorStatus, DistributorCopyFile, DistributorDeleteFiles, DistributorDeleteFilesResponse,\
-    DistributorFileList
+    DistributorFileList, DistributorCopyFileStatus
 
 routes = RouteTableDef()
 
@@ -24,8 +25,13 @@ async def get_status(request: Request, _jwt_data: BaseJWTData):
     status = DistributorStatus.construct()
     status.bound_to_storage_node_base_url = distributor_settings.bound_to_storage_base_url
 
+    # general information
     status.free_space = await file_controller.get_free_space()
+    status.files_count = len(file_controller.files)
+    status.files_total_size = int(file_controller.files_total_size / 1024 / 1024)
+    status.waiting_clients = file_controller.waiting
 
+    # network information
     status.tx_max_rate = distributor_settings.tx_max_rate_mbit
     network = NetworkInterfaces.get_instance()
     interfaces = network.get_interface_names()
@@ -47,6 +53,17 @@ async def get_status(request: Request, _jwt_data: BaseJWTData):
         status.rx_total = 0
         logger.error("No network interface found!")
 
+    # files being copied right now
+    copy_files_status = []
+    for file in file_controller.files_being_copied:
+        duration = time() - file.copy_status.started
+        copy_status = DistributorCopyFileStatus(hash=file.hash, file_ext=file.file_extension,
+                                                loaded=file.copy_status.loaded_bytes,
+                                                file_size=file.file_size,
+                                                duration=duration)
+        copy_files_status.append(copy_status)
+    status.copy_files_status = copy_files_status
+
     return json_response(status)
 
 
@@ -66,8 +83,8 @@ async def get_all_files(_request: Request, _jwt_data: BaseJWTData):
 async def copy_file(request: Request, _jwt_data: BaseJWTData, data: DistributorCopyFile):
     file = HashedVideoFile(request.match_info['hash'], request.match_info['file_ext'])
     new_file = file_controller.copy_file(file, data.from_base_url, data.file_size)
-    if new_file.event:
-        await asyncio.wait_for(new_file.event.wait(), 60*60)
+    if new_file.copy_status:
+        await new_file.copy_status.wait_for(3600)
         # Recheck that file really exists now.
         video = HashedVideoFile(request.match_info['hash'], request.match_info['file_ext'])
         if not (await file_controller.file_exists(video, 1)):

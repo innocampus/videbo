@@ -17,7 +17,7 @@ from . import storage_settings
 from .distribution import DistributionController, FileNodes
 from .exceptions import *
 
-FILE_EXT_WHITELIST = ['.mp4', '.webm']
+FILE_EXT_WHITELIST = ('.mp4', '.webm')
 THUMB_EXT = '.jpg'
 
 
@@ -67,7 +67,8 @@ class FileStorage:
         self.tempdir: str = path + '/temp'
         self.temp_out_dir: str = path + '/temp/out'
         self._cached_files: Dict[str, StoredHashedVideoFile] = {}  # map hashes to files
-        self.distribution_controller : DistributionController = DistributionController()
+        self._cached_files_total_size: int = 0  # in bytes
+        self.distribution_controller: DistributionController = DistributionController()
 
         if not os.path.isdir(self.tempdir):
             os.mkdir(self.tempdir, mode=0o755)
@@ -92,31 +93,46 @@ class FileStorage:
             cls._instance.distribution_controller.start_periodic_reset_task()
         return cls._instance
 
+    def load_file_list(self):
+        """Load all video files in memory"""
+        path = pathlib.Path(self.path)
+        for obj in path.glob('**/*'):
+            if obj.is_file():
+                file_split = obj.name.split('.')
+                if len(file_split) == 2:
+                    file_hash = file_split[0]
+                    file_ext = "." + file_split[1]
+                    if file_ext in FILE_EXT_WHITELIST:
+                        self._add_video_to_cache(file_hash, file_ext)
+                        if len(self._cached_files) < 20:
+                            storage_logger.info(f"Found video {file_hash}{file_ext}")
+
+        if len(self._cached_files) >= 20:
+            storage_logger.info("Skip logging the other files that were found")
+        storage_logger.info(f"Found {len(self._cached_files)} videos in storage")
+
+    def _add_video_to_cache(self, file_hash: str, file_extension: str):
+        file = StoredHashedVideoFile(file_hash, file_extension)
+        video_path = pathlib.Path(self.get_path(file)[0])
+        stat = video_path.stat()
+        file.file_size = stat.st_size
+        self._cached_files[file.hash] = file
+        self._cached_files_total_size += file.file_size
+        self.distribution_controller.add_video(file)
+
+    def get_files_total_size_mb(self) -> int:
+        return int(self._cached_files_total_size / 1024 / 1024)
+
+    def get_files_count(self) -> int:
+        return len(self._cached_files)
+
     async def get_file(self, file_hash: str, file_extension: str) -> StoredHashedVideoFile:
         """Get video file in storage and check that it really exists."""
         file = self._cached_files.get(file_hash)
-        if file:
-            if file.file_extension != file_extension:
-                raise FileDoesNotExistError()
+        if file and file.file_extension == file_extension:
             return file
 
-        file = StoredHashedVideoFile(file_hash, file_extension)
-        path = pathlib.Path(self.get_path(file)[0])
-        if not (await asyncio.get_event_loop().run_in_executor(None, path.is_file)):
-            storage_logger.warning(f"file does not exist: {path}")
-            raise FileDoesNotExistError()
-
-        stat = await asyncio.get_event_loop().run_in_executor(None, path.stat)
-        file.file_size = stat.st_size
-
-        # Add to cached files, but check if another coroutine added the file meanwhile.
-        check_file = self._cached_files.get(file_hash)
-        if check_file:
-            return check_file
-
-        self._cached_files[file.hash] = file
-        self.distribution_controller.add_video(file)
-        return file
+        raise FileDoesNotExistError()
 
     async def generate_thumbs(self, file: HashedVideoFile, video: VideoInfo) -> int:
         """Generates thumbnail suggestions."""
@@ -124,7 +140,6 @@ class FileStorage:
         thumb_height = storage_settings.thumb_height
         thumb_count = storage_settings.thumb_suggestion_count
 
- #       ffmpeg_binary = storage_settings.binary_ffmpeg
         video_check_user = storage_settings.check_user
 
         # Generate thumbnails concurrently
@@ -202,6 +217,7 @@ class FileStorage:
         # Run in another thread as there is blocking io.
         await asyncio.get_event_loop().run_in_executor(None, self.move_file, temp_path, new_file_path, new_dir_path)
         storage_logger.info("Added file with hash %s permanently to storage.", file.hash)
+        self._add_video_to_cache(file.hash, file.file_extension)
 
     async def add_thumbs_from_temp(self, file: HashedVideoFile, thumb_count: int) -> None:
         """Add thumbnails to the video that are currently stored in the temp dir."""
@@ -225,6 +241,7 @@ class FileStorage:
 
         # Remove file from cached files and delete all copies on distributor nodes.
         self._cached_files.pop(file.hash)
+        self._cached_files_total_size -= file.file_size
         self.distribution_controller.remove_video(file)
 
         storage_logger.info(f"Removed file with hash {file.hash} permanently from storage.")
@@ -339,4 +356,4 @@ def is_allowed_file_ending(filename: Optional[str]) -> bool:
     """Simple check that the file ending is on the whitelist."""
     if filename is None:
         return True
-    return filename.lower().endswith(tuple(FILE_EXT_WHITELIST))
+    return filename.lower().endswith(FILE_EXT_WHITELIST)

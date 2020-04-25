@@ -1,11 +1,11 @@
 from asyncio import Task, sleep, Lock, gather, Event
-from typing import Optional, Dict, TYPE_CHECKING
+from typing import Optional, Dict, List, TYPE_CHECKING
 from livestreaming.web import HTTPClient, HTTPResponseError
 from livestreaming.streams import StreamState
 from livestreaming.encoder.api.models import EncoderStatus, NewStreamParams, NewStreamReturn
 from livestreaming.content.api.models import ContentStatus, StartStreamDistributionInfo
 from livestreaming.storage.api.models import StorageStatus, DistributorNodeInfo
-from livestreaming.distributor.api.models import DistributorStatus
+from livestreaming.distributor.api.models import DistributorStatus, DistributorCopyFileStatus
 from .cloud.server import Server
 from . import logger
 if TYPE_CHECKING:
@@ -243,7 +243,9 @@ class StorageNode(NodeTypeBase):
         self.rx_current_rate: int = 0  # in Mbit/s
         self.tx_total: int = 0  # in MB
         self.rx_total: int = 0  # in MB
-        self.current_connections: int = 0  # HTTP connections serving videos
+        self.current_connections: int = Optional[int]  # HTTP connections serving videos
+        self.files_total_size: int = 0  # in MB
+        self.files_count: int = 0
         self.free_space: int = 0  # in MB
 
         self.tx_load: float = 0.0  # tx_current_rate / tx_max_rate
@@ -266,6 +268,8 @@ class StorageNode(NodeTypeBase):
                     self.tx_total = ret.tx_total
                     self.rx_total = ret.rx_total
                     self.current_connections = ret.current_connections
+                    self.files_total_size = ret.files_total_size
+                    self.files_count = ret.files_count
                     self.free_space = ret.free_space
                     self.tx_load = self.tx_current_rate / self.tx_max_rate
 
@@ -343,8 +347,13 @@ class DistributorNode(NodeTypeBase):
         self.rx_current_rate: int = 0  # in Mbit/s
         self.tx_total: int = 0  # in MB
         self.rx_total: int = 0  # in MB
-        self.current_connections: int = 0  # HTTP connections serving videos
+        self.current_connections: Optional[int] = 0  # HTTP connections serving videos
+        self.waiting_clients: int = 0  # number of clients waiting for a file being downloaded
+        self.files_total_size: int = 0  # in MB
+        self.files_count: int = 0
         self.free_space: int = 0  # in MB
+        self.copy_files_status: List[DistributorCopyFileStatus] = []
+
         self.tx_load: float = 0.0  # tx_current_rate / tx_max_rate
 
         self.first_request_done: Event = Event(loop=loop)
@@ -365,7 +374,11 @@ class DistributorNode(NodeTypeBase):
                     self.tx_total = ret.tx_total
                     self.rx_total = ret.rx_total
                     self.current_connections = ret.current_connections
+                    self.waiting_clients = ret.waiting_clients
+                    self.files_total_size = ret.files_total_size
+                    self.files_count = ret.files_count
                     self.free_space = ret.free_space
+                    self.copy_files_status = ret.copy_files_status
                     self.tx_load = self.tx_current_rate / self.tx_max_rate
 
                     if first_request:
