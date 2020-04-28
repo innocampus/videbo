@@ -1,5 +1,6 @@
 import logging
 
+from pathlib import PurePath
 from livestreaming.web import start_web_server, ensure_url_does_not_end_with_slash
 from livestreaming.settings import SettingsSectionBase
 
@@ -7,7 +8,7 @@ from livestreaming.settings import SettingsSectionBase
 class StorageSettings(SettingsSectionBase):
     _section = "storage"
     http_port: int
-    videos_path: str
+    videos_path: PurePath
     public_base_url: str
     max_file_size_mb: int
     thumb_suggestion_count: int

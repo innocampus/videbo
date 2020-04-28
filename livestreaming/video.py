@@ -2,6 +2,7 @@ import asyncio
 import json
 import os
 import shutil
+from pathlib import Path
 from typing import Dict
 from typing import List
 from typing import Optional
@@ -42,8 +43,8 @@ class VideoConfig:
 class VideoInfo:
     """Wrapper for the ffprobe application to get information about a video file."""
 
-    def __init__(self, video_file: str, video_config: VideoConfig):
-        self.video_file = video_file
+    def __init__(self, video_file: Path, video_config: VideoConfig):
+        self.video_file: Path = video_file
         self.valid_video = False
         self._video_config = video_config
         self.mime_type = None
@@ -53,7 +54,7 @@ class VideoInfo:
     async def fetch_mime_type(self) -> None:
         """Call file and fetch mime type."""
 
-        args = ["-b", "-i", self.video_file]
+        args = ["-b", "-i", str(self.video_file)]
         # Run file command
         proc = await self._video_config.create_sudo_subprocess(args = args, binary = "file",  stdout=asyncio.subprocess.PIPE)
         try:
@@ -66,7 +67,7 @@ class VideoInfo:
     async def fetch_info(self) -> None:
         """Call ffprobe and fetch information."""
 
-        args = ["-show_format", "-show_streams", "-print_format", "json", self.video_file]
+        args = ["-show_format", "-show_streams", "-print_format", "json", str(self.video_file)]
         # Run ffprobe
         proc = await self._video_config.create_sudo_subprocess(args = args, binary = "ffprobe",  stdout=asyncio.subprocess.PIPE,
                                                                 stderr=asyncio.subprocess.PIPE)
@@ -169,14 +170,15 @@ class Video:
     def __init__(self, video_config: VideoConfig):
         self.video_config = video_config
 
-    async def save_thumbnail(self, video_in: str, thumbnail_out: str, offset: int, height: int, temp_output_file: str = None) -> None:
+    async def save_thumbnail(self, video_in: Path, thumbnail_out: Path, offset: int, height: int,
+                             temp_output_file: Optional[Path] = None) -> None:
         """Call ffmpeg and save scaled frame at specified offset."""
         output_file = thumbnail_out
         if temp_output_file is not None:
             output_file = temp_output_file
 
-        args = ["-ss", str(offset), "-i", video_in, "-vframes", "1", "-an", "-vf",
-                "scale=-1:{0}".format(height), "-y", output_file]
+        args = ["-ss", str(offset), "-i", str(video_in), "-vframes", "1", "-an", "-vf",
+                "scale=-1:{0}".format(height), "-y", str(output_file)]
         # Run ffmpeg
         if self.video_config.user:
             args = ["-u", self.video_config.user, self.video_config.binary_ffmpeg] + args
@@ -192,7 +194,7 @@ class Video:
 
             if output_file != thumbnail_out:
                 # Copy temp file to target
-                await asyncio.get_event_loop().run_in_executor(None, self.copy_file, output_file, thumbnail_out)
+                await asyncio.get_event_loop().run_in_executor(None, self._copy_file, output_file, thumbnail_out)
 
         except asyncio.TimeoutError:
             proc.kill()
@@ -201,26 +203,26 @@ class Video:
         finally:
             if output_file != thumbnail_out:
                 # Delete temp file
-                await asyncio.get_event_loop().run_in_executor(None, self.delete_file, output_file)
+                await asyncio.get_event_loop().run_in_executor(None, self._delete_file, output_file)
 
     @staticmethod
-    def delete_file(file_path) -> bool:
+    def _delete_file(file_path: Path) -> bool:
         # Check source file really exists.
-        if not os.path.isfile(file_path):
+        if not file_path.is_file():
             return False
 
-        os.remove(file_path)
+        file_path.unlink()
         return True
 
     @staticmethod
-    def copy_file(source_file: str, target_file: str) -> None:
+    def _copy_file(source_file: Path, target_file: Path) -> None:
         # Check source file really exists.
-        if not os.path.isfile(source_file):
+        if not source_file.is_file():
             raise FileDoesNotExistError()
 
         # Copy if destination doesn't exist
-        if not os.path.isfile(target_file):
-            shutil.copyfile(source_file, target_file)
+        if not target_file.is_file():
+            shutil.copyfile(str(source_file), str(target_file))
 
 
 def get_content_type_for_video(file_ext: str):

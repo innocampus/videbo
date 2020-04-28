@@ -106,7 +106,7 @@ async def read_data(request: Request) -> TempFile:
 
     # Create temp file and read data from client.
     storage_logger.info("Start reading file from client")
-    file = FileStorage.get_instance().create_temp_file()  # type: TempFile
+    file: TempFile = FileStorage.get_instance().create_temp_file()
     while True:
         if file.size > max_file_size:
             await file.delete()
@@ -272,7 +272,7 @@ async def request_file(request: Request, jwt_data: RequestFileJWTData):
             await video_check_redirect(request, video)
 
         storage_logger.info(f"serve video with hash {video}")
-        path = file_storage.get_path(video)[0]
+        path = file_storage.get_path(video)
 
     elif jwt_data.type == FileType.VIDEO_TEMP:
         storage_logger.info(f"serve temp video with hash {video}")
@@ -285,7 +285,7 @@ async def request_file(request: Request, jwt_data: RequestFileJWTData):
 
         if jwt_data.type == FileType.THUMBNAIL:
             storage_logger.info(f"serve thumbnail {jwt_data.thumb_id} for video with hash {video}")
-            path = file_storage.get_thumb_path(video, jwt_data.thumb_id)[0]
+            path = file_storage.get_thumb_path(video, jwt_data.thumb_id)
 
         else:
             storage_logger.info(f"serve temp thumbnail {jwt_data.thumb_id} for video with hash {video}")
@@ -295,7 +295,6 @@ async def request_file(request: Request, jwt_data: RequestFileJWTData):
         raise HTTPBadRequest()
 
     # Check if the file really exists. If a video file is requested we already know the file should exist.
-    path = pathlib.Path(path)
     if jwt_data.type != FileType.VIDEO and not (await asyncio.get_event_loop().run_in_executor(None, path.is_file)):
         storage_logger.warn(f"file does not exist: {path}")
         raise HTTPNotFound()

@@ -1,10 +1,10 @@
 import asyncio
 import hashlib
 import os
-import pathlib
 import tempfile
 import time
 from _sha256 import SHA256Type
+from pathlib import Path
 from typing import Optional, Tuple, Dict, BinaryIO
 
 from livestreaming.misc import TaskManager
@@ -58,28 +58,29 @@ class FileStorage:
     GC_TEMP_FILES_SECS = 12 * 3600
     GC_ITERATION_SECS = 3600  # run gc every n secs
 
-    def __init__(self, path: str):
-        if not os.path.isdir(path):
+    def __init__(self, path: Path):
+        if not path.is_dir():
             storage_logger.fatal(f"videos dir {path} does not exist")
             raise NotADirectoryError(path)
 
-        self.path: str = path
-        self.tempdir: str = path + '/temp'
-        self.temp_out_dir: str = path + '/temp/out'
+        self.path: Path = path
+        self.storage_dir: Path = Path(self.path, "storage")
+        self.temp_dir: Path = Path(self.path, "temp")
+        self.temp_out_dir: Path = Path(self.temp_dir, "out")
         self._cached_files: Dict[str, StoredHashedVideoFile] = {}  # map hashes to files
         self._cached_files_total_size: int = 0  # in bytes
         self.distribution_controller: DistributionController = DistributionController()
 
-        if not os.path.isdir(self.tempdir):
-            os.mkdir(self.tempdir, mode=0o755)
-            if not os.path.isdir(self.tempdir):
+        if not self.temp_dir.is_dir():
+            self.temp_dir.mkdir(mode=0o755)
+            if not self.temp_dir.is_dir():
                 raise CouldNotCreateTempDir()
             storage_logger.info('Created temp dir in videos dir')
 
-        if not os.path.isdir(self.temp_out_dir):
-            os.mkdir(self.temp_out_dir, mode=0o777)
-            os.chmod(self.temp_out_dir, 0o777)  # Ensure public
-            if not os.path.isdir(self.temp_out_dir):
+        if not self.temp_out_dir.is_dir():
+            self.temp_out_dir.mkdir(mode=0o777)
+            self.temp_out_dir.chmod(0o777)  # Ensure public
+            if not self.temp_out_dir.is_dir():
                 raise CouldNotCreateTempOutDir()
             storage_logger.info('Created out dir in temp dir')
 
@@ -89,22 +90,21 @@ class FileStorage:
     @classmethod
     def get_instance(cls) -> "FileStorage":
         if cls._instance is None:
-            cls._instance = FileStorage(str(storage_settings.videos_path))
+            cls._instance = FileStorage(Path(storage_settings.videos_path))
             cls._instance.distribution_controller.start_periodic_reset_task()
         return cls._instance
 
     def load_file_list(self):
         """Load all video files in memory"""
         try:
-            path = pathlib.Path(self.path)
-            for obj in path.glob('**/*'):
+            for obj in self.storage_dir.glob('**/*'):
                 if obj.is_file():
                     file_split = obj.name.split('.')
                     if len(file_split) == 2:
                         file_hash = file_split[0]
                         file_ext = "." + file_split[1]
                         if file_ext in FILE_EXT_WHITELIST:
-                            self._add_video_to_cache(file_hash, file_ext)
+                            self._add_video_to_cache(file_hash, file_ext, obj)
                             if len(self._cached_files) < 20:
                                 storage_logger.info(f"Found video {file_hash}{file_ext}")
 
@@ -114,11 +114,10 @@ class FileStorage:
         except:
             storage_logger.exception("Error in load_file_list")
 
-    def _add_video_to_cache(self, file_hash: str, file_extension: str):
+    def _add_video_to_cache(self, file_hash: str, file_extension: str, file_path: Path):
         file = StoredHashedVideoFile(file_hash, file_extension)
-        video_path = pathlib.Path(self.get_path(file)[0])
         try:
-            stat = video_path.stat()
+            stat = file_path.stat()
             file.file_size = stat.st_size
             self._cached_files[file.hash] = file
             self._cached_files_total_size += file.file_size
@@ -155,8 +154,9 @@ class FileStorage:
             offset = int(video_length / thumb_count * (thumb_nr + 0.5))
             temp_out_file = None
             if video_check_user is not None:
-                temp_out_file = self.temp_out_dir + "/" + file.hash + "_" + str(thumb_nr) + THUMB_EXT
-            tasks.append(Video(video_config= VideoConfig(storage_settings)).save_thumbnail(video.video_file, thumb_path, offset, thumb_height, temp_output_file=temp_out_file))
+                temp_out_file = Path(self.temp_out_dir, file.hash + "_" + str(thumb_nr) + THUMB_EXT)
+            tasks.append(Video(video_config=VideoConfig(storage_settings)).save_thumbnail(
+                video.video_file, thumb_path, offset, thumb_height, temp_output_file=temp_out_file))
         await asyncio.gather(*tasks)
 
         return thumb_count
@@ -168,81 +168,81 @@ class FileStorage:
 
     def create_temp_file(self) -> 'TempFile':
         """Create a space where we can write data to."""
-        fd, path = tempfile.mkstemp(prefix='upload_', dir=self.tempdir)  # actually blocking io
+        fd, path = tempfile.mkstemp(prefix='upload_', dir=self.temp_dir)  # actually blocking io
         os.chmod(path, 0o644)  # Make readable for check_user
-        return TempFile(os.fdopen(fd, mode='wb'), path, self)
+        return TempFile(os.fdopen(fd, mode='wb'), Path(path), self)
 
-    def get_path(self, file: HashedVideoFile) -> Tuple[str, str]:
-        """Get path where to find a file with a hash and the directory."""
-        file_dir = self.path + "/" + file.hash[0:2]
-        file = file_dir + "/" + file.hash + file.file_extension
-        return file, file_dir
+    def get_path(self, file: HashedVideoFile) -> Path:
+        """Get path where to find a file with its hash."""
+        file_name = file.hash + file.file_extension
+        return Path(self.storage_dir, file.hash[0:2], file_name)
 
-    def get_path_in_temp(self, file: HashedVideoFile) -> str:
-        return TempFile.get_path(self.tempdir, file)
+    def get_path_in_temp(self, file: HashedVideoFile) -> Path:
+        return TempFile.get_path(self.temp_dir, file)
 
-    def get_thumb_path(self, file: HashedVideoFile, thumb_nr: int) -> Tuple[str, str]:
-        """Get path where to find a thumbnail with a hash and the directory."""
-        thumb_dir = self.path + "/" + file.hash[0:2]
-        file = thumb_dir + "/" + file.hash + "_" + str(thumb_nr) + THUMB_EXT
-        return file, thumb_dir
+    def get_thumb_path(self, file: HashedVideoFile, thumb_nr: int) -> Path:
+        """Get path where to find a thumbnail with a hash."""
+        file_name = file.hash + "_" + str(thumb_nr) + THUMB_EXT
+        return Path(self.storage_dir, file.hash[0:2], file_name)
 
-    def get_thumb_path_in_temp(self, file: HashedVideoFile, thumb_nr: int) -> str:
-        return TempFile.get_thumb_path(self.tempdir, file, thumb_nr)
+    def get_thumb_path_in_temp(self, file: HashedVideoFile, thumb_nr: int) -> Path:
+        return TempFile.get_thumb_path(self.temp_dir, file, thumb_nr)
 
     @staticmethod
-    def delete_file(file_path) -> bool:
+    def _delete_file(file_path: Path) -> bool:
         # Check source file really exists.
-        if not os.path.isfile(file_path):
+        if not file_path.is_file():
             return False
 
-        os.remove(file_path)
+        file_path.unlink()
         return True
 
     @staticmethod
-    def move_file(path: str, new_file_path: str, new_dir_path: str) -> None:
+    def _move_file(path: Path, new_file_path: Path) -> None:
         # Check source file really exists.
-        if not os.path.isfile(path):
+        if not path.is_file():
             raise FileDoesNotExistError()
 
         # Ensure dir exists.
-        os.makedirs(new_dir_path, 0o755, True)
+        parent = new_file_path.parent
+        if not parent.is_dir():
+            parent.mkdir(mode=0o755, parents=True)
 
-        if os.path.isfile(new_file_path):
+        if new_file_path.is_file():
             # If a file with the hash already exists, we don't need another copy.
-            os.remove(path)
+            path.unlink()
         else:
-            os.rename(path, new_file_path)
-            os.chmod(new_file_path, 0o644)
+            path.rename(new_file_path)
+            new_file_path.chmod(0o644)
 
     async def add_file_from_temp(self, file: HashedVideoFile) -> None:
         """Add a file to the storage that is currently stored in the temp dir."""
         temp_path = self.get_path_in_temp(file)
-        new_file_path, new_dir_path = self.get_path(file)
+        new_file_path = self.get_path(file)
 
         # Run in another thread as there is blocking io.
-        await asyncio.get_event_loop().run_in_executor(None, self.move_file, temp_path, new_file_path, new_dir_path)
+        await asyncio.get_event_loop().run_in_executor(None, self._move_file, temp_path, new_file_path)
         storage_logger.info("Added file with hash %s permanently to storage.", file.hash)
-        self._add_video_to_cache(file.hash, file.file_extension)
+        self._add_video_to_cache(file.hash, file.file_extension, new_file_path)
 
     async def add_thumbs_from_temp(self, file: HashedVideoFile, thumb_count: int) -> None:
         """Add thumbnails to the video that are currently stored in the temp dir."""
         tasks = []
         for thumb_nr in range(thumb_count):
             old_thumb_path = self.get_thumb_path_in_temp(file, thumb_nr)
-            new_thumb_file, new_thumb_dir = self.get_thumb_path(file, thumb_nr)
+            new_thumb_file = self.get_thumb_path(file, thumb_nr)
 
             # Run in another thread as there is blocking io.
-            tasks.append(asyncio.get_event_loop().run_in_executor(None, self.move_file, old_thumb_path, new_thumb_file,
-                                                                  new_thumb_dir))
+            tasks.append(asyncio.get_event_loop().run_in_executor(None, self._move_file, old_thumb_path,
+                                                                  new_thumb_file))
         await asyncio.gather(*tasks)
         storage_logger.info(f"Added {thumb_count} thumbnails for file with hash {file.hash} permanently to storage.")
 
     async def remove(self, file: StoredHashedVideoFile) -> None:
-        file_path = self.get_path(file)[0]
+        file_path = self.get_path(file)
 
         # Run in another thread as there is blocking io.
-        if not await asyncio.get_event_loop().run_in_executor(None, self.delete_file, file_path):
+        if not await asyncio.get_event_loop().run_in_executor(None, self._delete_file, file_path):
             raise FileDoesNotExistError()
 
         # Remove file from cached files and delete all copies on distributor nodes.
@@ -256,9 +256,9 @@ class FileStorage:
         thumb_nr = 0
         # Remove increasing thumbnail ids until file not found
         while True:
-            thumb_path = self.get_thumb_path(file, thumb_nr)[0]
+            thumb_path = self.get_thumb_path(file, thumb_nr)
             # Run in another thread as there is blocking io.
-            if not await asyncio.get_event_loop().run_in_executor(None, self.delete_file, thumb_path):
+            if not await asyncio.get_event_loop().run_in_executor(None, self._delete_file, thumb_path):
                 break
             thumb_nr += 1
 
@@ -268,11 +268,10 @@ class FileStorage:
         """Delete files older than GC_TEMP_FILES_SECS."""
         count = 0
         old = time.time() - self.GC_TEMP_FILES_SECS
-        for filename in os.listdir(self.tempdir):
-            path = self.tempdir + "/" + filename
-            if os.path.isfile(path) and os.path.getmtime(path) < old:
+        for file in self.temp_dir.iterdir():
+            if file.is_file() and file.stat().st_mtime < old:
                 # File is old and most likely not needed anymore.
-                os.remove(path)
+                file.unlink()
                 count += 1
 
         return count
@@ -286,15 +285,16 @@ class FileStorage:
 
             await asyncio.sleep(self.GC_ITERATION_SECS)
 
+
 class TempFile:
     """Used to handle files that are getting uploaded right now or were just uploaded, but not yet added to the
     file storage finally.
     """
 
-    def __init__(self, file: BinaryIO, path: str, storage: FileStorage):
+    def __init__(self, file: BinaryIO, path: Path, storage: FileStorage):
         self.hash = FileStorage.get_hash_gen()
         self.file = file
-        self.path = path
+        self.path: Path = path
         self.storage = storage
         self.size = 0
         self.is_writing = False
@@ -331,29 +331,30 @@ class TempFile:
 
         # Run in another thread as there is blocking io.
         def move():
-            new_path = self.get_path(self.storage.tempdir, file)
-            if os.path.isfile(new_path):
+            new_path = self.get_path(self.storage.temp_dir, file)
+            if new_path.is_file():
                 # If a file with the hash already exists, we don't need another copy.
-                os.remove(self.path)
+                self.path.unlink()
             else:
-                os.rename(self.path, new_path)
+                self.path.rename(new_path)
 
         await asyncio.get_event_loop().run_in_executor(None, move)
         return file
 
     @classmethod
-    def get_path(cls, tempdir: str, file: HashedVideoFile) -> str:
-        return tempdir + "/" + file.hash + file.file_extension
+    def get_path(cls, temp_dir: Path, file: HashedVideoFile) -> Path:
+        return Path(temp_dir, file.hash + file.file_extension)
 
     @classmethod
-    def get_thumb_path(cls, tempdir: str, file: HashedVideoFile, thumb_nr: int) -> str:
-        return tempdir + "/" + file.hash + "_" + str(thumb_nr) + THUMB_EXT
+    def get_thumb_path(cls, temp_dir: Path, file: HashedVideoFile, thumb_nr: int) -> Path:
+        file_name = file.hash + "_" + str(thumb_nr) + THUMB_EXT
+        return Path(temp_dir, file_name)
 
     async def delete(self):
         def delete_file():
             self.file.close()
-            if os.path.isfile(self.path):
-                os.remove(self.path)
+            if self.path.is_file():
+                self.path.unlink()
 
         await asyncio.get_event_loop().run_in_executor(None, delete_file)
 
