@@ -3,7 +3,7 @@ import logging
 import sys
 from pathlib import Path
 from .settings import Settings
-
+from .cli.args import setup_cli_args
 
 # Globals that may be useful for all nodes.
 settings = Settings()
@@ -19,7 +19,13 @@ def load_general_settings(cli_only_config: bool = False) -> None:
     parser.add_argument('--config', help='path to config file', default=None)
     if not cli_only_config:
         parser.add_argument('--http-port', help='http api port', default=0, type=int)
-        parser.add_argument('mode', help='which server part to start')
+        subparsers = parser.add_subparsers(title="Available applications", dest="app")
+        subparsers.add_parser("manager", help="Start manager node")
+        subparsers.add_parser("storage", help="Start storage node")
+        subparsers.add_parser("distributor", help="Start distributor node")
+        cli_tool = subparsers.add_parser("cli", help="CLI tool")
+        setup_cli_args(cli_tool)
+
     settings.args = parser.parse_args()
 
     # read config file
@@ -41,26 +47,26 @@ def load_general_settings(cli_only_config: bool = False) -> None:
         logging.warning('Development mode is enabled. You should enable this mode only during development!')#
 
 
-def call_node():
+def call_subprogram():
     # Hand over to node code
-    if settings.args.mode == 'broker':
+    if settings.args.app == 'broker':
         from livestreaming.broker import start
         start()
-    elif settings.args.mode == 'content':
+    elif settings.args.app == 'content':
         from livestreaming.content import start
         start()
-    elif settings.args.mode == 'encoder':
+    elif settings.args.app == 'encoder':
         from livestreaming.encoder import start
         start()
-    elif settings.args.mode == 'manager':
+    elif settings.args.app == 'manager':
         from livestreaming.manager import start
         start()
-    elif settings.args.mode == 'storage':
+    elif settings.args.app == 'storage':
         from livestreaming.storage import start
         start()
-    elif settings.args.mode == 'distributor':
+    elif settings.args.app == 'distributor':
         from livestreaming.distributor import start
         start()
     else:
-        print("Mode must be manager, encoder, content, broker, storage or distributor")
+        print("Application must be manager, encoder, content, broker, storage or distributor")
         sys.exit(2)
