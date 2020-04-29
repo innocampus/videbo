@@ -24,7 +24,7 @@ def setup_cli_args(parser: ArgumentParser):
                                              help="Enable a distributor node again that was disabled before")
     enable_dist_node.add_argument("node", help="name of the node instance")
 
-    remove_dist_node = subparsers.add_parser("manager-remove-node", help="Remove/shutdown a dynamic node")
+    remove_dist_node = subparsers.add_parser("manager-remove-distributor-node", help="Remove/shutdown a dynamic node")
     remove_dist_node.add_argument("node", help="name of the dynamic node instance")
 
 
@@ -41,7 +41,7 @@ def run(args: Any):
             fut = set_distributor_status(args, False)
         elif args.cmd == "manager-enable-distributor-node":
             fut = set_distributor_status(args, True)
-        elif args.cmd == "manager-remove-node":
+        elif args.cmd == "manager-remove-distributor-node":
             fut = remove_distributor_node(args)
         else:
             print("Invalid cli command argument given.")
