@@ -1,8 +1,9 @@
 import asyncio
+from aiohttp.client_exceptions import ClientError
 from aioinflux import InfluxDBClient
 from datetime import datetime, timezone
 from socket import gethostname
-from typing import Dict
+from typing import Dict, Optional
 from typing import NamedTuple
 import re
 
@@ -42,16 +43,14 @@ class Monitoring:
 
         influx_url = self.nc.manager_settings.influx_url
         url_match = re.search(r"(https:\/\/|http:\/\/)?([a-zA-Z\-\.]*):?([0-9]*)?", influx_url)
-        influx_host = url_match.group(2)
+        self.influx_host = url_match.group(2)
 
         if url_match.group(3):
-            influx_port = int(url_match.group(3))
+            self.influx_port = int(url_match.group(3))
         else:
-            influx_port = 8086
+            self.influx_port = 8086
 
-        self.influx = InfluxManager(influx_host, self.nc.manager_settings.influx_database,
-                                    self.nc.manager_settings.influx_username,
-                                    self.nc.manager_settings.influx_password, port=influx_port)
+        self.influx: Optional[InfluxManager] = None
 
     def stop(self):
         self.operational = False
@@ -157,18 +156,29 @@ class Monitoring:
         delay = 0
         try:
             while self.operational:
-                await asyncio.sleep(15 - delay)
-                measurements_start = datetime.now()
+                try:
+                    self.influx = InfluxManager(self.influx_host, self.nc.manager_settings.influx_database,
+                                  self.nc.manager_settings.influx_username,
+                                  self.nc.manager_settings.influx_password, port=self.influx_port)
+                    await asyncio.sleep(15 - delay)
+                    measurements_start = datetime.now()
 
-                await self.encoder_stats()
-                await self.distributor_stats()
-                await self.storage_stats()
-                await self.overall_stats()
+                    await self.encoder_stats()
+                    await self.distributor_stats()
+                    await self.storage_stats()
+                    await self.overall_stats()
 
-                measurements_end = datetime.now()
-                delay = (measurements_end - measurements_start).total_seconds()
+                    measurements_end = datetime.now()
+                    delay = (measurements_end - measurements_start).total_seconds()
+                    await self.influx.close()
+                    self.influx = None
+                except ClientError:
+                    # retry in a few seconds
+                    logger.exception("Influx error")
+                    await asyncio.sleep(120)
         finally:
-            await self.influx.close()
+            if self.influx:
+                await self.influx.close()
 
     async def run(self):
         if self.nc.manager_settings.influx_url:
