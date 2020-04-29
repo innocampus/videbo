@@ -6,7 +6,7 @@ from json import JSONDecodeError
 from typing import Optional, Type, List, Dict, Union, Any, Tuple, Callable
 from time import time
 from aiohttp import web, ClientResponse, ClientSession, ClientError, ClientTimeout
-from aiohttp.web_exceptions import HTTPException, HTTPBadRequest
+from aiohttp.web_exceptions import HTTPException, HTTPBadRequest, HTTPUnauthorized
 from livestreaming.auth import BaseJWTData, internal_jwt_encode
 from . import settings
 from .misc import TaskManager
@@ -95,6 +95,20 @@ def ensure_json_body(headers: Optional[dict] = None):
 
         return wrapper
     return decorator
+
+
+def ensure_no_reverse_proxy(func):
+    """Check that the access does not come from the reverse proxy."""
+
+    @functools.wraps(func)
+    async def wrapper(request: web.Request, *args, **kwargs):
+        """Wrapper around the actual function call."""
+
+        if "X-Forwarded-For" in request.headers:
+            raise HTTPUnauthorized()
+        return await func(request, *args, **kwargs)
+
+    return wrapper
 
 
 class JSONBaseModel(pydantic.BaseModel):
@@ -225,6 +239,15 @@ class HTTPClient:
                                        timeout: Union[ClientTimeout, int, None] = None) -> Tuple[int, Any]:
         """Do an internal request with the node role (without having to specify jwt_data)."""
         jwt = cls.get_standard_jwt_with_role('node')
+        return await cls.internal_request(method, url, jwt, json_data, expected_return_type, timeout)
+
+    @classmethod
+    async def internal_request_admin(cls, method: str, url: str,
+                                    json_data: Optional[JSONBaseModel] = None,
+                                    expected_return_type: Optional[Type[JSONBaseModel]] = None,
+                                    timeout: Union[ClientTimeout, int, None] = None) -> Tuple[int, Any]:
+        """Do an internal request with the node role (without having to specify jwt_data)."""
+        jwt = cls.get_standard_jwt_with_role('admin')
         return await cls.internal_request(method, url, jwt, json_data, expected_return_type, timeout)
 
     @classmethod

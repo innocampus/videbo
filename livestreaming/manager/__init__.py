@@ -42,7 +42,7 @@ def start() -> None:
     from .cloud.definitions import CloudInstanceDefsController
     from .node_controller import NodeController
     from .streams import stream_collection
-    from .storage_controller import StorageDistributorController
+    from .storage_controller import storage_controller
     from .db import Database
     from .monitoring import Monitoring
 
@@ -55,8 +55,7 @@ def start() -> None:
     db = Database()
     db.connect(str(manager_settings.db_file))
 
-    nc = NodeController(manager_settings, cloud_definitions, db)
-    storage_controller = StorageDistributorController()
+    nc = NodeController.init_instance(manager_settings, cloud_definitions, db)
 
     mon = Monitoring(nc)
 
@@ -66,15 +65,7 @@ def start() -> None:
         stream_collection.init(nc)
         await nc.start()
         storage_controller.init(nc)
-
         await mon.run()
-
-        if manager_settings.cloud_deployment:
-            #node = await nc.start_content_node(1)
-            #node = await nc.start_distributor_node(0, 'https://test1.com')
-            #node = await nc.start_distributor_node(0, 'https://test2.com')
-            #app['contentnode'] = node
-            pass
 
     async def on_http_cleanup(app):
         await db.disconnect()

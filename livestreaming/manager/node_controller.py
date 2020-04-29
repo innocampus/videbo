@@ -10,7 +10,8 @@ from .cloud import CombinedCloudAPI, NodeCreateError
 from .cloud.cloud_deployment import init_node, remove_ssh_key
 from .cloud import DeploymentStatus, VmStatus
 from .cloud.server import Server, StaticServer, DynamicServer
-from .cloud.definitions import CloudInstanceDefsController, OrderedInstanceDefinitionsList
+from .cloud.definitions import CloudInstanceDefsController, OrderedInstanceDefinitionsList,\
+    DistributorInstanceDefinition
 from .cloud.dns_api import DNSManager, get_dns_api_by_provider
 from . import  ManagerSettings, logger
 from .node_types import NodeTypeBase, ContentNode, EncoderNode, BrokerNode, StorageNode, DistributorNode
@@ -20,6 +21,8 @@ Node_Type_T = TypeVar('Node_Type_T', bound=NodeTypeBase)
 
 
 class NodeController:
+    _instance: Optional["NodeController"] = None
+
     def __init__(self, manager_settings: ManagerSettings, definitions: CloudInstanceDefsController,
                  db: Database):
         self.manager_settings: ManagerSettings = manager_settings
@@ -42,6 +45,18 @@ class NodeController:
 
         if manager_settings.cloud_deployment:
             self.dns_manager = get_dns_api_by_provider(definitions)
+
+    @classmethod
+    def get_instance(cls) -> "NodeController":
+        if cls._instance:
+            return cls._instance
+        raise NodeControllerNotInitializedError()
+
+    @classmethod
+    def init_instance(cls, manager_settings: ManagerSettings, definitions: CloudInstanceDefsController,
+                 db: Database) -> "NodeController":
+        cls._instance = NodeController(manager_settings, definitions, db)
+        return cls._instance
 
     async def start(self) -> None:
         if self.dns_manager:
@@ -74,6 +89,13 @@ class NodeController:
                 list.append(node)
         return list
 
+    async def get_all_nodes(self, node_type: Type[Node_Type_T]) -> List[Node_Type_T]:
+        """Get all nodes of a type."""
+        # Wait for the lock as there might be a node being started right now (in start_content_node) and we might not
+        # know yet which instance definition will be used.
+        async with self.node_startup_delete_lock:
+            return self.nodes[node_type].copy()
+
     async def start_content_node(self, clients: int) -> ContentNode:
         """Start a new content node that should be able to deal with at least the given clients."""
         list = self.definitions.get_matching_content_defs(clients)
@@ -83,10 +105,17 @@ class NodeController:
         new_node.lifecycle_task = create_task(self._dynamic_server_lifecycle(list, new_node))
         return new_node
 
-    async def start_distributor_node(self, min_tx_rate_mbit: int,
-                                     bound_to_storage_node_base_url: str) -> DistributorNode:
+    async def start_distributor_node(self, bound_to_storage_node_base_url: str, *,
+                                     min_tx_rate_mbit: Optional[int] = None,
+                                     definition: Optional[DistributorInstanceDefinition] = None) -> DistributorNode:
         """Start a new distributor node that should be able to deal with at least the given clients."""
-        list = self.definitions.get_matching_distributor_defs(min_tx_rate_mbit)
+        if min_tx_rate_mbit:
+            list = self.definitions.get_matching_distributor_defs(min_tx_rate_mbit)
+        elif definition:
+            list = [definition]
+        else:
+            raise Exception("You need to pass min_tx_rate_mbit or definition!")
+
         new_node = DistributorNode()
         new_node.bound_to_storage_node_base_url = bound_to_storage_node_base_url
         self.nodes[DistributorNode].append(new_node)
@@ -287,4 +316,8 @@ class CloudDeploymentDisabledError(Exception):
 
 
 class BrokerNodeNotUnique(Exception):
+    pass
+
+
+class NodeControllerNotInitializedError(Exception):
     pass

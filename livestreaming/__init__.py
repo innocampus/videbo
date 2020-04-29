@@ -3,7 +3,6 @@ import logging
 import sys
 from pathlib import Path
 from .settings import Settings
-from .cli.args import setup_cli_args
 
 # Globals that may be useful for all nodes.
 settings = Settings()
@@ -24,6 +23,7 @@ def load_general_settings(cli_only_config: bool = False) -> None:
         subparsers.add_parser("storage", help="Start storage node")
         subparsers.add_parser("distributor", help="Start distributor node")
         cli_tool = subparsers.add_parser("cli", help="CLI tool")
+        from .cli.args import setup_cli_args
         setup_cli_args(cli_tool)
 
     settings.args = parser.parse_args()
@@ -67,6 +67,9 @@ def call_subprogram():
     elif settings.args.app == 'distributor':
         from livestreaming.distributor import start
         start()
+    elif settings.args.app == 'cli':
+        from .cli.args import run
+        run(settings.args)
     else:
         print("Application must be manager, encoder, content, broker, storage or distributor")
         sys.exit(2)

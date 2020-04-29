@@ -20,6 +20,7 @@ class NodeTypeBase:
         self.id: Optional[int] = None  # internal id of the node
         self.created_manually: bool = False  # node was created explicitly by the admin but it is not a static node
         self.shutdown: bool = False  # shut down when watchdog is cancelled
+        self.enabled: bool = True  # this node is about to shut down
 
     async def watchdog(self):
         raise NotImplementedError()
@@ -243,7 +244,7 @@ class StorageNode(NodeTypeBase):
         self.rx_current_rate: int = 0  # in Mbit/s
         self.tx_total: int = 0  # in MB
         self.rx_total: int = 0  # in MB
-        self.current_connections: int = Optional[int]  # HTTP connections serving videos
+        self.current_connections: Optional[int] = 0  # HTTP connections serving videos
         self.files_total_size: int = 0  # in MB
         self.files_count: int = 0
         self.free_space: int = 0  # in MB
@@ -398,7 +399,7 @@ class DistributorNode(NodeTypeBase):
         self.storage_node = node
         node.add_dist_node(self)
 
-    async def remove_storage_node(self):
+    def remove_storage_node(self):
         node: Optional[StorageNode] = self.storage_node
         if node is None:
             return

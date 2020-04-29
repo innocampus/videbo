@@ -86,6 +86,7 @@ class CloudInstanceDefsController:
     domain: Optional[str]
     content_definitions: Dict[int, List[ContentInstanceDefinition]] # priority to list of definitions
     encoder_definitions: Dict[int, List[EncoderInstanceDefinition]]
+    distributor_definitions: Dict[int, List[EncoderInstanceDefinition]]
 
     def __init__(self):
         self.provider_definitions = {}
@@ -94,6 +95,7 @@ class CloudInstanceDefsController:
         self.content_definitions = {}
         self.encoder_definitions = {}
         self.distributor_definitions = {}
+        self.node_def_by_name: Dict[str, InstanceDefinition] = {}
 
     def init_from_config(self, config: Settings):
         self._init_provider_definitions(config)
@@ -141,6 +143,8 @@ class CloudInstanceDefsController:
                 else:
                     collection[instance.priority].append(instance)
 
+                self.node_def_by_name[instance.section_name] = instance
+
     def get_matching_content_defs(self, clients: int) -> List[ContentInstanceDefinition]:
         """Get a list of possible content instances in the order that we should try to buy."""
         return self._get_matching_defs(self.content_definitions, 'max_clients', clients)
@@ -172,6 +176,9 @@ class CloudInstanceDefsController:
                     list.append(instance)
 
         return list
+
+    def get_node_definition_with_name(self, section_name: str) -> Optional[InstanceDefinition]:
+        return self.node_def_by_name.get(section_name)
 
 
 class UnknownProviderError(Exception):

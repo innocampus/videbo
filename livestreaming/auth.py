@@ -24,6 +24,7 @@ class Role:
     lms = 2
     node = 3  # other node than manager
     manager = 4
+    admin = 5
 
     @classmethod
     def get_level(cls, role: str, issuer: str) -> int:
