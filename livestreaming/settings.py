@@ -48,6 +48,7 @@ class GeneralSettings(SettingsSectionBase):
 class LMSSettings(SettingsSectionBase):
     _section = 'lms'
     api_secret: str
+    moodle_base_urls: str
 
 
 class Settings:

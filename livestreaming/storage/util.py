@@ -8,6 +8,7 @@ from pathlib import Path
 from typing import Optional, Tuple, Dict, BinaryIO
 
 from livestreaming.misc import TaskManager
+from livestreaming.lms_api import LMSSitesCollection, LMSAPIError
 from livestreaming.video import VideoInfo
 from livestreaming.video import Video
 from livestreaming.video import VideoConfig
@@ -364,3 +365,35 @@ def is_allowed_file_ending(filename: Optional[str]) -> bool:
     if filename is None:
         return True
     return filename.lower().endswith(FILE_EXT_WHITELIST)
+
+
+def schedule_video_delete(hash: str, file_ext: str, origin: Optional[str] = None) -> None:
+    async def task():
+        try:
+            file_storage = FileStorage.get_instance()
+            file = await file_storage.get_file(hash, file_ext)
+
+            # Check that all LMS do not have the file in their db.
+            # Skip origin site as this is the site that is requesting the delete and it still has the file
+            # at this moment.
+            for site in LMSSitesCollection.get_all().sites:
+                check_site = origin is None or not site.base_url.startswith(origin)
+                if check_site:
+                    try:
+                        exists = await site.video_exists(hash, file_ext)
+                        storage_logger.info(f"Video delete: Site {site.base_url} has video {exists}")
+                        if exists:
+                            # One site still has the file. Do not delete the file.
+                            return
+                    except LMSAPIError:
+                        # Just in case. When one site cannot be reached, do not delete the file (it may still
+                        # have the file).
+                        return
+
+            await file_storage.remove_thumbs(file)
+            await file_storage.remove(file)
+        except FileDoesNotExistError:
+            storage_logger.info(f"Video delete: file not found: {hash}{file_ext}")
+
+    storage_logger.info(f"Delete video with hash {hash}")
+    TaskManager.fire_and_forget_task(asyncio.create_task(task()))

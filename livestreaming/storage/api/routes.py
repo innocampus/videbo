@@ -41,7 +41,7 @@ from livestreaming.storage.util import NoValidFileInRequestError
 from livestreaming.storage.util import FileTooBigError
 from livestreaming.storage.util import HashedVideoFile, StoredHashedVideoFile
 from livestreaming.storage.util import FFProbeError
-from livestreaming.storage.util import is_allowed_file_ending
+from livestreaming.storage.util import is_allowed_file_ending, schedule_video_delete
 from livestreaming.storage.exceptions import InvalidMimeTypeError
 from livestreaming.storage.exceptions import InvalidVideoError
 
@@ -236,18 +236,9 @@ async def delete_file(request: Request, jwt_data: DeleteFileJWTData):
         storage_logger.info("unauthorized request")
         raise HTTPForbidden()
 
-    file_storage = FileStorage.get_instance()
-    file = await file_storage.get_file(request.match_info['hash'], request.match_info['file_ext'])
-
-    await file_storage.remove_thumbs(file)
-
-    try:
-        await file_storage.remove(file)
-    except FileDoesNotExistError:
-        storage_logger.error('Cannot delete file with hash %s from video, file does not exist.', file.hash)
-        return json_response({'status': 'error', 'error': 'file_does_not_exist'})
-
-    return json_response({"status": "ok"})
+    origin = request.headers.getone("Origin", None)
+    schedule_video_delete(request.match_info['hash'], request.match_info['file_ext'], origin)
+    return json_response({"status": "ok"})  # always succeeds
 
 
 @routes.get('/file')
