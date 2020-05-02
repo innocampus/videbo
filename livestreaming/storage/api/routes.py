@@ -307,7 +307,7 @@ async def video_check_redirect(request: Request, file: StoredHashedVideoFile) ->
     node, has_complete_file = file.nodes.find_good_node(file)
     if node is None:
         # There is no distribution node.
-        if file.views >= 2 or own_tx_load > 0.4:
+        if file.views >= 2:
             if file.nodes.copying:
                 # When we are here this means that there is no non-busy distribution node. Even the dist node that
                 # is currently loading the file is too busy.
@@ -325,7 +325,7 @@ async def video_check_redirect(request: Request, file: StoredHashedVideoFile) ->
                         # Serve file.
                         return
                 else:
-                    if own_tx_load > 0.4:
+                    if own_tx_load > 0.5:
                         # Redirect to node where the client needs to wait until the node downloaded the file.
                         # Wait a moment to give distributor node time getting notified to copy the file.
                         await asyncio.sleep(1)
@@ -342,7 +342,7 @@ async def video_check_redirect(request: Request, file: StoredHashedVideoFile) ->
         video_redirect_to_node(request, node, file)
     else:
         # There is only a distribution node that is downloading the file however.
-        if own_tx_load > 0.4:
+        if own_tx_load > 0.5:
             # Redirect to node where the client needs to wait until the node downloaded the file.
             # Wait a moment to give distributor node time getting notified to copy the file.
             await asyncio.sleep(1)
