@@ -307,7 +307,7 @@ async def video_check_redirect(request: Request, file: StoredHashedVideoFile) ->
     node, has_complete_file = file.nodes.find_good_node(file)
     if node is None:
         # There is no distribution node.
-        if file.views >= 2:
+        if file.views >= storage_settings.copy_to_dist_views_threshold:
             if file.nodes.copying:
                 # When we are here this means that there is no non-busy distribution node. Even the dist node that
                 # is currently loading the file is too busy.

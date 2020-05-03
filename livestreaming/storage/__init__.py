@@ -19,10 +19,16 @@ class StorageSettings(SettingsSectionBase):
     binary_ffprobe: str
     tx_max_rate_mbit: int
     server_status_page: str
+    copy_to_dist_views_threshold: int
+    reset_views_every_hours: int
 
     def load(self):
         super().load()
         self.public_base_url = ensure_url_does_not_end_with_slash(self.public_base_url)
+
+        # at least 1 hour
+        if self.reset_views_every_hours < 1:
+            self.reset_views_every_hours = 1
 
 
 storage_logger = logging.getLogger('livestreaming-storage')
