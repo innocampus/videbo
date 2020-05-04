@@ -95,7 +95,7 @@ class NetworkInterfaces:
 
     def __init__(self, interval: int = 2):
         self.interval = interval
-        self._last_time = 0
+        self._last_time_network_proc: float = 0.0
         self._do_fetch = False
         self._fetch_task: Optional[asyncio.Task] = None
         self._server_status: Optional[StubStatus] = None
@@ -129,8 +129,8 @@ class NetworkInterfaces:
 
     async def _fetch_proc_info(self):
         """Fetching data from /proc/net/dev"""
-        self._last_time = time()
         with open('/proc/net/dev', 'r') as f:
+            cur_time = time()
             a = f.readline()
             while a:
                 match = self._pattern.search(a)
@@ -148,10 +148,13 @@ class NetworkInterfaces:
                             attr = f"{cls}_bytes"
                             last_bytes = self.get_interface_attr(name, attr)
                             cur_bytes = int(match.group(attr))
-                            throughput = (cur_bytes-last_bytes)/self.interval
+                            interval = cur_time - self._last_time_network_proc
+                            throughput = (cur_bytes - last_bytes) / interval
                             self._set_interface_attr(name, attr, cur_bytes)
                             self._set_interface_attr(name, f"{cls}_throughput", throughput)
                 a = f.readline()
+
+        self._last_time_network_proc = cur_time
 
     async def _fetch_server_status(self, url: str, logger: Optional[Logger]):
         if not url:
