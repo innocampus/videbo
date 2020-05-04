@@ -335,8 +335,13 @@ async def video_check_redirect(request: Request, file: StoredHashedVideoFile) ->
                         return
 
         else:
-            # This storage node is not too busy and can serve the file by itself.
-            return
+            if own_tx_load > 0.9:
+                # The file is not requested that often and this storage node is too busy.
+                storage_logger.warning(f"Cannot serve video, node too busy (tx load {own_tx_load:.2f}")
+                raise HTTPServiceUnavailable()
+            else:
+                # This storage node is not too busy and can serve the file by itself.
+                return
     elif has_complete_file:
         # One distribution node that can serve the file.
         video_redirect_to_node(request, node, file)
