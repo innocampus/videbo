@@ -1,8 +1,8 @@
 import asyncio
 import logging
 import sys
-from livestreaming.network import NetworkInterfaces
-from livestreaming.web import HTTPClient
+from videbo.network import NetworkInterfaces
+from videbo.web import HTTPClient
 
 
 async def main():

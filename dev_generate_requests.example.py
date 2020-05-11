@@ -5,9 +5,9 @@ You may generate a JWT or do requests to the manager.
 
 import sys
 from asyncio import get_event_loop
-from livestreaming import load_general_settings, settings
-from livestreaming.auth import internal_jwt_encode, external_jwt_encode, BaseJWTData
-from livestreaming.web import HTTPClient
+from videbo import load_general_settings, settings
+from videbo.auth import internal_jwt_encode, external_jwt_encode, BaseJWTData
+from videbo.web import HTTPClient
 
 load_general_settings(True)
 
@@ -26,7 +26,7 @@ jwt = internal_jwt_encode(jwt_data, 24*3600)
 # ------------------------
 
 
-from livestreaming.broker.api.models import BrokerRedirectJWTData
+from videbo.broker.api.models import BrokerRedirectJWTData
 jwt_data = BrokerRedirectJWTData.construct(role="manager", stream_id=2, rid="blub")
 jwt = internal_jwt_encode(jwt_data, 24*3600)
 print(jwt)
@@ -34,7 +34,7 @@ print(jwt)
 
 # ------------------------
 
-from livestreaming.manager.api.models import LMSNewStreamParams, LMSNewStreamReturn
+from videbo.manager.api.models import LMSNewStreamParams, LMSNewStreamReturn
 
 params = LMSNewStreamParams(ip_range=None, rtmps=False, lms_stream_instance_id=1)
 

@@ -1,21 +1,21 @@
 ---
-- name: create livestreaming user
+- name: create videbo user
   user:
-    name: livestreaming
+    name: videbo
     state: present
 
 - name: give user project ownership
   file:
     path: "{{ project_path }}"
-    owner: livestreaming
-    group: livestreaming
+    owner: videbo
+    group: videbo
     recurse: true
 
 - name: give user video directory ownership
   file:
     path: "{{ lvm_video_path }}"
-    owner: livestreaming
-    group: livestreaming
+    owner: videbo
+    group: videbo
     recurse: true
 
 - name: create venv
@@ -24,23 +24,23 @@
     creates: "{{ project_path }}/venv"
     chdir: "{{ project_path }}"
   become: true
-  become_user: livestreaming
+  become_user: videbo
 
 - name: install python dependencies
   command:
     cmd: "{{ project_path }}/venv/bin/pip install -r {{ project_path }}/requirements.txt"
   become: true
-  become_user: livestreaming
+  become_user: videbo
 
 - name: copy systemd unit
   template:
-    src: "livestreaming-distributor-node.service.j2"
-    dest: "/etc/systemd/system/livestreaming-distributor-node.service"
+    src: "videbo-distributor-node.service.j2"
+    dest: "/etc/systemd/system/videbo-distributor-node.service"
     mode: 0644
 
 - name: start systemd unit
   systemd:
     state: started
     enabled: true
-    name: livestreaming-distributor-node
+    name: videbo-distributor-node
 

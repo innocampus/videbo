@@ -30,29 +30,29 @@
 
 - name: ansible create directory with mode setting example
   file:
-    path: /etc/livestreaming-certs
+    path: /etc/videbo-certs
     state: directory
     mode: "u=rwx,g=rx,o=rx"
 
 - name: move crt
-  command: mv {{ project_path }}/.lego/certificates/_.tu-berlin-streaming.de.crt /etc/livestreaming-certs
+  command: mv {{ project_path }}/.lego/certificates/_.tu-berlin-streaming.de.crt /etc/videbo-certs
   when: cert_stat.stat.exists
 
 - name: Change crt permissions
   file:
-    path: /etc/livestreaming-certs/_.tu-berlin-streaming.de.crt
+    path: /etc/videbo-certs/_.tu-berlin-streaming.de.crt
     owner: root
     group: root
     mode: '0644'
   when: cert_stat.stat.exists
 
 - name: move key
-  command: mv {{ project_path }}/.lego/certificates/_.tu-berlin-streaming.de.key /etc/livestreaming-certs
+  command: mv {{ project_path }}/.lego/certificates/_.tu-berlin-streaming.de.key /etc/videbo-certs
   when: cert_stat.stat.exists
 
 - name: Change key permissions
   file:
-    path: /etc/livestreaming-certs/_.tu-berlin-streaming.de.key
+    path: /etc/videbo-certs/_.tu-berlin-streaming.de.key
     owner: root
     group: root
     mode: '0600'
