@@ -52,22 +52,6 @@ class InstanceDefinition:
                f"server_type: {self.server_type}>"
 
 
-class ContentInstanceDefinition(InstanceDefinition):
-    section_name_prefix: str = "cloud-content-"
-
-    def __init__(self, config: Settings, section_name: str):
-        super().__init__(config, section_name)
-        self.max_clients: int = int(config.get_config(section_name, 'max_clients'))
-
-
-class EncoderInstanceDefinition(InstanceDefinition):
-    section_name_prefix: str = "cloud-encoder-"
-
-    def __init__(self, config: Settings, section_name: str):
-        super().__init__(config, section_name)
-        self.max_streams: int = int(config.get_config(section_name, 'max_streams'))
-
-
 class DistributorInstanceDefinition(InstanceDefinition):
     section_name_prefix: str = "cloud-distributor-"
 
@@ -84,23 +68,16 @@ class CloudInstanceDefsController:
     provider_definitions: Dict[str, ProviderDefinition] # map provider name to definition
     dns_provider_definition: Optional[ProviderDefinition]
     domain: Optional[str]
-    content_definitions: Dict[int, List[ContentInstanceDefinition]] # priority to list of definitions
-    encoder_definitions: Dict[int, List[EncoderInstanceDefinition]]
-    distributor_definitions: Dict[int, List[EncoderInstanceDefinition]]
 
     def __init__(self):
         self.provider_definitions = {}
         self.dns_provider_definition = None
         self.domain = None
-        self.content_definitions = {}
-        self.encoder_definitions = {}
         self.distributor_definitions = {}
         self.node_def_by_name: Dict[str, InstanceDefinition] = {}
 
     def init_from_config(self, config: Settings):
         self._init_provider_definitions(config)
-        self._init_node_definitions(config, self.content_definitions, ContentInstanceDefinition)
-        self._init_node_definitions(config, self.encoder_definitions, EncoderInstanceDefinition)
         self._init_node_definitions(config, self.distributor_definitions, DistributorInstanceDefinition)
 
     def _init_provider_definitions(self, config: Settings):
@@ -144,13 +121,6 @@ class CloudInstanceDefsController:
                     collection[instance.priority].append(instance)
 
                 self.node_def_by_name[instance.section_name] = instance
-
-    def get_matching_content_defs(self, clients: int) -> List[ContentInstanceDefinition]:
-        """Get a list of possible content instances in the order that we should try to buy."""
-        return self._get_matching_defs(self.content_definitions, 'max_clients', clients)
-
-    def get_matching_encoder_defs(self, streams: int) -> List[EncoderInstanceDefinition]:
-        return self._get_matching_defs(self.encoder_definitions, 'max_streams', streams)
 
     def get_matching_distributor_defs(self, min_tx_rate_mbit: int) -> List[DistributorInstanceDefinition]:
         """Get a list of possible content instances in the order that we should try to buy."""

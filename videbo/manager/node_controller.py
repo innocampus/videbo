@@ -14,7 +14,7 @@ from .cloud.definitions import CloudInstanceDefsController, OrderedInstanceDefin
     DistributorInstanceDefinition
 from .cloud.dns_api import DNSManager, get_dns_api_by_provider
 from . import  ManagerSettings, logger
-from .node_types import NodeTypeBase, ContentNode, EncoderNode, BrokerNode, StorageNode, DistributorNode
+from .node_types import NodeTypeBase, BrokerNode, StorageNode, DistributorNode
 from .db import Database
 
 Node_Type_T = TypeVar('Node_Type_T', bound=NodeTypeBase)
@@ -32,12 +32,9 @@ class NodeController:
         self.api: CombinedCloudAPI = CombinedCloudAPI(definitions)
         self.node_startup_delete_lock: Lock = Lock()
         self.nodes: Dict[Type[NodeTypeBase], List[NodeTypeBase]] = {
-            EncoderNode: [],
-            ContentNode: [],
             StorageNode: [],
             DistributorNode: [],
         }
-        self.broker_node: Optional[BrokerNode] = None
         self.server_by_name: Dict[str, Server] = {}
         self.node_by_id: Dict[int, NodeTypeBase] = {}  # TODO Do we still need this???
         self.dns_manager: Optional[DNSManager] = None
@@ -96,14 +93,6 @@ class NodeController:
         async with self.node_startup_delete_lock:
             return self.nodes[node_type].copy()
 
-    async def start_content_node(self, clients: int) -> ContentNode:
-        """Start a new content node that should be able to deal with at least the given clients."""
-        list = self.definitions.get_matching_content_defs(clients)
-        new_node = ContentNode()
-        self.nodes[ContentNode].append(new_node)
-        self.node_by_id[new_node.id] = new_node
-        new_node.lifecycle_task = create_task(self._dynamic_server_lifecycle(list, new_node))
-        return new_node
 
     async def start_distributor_node(self, bound_to_storage_node_base_url: str, *,
                                      min_tx_rate_mbit: Optional[int] = None,
@@ -218,22 +207,12 @@ class NodeController:
             node.base_url = ensure_url_does_not_end_with_slash(url)
             node.server = StaticServer(url_parsed.netloc, url_parsed.hostname)
             async with self.node_startup_delete_lock:
-                if node_type is BrokerNode:
-                    self.broker_node = node
-                else:
-                    self.nodes[node_type].append(node)
+                self.nodes[node_type].append(node)
                 self.node_by_id[node.id] = node
                 self.server_by_name[node.server.name] = node.server
                 node.lifecycle_task = create_task(self._static_server_lifecycle(node))
 
     async def _init_static_nodes(self) -> None:
-        if ',' in self.manager_settings.static_broker_node_base_url:
-            logger.critical(f"Config file: static_broker_node_base_url must not contain multiple urls")
-            raise BrokerNodeNotUnique()
-
-        await self._init_static_nodes_of_type(BrokerNode, self.manager_settings.static_broker_node_base_url)
-        await self._init_static_nodes_of_type(ContentNode, self.manager_settings.static_content_node_base_urls)
-        await self._init_static_nodes_of_type(EncoderNode, self.manager_settings.static_encoder_node_base_urls)
         await self._init_static_nodes_of_type(StorageNode, self.manager_settings.static_storage_node_base_url)
         await self._init_static_nodes_of_type(DistributorNode, self.manager_settings.static_distributor_node_base_urls)
 

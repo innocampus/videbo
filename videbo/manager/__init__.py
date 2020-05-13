@@ -12,15 +12,11 @@ class ManagerSettings(SettingsSectionBase):
     cloud_providers: str
     dns_provider: str
     cloud_deployment: bool
-    static_content_node_base_urls: str
-    static_encoder_node_base_urls: str
-    static_broker_node_base_url: str
     static_storage_node_base_url: str
     static_distributor_node_base_urls: str
     init_static_content_nodes: bool
     remove_orphaned_nodes: bool
     dynamic_node_name_prefix: str  # always ends with - (a hyphen)
-    streams_content_node_distribution_algorithm: str
     db_file: PurePath
     influx_url: str
     influx_database: str
@@ -41,7 +37,6 @@ def start() -> None:
     from .api.routes import routes
     from .cloud.definitions import CloudInstanceDefsController
     from .node_controller import NodeController
-    from .streams import stream_collection
     from .storage_controller import storage_controller
     from .db import Database
     from .monitoring import Monitoring
@@ -60,9 +55,6 @@ def start() -> None:
     mon = Monitoring(nc)
 
     async def on_http_startup(app):
-        from .node_types import ContentNode
-
-        stream_collection.init(nc)
         await nc.start()
         storage_controller.init(nc)
         await mon.run()

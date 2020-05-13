@@ -9,7 +9,7 @@ import re
 
 from videbo.misc import TaskManager
 from .node_controller import NodeController
-from .node_types import EncoderNode, DistributorNode, StorageNode
+from .node_types import DistributorNode, StorageNode
 
 from . import logger, manager_settings
 
@@ -54,20 +54,6 @@ class Monitoring:
 
     def stop(self):
         self.operational = False
-
-    async def encoder_stats(self):
-        encoder_nodes = self.nc.get_operating_nodes(EncoderNode)
-        for e in encoder_nodes:
-            current_streams = e.current_streams
-            encoder_name = e.server.name
-            fields = {'current_streams': current_streams}
-
-            # add more fields here before sending metrics to influx
-            # fields.update({'other_metric': 'metric'})
-
-            data_point = DataPoint(measurement='mgmt_encoder_stats', tags={'encoder_name': encoder_name},
-                                   fields=fields, time=datetime.now(timezone.utc).isoformat())
-            await self.influx.write_data_point(data_point)
 
     async def distributor_stats(self):
         nodes = self.nc.get_operating_nodes(DistributorNode)
@@ -163,7 +149,6 @@ class Monitoring:
                     await asyncio.sleep(15 - delay)
                     measurements_start = datetime.now()
 
-                    await self.encoder_stats()
                     await self.distributor_stats()
                     await self.storage_stats()
                     await self.overall_stats()

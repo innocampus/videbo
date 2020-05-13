@@ -2,9 +2,10 @@ import asyncio
 import sqlite3
 from typing import Optional, List, Dict, Tuple
 from . import logger
-from .node_types import NodeTypeBase, EncoderNode, ContentNode, DistributorNode
+from .node_types import NodeTypeBase, DistributorNode
 from .cloud.server import DynamicServer
 from .cloud.status import VmStatus, DeploymentStatus
+
 
 class Database:
     SCHEMA_VERSION = 1
@@ -51,18 +52,6 @@ class Database:
         c = self.con.cursor()
         c.executescript("""
 PRAGMA user_version = """ + str(self.SCHEMA_VERSION) + """;
-
-CREATE TABLE streams (
-    id                      INTEGER PRIMARY KEY AUTOINCREMENT,
-    ip_range                TEXT NOT NULL,
-    use_rtmps               NOT NULL,
-    rtmp_stream_key         NOT NULL,
-    encoder_subdir_name     NOT NULL,
-    lms_stream_instance_id  INT NOT NULL,
-    encoder_rtmp_port       INT,
-    streamer_connection_until INT,
-    expected_viewers        INT
-);
 
 CREATE TABLE dyn_nodes (
     id                      INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -153,11 +142,7 @@ CREATE TABLE dyn_nodes (
             rows = c.execute("SELECT * FROM dyn_nodes")
             for row in rows:
                 node_type = row["type"]
-                if node_type == "EncoderNode":
-                    node = EncoderNode()
-                elif node_type == "ContentNode":
-                    node = ContentNode()
-                elif node_type == "DistributorNode":
+                if node_type == "DistributorNode":
                     node = DistributorNode(loop)
                 else:
                     logger.error(f"Unknown node type {node_type} in database found")

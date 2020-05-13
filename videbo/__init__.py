@@ -49,16 +49,7 @@ def load_general_settings(cli_only_config: bool = False) -> None:
 
 def call_subprogram():
     # Hand over to node code
-    if settings.args.app == 'broker':
-        from videbo.broker import start
-        start()
-    elif settings.args.app == 'content':
-        from videbo.content import start
-        start()
-    elif settings.args.app == 'encoder':
-        from videbo.encoder import start
-        start()
-    elif settings.args.app == 'manager':
+    if settings.args.app == 'manager':
         from videbo.manager import start
         start()
     elif settings.args.app == 'storage':
@@ -71,5 +62,5 @@ def call_subprogram():
         from .cli.args import run
         run(settings.args)
     else:
-        print("Application must be manager, encoder, content, broker, storage or distributor")
+        print("Application must be manager, storage or distributor")
         sys.exit(2)
