@@ -209,12 +209,5 @@ class EncoderCreateNewStreamError(Exception):
     pass
 
 
-class ContentStartStreamingError(Exception):
-    def __init__(self, content: ContentNode, stream: "ManagerStream"):
-        self.content = content
-        self.stream = stream
-        super().__init__("Could not add stream to content node.")
-
-
 class AddDistributorError(Exception):
     pass
