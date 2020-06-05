@@ -1,13 +1,14 @@
 [Unit]
-Description=Livestreaming distributor node
+Description=Videbo distributor node
 After=network.target
 
 [Service]
-WorkingDirectory=/opt/livestreaming-server
-ExecStart=/opt/livestreaming-server/venv/bin/python3 -m livestreaming distributor
-User=livestreaming
+WorkingDirectory=/opt/videbo
+ExecStart=/opt/videbo/venv/bin/python3 -m videbo distributor
+User=videbo
 Restart=on-failure
 RestartSec=10s
 
 [Install]
 WantedBy=multi-user.target
+

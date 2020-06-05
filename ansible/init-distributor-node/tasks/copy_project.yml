@@ -12,7 +12,7 @@
 
 - name: Extract Project
   unarchive:
-    src: "{{ project_path }}/livestream_deploy.tar.gz"
+    src: "{{ project_path }}/videbo_deploy.tar.gz"
     dest: "{{ project_path }}/"
 
 - name: copy config
