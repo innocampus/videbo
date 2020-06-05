@@ -15,7 +15,6 @@
     update_cache: yes
 
 - include: lvm_volume.yml
-- include: ramdisk.yml
 - include: copy_project.yml
 - include: install.yml
 - include: config_nginx.yml
