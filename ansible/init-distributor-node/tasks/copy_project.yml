@@ -2,6 +2,12 @@
 - name: create project path
   file:
     dest: "{{ project_path }}"
+    mode: '755'
+    state: directory
+
+- name: create server dir in project path
+  file:
+    dest: "{{ project_path }}/server"
     mode: '700'
     state: directory
 
@@ -13,10 +19,10 @@
 - name: Extract Project
   unarchive:
     src: "{{ project_path }}/videbo_deploy.tar.gz"
-    dest: "{{ project_path }}/"
+    dest: "{{ project_path }}/server"
 
 - name: copy config
   template:
     src: "config.ini.j2"
-    dest: "{{ project_path }}/config.ini"
+    dest: "{{ project_path }}/server/config.ini"
     mode: 0644

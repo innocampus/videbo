@@ -1,5 +1,5 @@
 ---
-deployment_tar_path: "/opt/videbo/videbo_deploy.tar.gz"
+deployment_tar_path: "/opt/videbo/server/videbo_deploy.tar.gz"
 project_path: "/opt/videbo"
 domain: ""
 internal_api_secret: "secure"

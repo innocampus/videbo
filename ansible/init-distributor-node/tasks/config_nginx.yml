@@ -25,7 +25,7 @@
     state: link
 
 - name: check if certs in distribution package
-  stat: path="{{ project_path }}/.lego/certificates/_.tu-berlin-streaming.de.crt"
+  stat: path="{{ project_path }}/server/.lego/certificates/_.tu-berlin-streaming.de.crt"
   register: cert_stat
 
 - name: ansible create directory with mode setting example
@@ -35,7 +35,7 @@
     mode: "u=rwx,g=rx,o=rx"
 
 - name: move crt
-  command: mv {{ project_path }}/.lego/certificates/_.tu-berlin-streaming.de.crt /etc/videbo-certs
+  command: mv {{ project_path }}/server/.lego/certificates/_.tu-berlin-streaming.de.crt /etc/videbo-certs
   when: cert_stat.stat.exists
 
 - name: Change crt permissions
@@ -47,7 +47,7 @@
   when: cert_stat.stat.exists
 
 - name: move key
-  command: mv {{ project_path }}/.lego/certificates/_.tu-berlin-streaming.de.key /etc/videbo-certs
+  command: mv {{ project_path }}/server/.lego/certificates/_.tu-berlin-streaming.de.key /etc/videbo-certs
   when: cert_stat.stat.exists
 
 - name: Change key permissions

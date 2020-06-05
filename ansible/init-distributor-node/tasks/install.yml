@@ -28,7 +28,7 @@
 
 - name: install python dependencies
   command:
-    cmd: "{{ project_path }}/venv/bin/pip install -r {{ project_path }}/requirements.txt"
+    cmd: "{{ project_path }}/venv/bin/pip install -r {{ project_path }}/server/requirements.txt"
   become: true
   become_user: videbo
 

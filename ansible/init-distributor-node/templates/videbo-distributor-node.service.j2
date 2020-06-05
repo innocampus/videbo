@@ -3,7 +3,7 @@ Description=Videbo distributor node
 After=network.target
 
 [Service]
-WorkingDirectory=/opt/videbo
+WorkingDirectory=/opt/videbo/server
 ExecStart=/opt/videbo/venv/bin/python3 -m videbo distributor
 User=videbo
 Restart=on-failure

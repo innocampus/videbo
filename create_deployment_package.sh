@@ -32,9 +32,9 @@ mv distributor.config.ini ansible/init-distributor-node/templates/config.ini.j2
 
 rm segment-*.ini
 
-mkdir /opt/videbo
-tar -czvf /opt/videbo/videbo_deploy.tar.gz \
+mkdir -p /opt/videbo/server
+tar -czvf /opt/videbo/server/videbo_deploy.tar.gz \
       --exclude="*/__pycache__" \
-      ./livestreaming ./requirements.txt \
+      ./videbo ./requirements.txt \
       ./.lego/certificates/_.tu-berlin-streaming.de.crt \
       ./.lego/certificates/_.tu-berlin-streaming.de.key
