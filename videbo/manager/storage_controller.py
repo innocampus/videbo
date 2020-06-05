@@ -25,7 +25,7 @@ class StorageDistributorController:
 
             self.storage_by_base_url = {}
             for node in storage_nodes:
-                logger.info(f"Storage node {node.base_url} tx current rate {node.tx_current_rate} ({node.tx_load}), "
+                logger.info(f"Storage node {node.base_url} tx current rate {node.tx_current_rate} ({node.tx_load:0.3f}), "
                             f"current connections {node.current_connections}")
                 self.storage_by_base_url[node.base_url] = node
 

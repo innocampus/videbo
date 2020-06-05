@@ -64,7 +64,7 @@ class Monitoring:
                 'rx_current_rate': node.rx_current_rate,  # in Mbit/s
                 'tx_total': node.tx_total,  # in MB
                 'rx_total': node.rx_total,  # in MB
-                'current_connections': node.current_connections,  # HTTP connections serving videos
+                'current_connections': node.current_connections or 0,  # HTTP connections serving videos
                 'waiting_clients': node.waiting_clients,  # number of clients waiting for a file being downloaded
                 'files_total_size': node.files_total_size,  # in MB
                 'files_count': node.files_count,
@@ -85,7 +85,7 @@ class Monitoring:
                 'rx_current_rate': node.rx_current_rate,  # in Mbit/s
                 'tx_total': node.tx_total,  # in MB
                 'rx_total': node.rx_total,  # in MB
-                'current_connections': node.current_connections,  # HTTP connections serving videos
+                'current_connections': node.current_connections or 0,  # HTTP connections serving videos
                 'files_total_size': node.files_total_size,  # in MB
                 'files_count': node.files_count,
                 'free_space': node.free_space,  # in MB
