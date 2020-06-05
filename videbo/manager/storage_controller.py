@@ -34,8 +34,8 @@ class StorageDistributorController:
                 if not node.enabled:
                     continue
 
-                logger.info(f"distributor node {node.base_url} tx current rate {node.tx_current_rate} ({node.tx_load}), "
-                            f"current connections {node.current_connections}")
+                logger.info(f"distributor node {node.base_url} tx current rate {node.tx_current_rate} "
+                            f"({node.tx_load:0.3f}), current connections {node.current_connections}")
                 storage_node = self.storage_by_base_url.get(node.bound_to_storage_node_base_url)
                 if node.storage_node is None and storage_node:
                     try:
