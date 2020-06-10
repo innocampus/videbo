@@ -36,9 +36,14 @@ storage_settings = StorageSettings()
 
 
 def start() -> None:
+    from videbo import settings
     from videbo.network import NetworkInterfaces
-    from .api.routes import routes
+    from .api.routes import routes, access_logger
     storage_settings.load()
+
+    if not settings.general.dev_mode:
+        # Do not log simple video accesses when not in dev mode.
+        access_logger.setLevel(logging.WARNING)
 
     async def on_http_startup(app):
         from .util import FileStorage

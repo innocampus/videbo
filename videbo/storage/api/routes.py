@@ -1,4 +1,5 @@
 import asyncio
+import logging
 import pathlib
 import urllib.parse
 from aiohttp import BodyPartReader
@@ -49,6 +50,8 @@ from videbo.storage import storage_logger
 from videbo.storage import storage_settings
 routes = RouteTableDef()
 
+
+access_logger = logging.getLogger('videbo-storage-access')
 EXTERNAL_JWT_LIFE_TIME = 3600
 
 
@@ -120,6 +123,7 @@ async def read_data(request: Request) -> TempFile:
         await file.write(data)
 
     await file.close()
+    storage_logger.info(f"File was uploaded ({file.size} Bytes)")
     return file
 
 
@@ -262,11 +266,11 @@ async def request_file(request: Request, jwt_data: RequestFileJWTData):
             file_storage.distribution_controller.count_file_access(video, jwt_data.rid)
             await video_check_redirect(request, video)
 
-        storage_logger.info(f"serve video with hash {video}")
+        access_logger.info(f"serve video with hash {video}")
         path = file_storage.get_path(video)
 
     elif jwt_data.type == FileType.VIDEO_TEMP:
-        storage_logger.info(f"serve temp video with hash {video}")
+        access_logger.info(f"serve temp video with hash {video}")
         path = file_storage.get_path_in_temp(video)
 
     elif jwt_data.type == FileType.THUMBNAIL or jwt_data.type == FileType.THUMBNAIL_TEMP:
@@ -275,11 +279,11 @@ async def request_file(request: Request, jwt_data: RequestFileJWTData):
             raise HTTPBadRequest()
 
         if jwt_data.type == FileType.THUMBNAIL:
-            storage_logger.info(f"serve thumbnail {jwt_data.thumb_id} for video with hash {video}")
+            access_logger.info(f"serve thumbnail {jwt_data.thumb_id} for video with hash {video}")
             path = file_storage.get_thumb_path(video, jwt_data.thumb_id)
 
         else:
-            storage_logger.info(f"serve temp thumbnail {jwt_data.thumb_id} for video with hash {video}")
+            access_logger.info(f"serve temp thumbnail {jwt_data.thumb_id} for video with hash {video}")
             path = file_storage.get_thumb_path_in_temp(video, jwt_data.thumb_id)
     else:
         storage_logger.info(f"unknown request type: {jwt_data.type}")
@@ -360,7 +364,7 @@ async def video_check_redirect(request: Request, file: StoredHashedVideoFile) ->
 
 
 def video_redirect_to_node(request: Request, node: DistributionNodeInfo, file: StoredHashedVideoFile):
-    storage_logger.info(f"Redirect user to {node.base_url} for video {file}")
+    access_logger.info(f"Redirect user to {node.base_url} for video {file}")
     jwt = request.query['jwt']
     url = f"{node.base_url}/file?jwt={jwt}"
     downloadas = request.query.getone("downloadas", None)
