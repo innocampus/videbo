@@ -93,7 +93,7 @@ class NetworkInterfaces:
 
     _html_pattern = re.compile(r"\s*<(!DOCTYPE|html).*>.*")
 
-    def __init__(self, interval: int = 2):
+    def __init__(self, interval: int = 10):
         self.interval = interval
         self._last_time_network_proc: float = 0.0
         self._do_fetch = False
