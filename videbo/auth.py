@@ -83,10 +83,16 @@ def external_jwt_decode(encoded: str) -> Dict:
     return jwt.decode(encoded, settings.lms.api_secret, algorithms=JWT_ALGORITHM, issuer=JWT_ISS_EXTERNAL)
 
 
-def external_jwt_encode(data: Dict, expiry: int = 300) -> str:
-    """Encode data to JSON Web token using the internal secret."""
-    data['exp'] = int(time()) + expiry
-    data['iss'] = JWT_ISS_EXTERNAL
+def external_jwt_encode(data: Union[Dict, 'BaseJWTData'], expiry: int = 300) -> str:
+    """Encode data to JSON Web token using the external secret."""
+    if isinstance(data, dict):
+        data['exp'] = int(time()) + expiry
+        data['iss'] = JWT_ISS_EXTERNAL
+    elif isinstance(data, BaseJWTData):
+        data.exp = int(time()) + expiry
+        data.iss = JWT_ISS_EXTERNAL
+        data = data.dict()
+
     headers = {
         'kid': JWT_ISS_EXTERNAL
     }

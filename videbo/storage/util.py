@@ -377,8 +377,7 @@ def schedule_video_delete(hash: str, file_ext: str, origin: Optional[str] = None
             # Skip origin site as this is the site that is requesting the delete and it still has the file
             # at this moment.
             for site in LMSSitesCollection.get_all().sites:
-                check_site = origin is None or not site.base_url.startswith(origin)
-                if check_site:
+                if origin is None or not site.base_url.startswith(origin):
                     try:
                         exists = await site.video_exists(hash, file_ext)
                         storage_logger.info(f"Video delete: Site {site.base_url} has video {exists}")
@@ -388,6 +387,8 @@ def schedule_video_delete(hash: str, file_ext: str, origin: Optional[str] = None
                     except LMSAPIError:
                         # Just in case. When one site cannot be reached, do not delete the file (it may still
                         # have the file).
+                        storage_logger.warning(f"Video delete: LMS error occurred for file {hash}{file_ext}. "
+                                               f"Do not delete file.")
                         return
 
             await file_storage.remove_thumbs(file)

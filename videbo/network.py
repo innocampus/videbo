@@ -162,7 +162,7 @@ class NetworkInterfaces:
         status: int
         ret: bytes
         try:
-            status, ret = await HTTPClient.internal_request("GET", url)
+            status, ret = await HTTPClient.videbo_request("GET", url, external=True)
         except HTTPResponseError:
             if logger:
                 logger.warning(f"error while handling internal request")

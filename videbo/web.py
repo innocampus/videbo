@@ -7,7 +7,7 @@ from typing import Optional, Type, List, Dict, Union, Any, Tuple, Callable
 from time import time
 from aiohttp import web, ClientResponse, ClientSession, ClientError, ClientTimeout
 from aiohttp.web_exceptions import HTTPException, HTTPBadRequest, HTTPUnauthorized
-from videbo.auth import BaseJWTData, internal_jwt_encode
+from videbo.auth import BaseJWTData, internal_jwt_encode, external_jwt_encode, JWT_ISS_EXTERNAL, JWT_ISS_INTERNAL
 from . import settings
 from .misc import TaskManager
 
@@ -165,7 +165,7 @@ def json_response(data: JSONBaseModel, status=200) -> web.Response:
 
 class HTTPClient:
     session: ClientSession
-    _cached_jwt: Dict[str, Tuple[str, float]] = {}  # role -> (jwt, expiration date)
+    _cached_jwt: Dict[Tuple[str, str], Tuple[str, float]] = {}  # (role, int|ext) -> (jwt, expiration date)
 
     @classmethod
     def create_client_session(cls):
@@ -176,11 +176,12 @@ class HTTPClient:
         await cls.session.close()
 
     @classmethod
-    async def internal_request(cls, method: str, url: str, jwt_data: Union[BaseJWTData, str, None] = None,
-                               json_data: Optional[JSONBaseModel] = None,
-                               expected_return_type: Optional[Type[JSONBaseModel]] = None,
-                               timeout: Union[ClientTimeout, int, None] = None) -> Tuple[int, Any]:
-        """Do an internal HTTP request, i.e. a request to another node with a JWT using the internal secret.
+    async def videbo_request(cls, method: str, url: str, jwt_data: Union[BaseJWTData, str, None] = None,
+                             json_data: Optional[JSONBaseModel] = None,
+                             expected_return_type: Optional[Type[JSONBaseModel]] = None,
+                             timeout: Union[ClientTimeout, int, None] = None,
+                             external: bool = False) -> Tuple[int, Any]:
+        """Do a HTTP request, i.e. a request to another node with a JWT using the internal or external secret.
 
         You may transmit json data and specify the expected return type."""
 
@@ -188,11 +189,19 @@ class HTTPClient:
         data = None
         if jwt_data:
             if isinstance(jwt_data, BaseJWTData):
-                jwt = internal_jwt_encode(jwt_data)
+                if external:
+                    jwt = external_jwt_encode(jwt_data)
+                else:
+                    jwt = internal_jwt_encode(jwt_data)
             else:
                 # Then it is a string. Assume it is a valid jwt.
                 jwt = jwt_data
-            headers['Authorization'] = "Bearer " + jwt
+
+            if external:
+                headers["X-Authorization"] = "Bearer " + jwt
+            else:
+                headers["Authorization"] = "Bearer " + jwt
+
         if json_data:
             headers['Content-Type'] = 'application/json'
             data = json_data.json()
@@ -230,40 +239,47 @@ class HTTPClient:
                                        timeout: Union[ClientTimeout, int, None] = None) -> Tuple[int, Any]:
         """Do an internal request with the manager role (without having to specify jwt_data)."""
         jwt = cls.get_standard_jwt_with_role('manager')
-        return await cls.internal_request(method, url, jwt, json_data, expected_return_type, timeout)
+        return await cls.videbo_request(method, url, jwt, json_data, expected_return_type, timeout)
 
     @classmethod
     async def internal_request_node(cls, method: str, url: str,
-                                       json_data: Optional[JSONBaseModel] = None,
-                                       expected_return_type: Optional[Type[JSONBaseModel]] = None,
-                                       timeout: Union[ClientTimeout, int, None] = None) -> Tuple[int, Any]:
-        """Do an internal request with the node role (without having to specify jwt_data)."""
-        jwt = cls.get_standard_jwt_with_role('node')
-        return await cls.internal_request(method, url, jwt, json_data, expected_return_type, timeout)
-
-    @classmethod
-    async def internal_request_admin(cls, method: str, url: str,
                                     json_data: Optional[JSONBaseModel] = None,
                                     expected_return_type: Optional[Type[JSONBaseModel]] = None,
                                     timeout: Union[ClientTimeout, int, None] = None) -> Tuple[int, Any]:
         """Do an internal request with the node role (without having to specify jwt_data)."""
-        jwt = cls.get_standard_jwt_with_role('admin')
-        return await cls.internal_request(method, url, jwt, json_data, expected_return_type, timeout)
+        jwt = cls.get_standard_jwt_with_role('node')
+        return await cls.videbo_request(method, url, jwt, json_data, expected_return_type, timeout)
 
     @classmethod
-    def get_standard_jwt_with_role(cls, role: str) -> str:
+    async def internal_request_admin(cls, method: str, url: str,
+                                     json_data: Optional[JSONBaseModel] = None,
+                                     expected_return_type: Optional[Type[JSONBaseModel]] = None,
+                                     timeout: Union[ClientTimeout, int, None] = None) -> Tuple[int, Any]:
+        """Do an internal request with the node role (without having to specify jwt_data)."""
+        jwt = cls.get_standard_jwt_with_role('admin')
+        return await cls.videbo_request(method, url, jwt, json_data, expected_return_type, timeout)
+
+    @classmethod
+    def get_standard_jwt_with_role(cls, role: str, external: bool = False) -> str:
         """Return a JWT with the BaseJWTData and just the role.
 
         Implements a caching mechanism."""
 
+        if external:
+            iss = JWT_ISS_EXTERNAL
+        else:
+            iss = JWT_ISS_INTERNAL
         current_time = time()
-        jwt, expiration = cls._cached_jwt.get(role, (None, None))
+        jwt, expiration = cls._cached_jwt.get((role, iss), (None, None))
         if jwt and current_time < expiration:
             return jwt
 
         jwt_data = BaseJWTData.construct(role=role)
-        jwt = internal_jwt_encode(jwt_data, 4 * 3600)
-        cls._cached_jwt[role] = (jwt, current_time + 3 * 3600)  # don't cache until the expiration time is reached
+        if external:
+            jwt = external_jwt_encode(jwt_data, 4 * 3600)
+        else:
+            jwt = internal_jwt_encode(jwt_data, 4 * 3600)
+        cls._cached_jwt[(role, iss)] = (jwt, current_time + 3 * 3600)  # don't cache until the expiration time is reached
         return jwt
 
 
