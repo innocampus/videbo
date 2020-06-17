@@ -383,6 +383,7 @@ def schedule_video_delete(hash: str, file_ext: str, origin: Optional[str] = None
                         storage_logger.info(f"Video delete: Site {site.base_url} has video {exists}")
                         if exists:
                             # One site still has the file. Do not delete the file.
+                            storage_logger.info(f"Video delete: One site still has the video. Do not delete.")
                             return
                     except LMSAPIError:
                         # Just in case. When one site cannot be reached, do not delete the file (it may still
@@ -393,6 +394,7 @@ def schedule_video_delete(hash: str, file_ext: str, origin: Optional[str] = None
 
             await file_storage.remove_thumbs(file)
             await file_storage.remove(file)
+            storage_logger.info(f"Deleted video {hash}{file_ext} permanently")
         except FileDoesNotExistError:
             storage_logger.info(f"Video delete: file not found: {hash}{file_ext}")
 
