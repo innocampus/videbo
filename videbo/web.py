@@ -41,7 +41,12 @@ def start_web_server(port: int, routes, on_startup: Optional[Callable] = None, o
             access_logger.setLevel(logging.ERROR)
     app.on_shutdown.append(HTTPClient.close_all)
     app.on_shutdown.append(TaskManager.cancel_all)
-    web.run_app(app, host="127.0.0.1", port=port, access_log=access_logger)
+
+    host = "127.0.0.1"
+    if settings.args.http_host:
+        host = settings.args.http_host
+        
+    web.run_app(app, host=host, port=port, access_log=access_logger)
 
 
 def ensure_json_body(headers: Optional[dict] = None):

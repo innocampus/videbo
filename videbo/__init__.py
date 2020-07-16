@@ -18,6 +18,7 @@ def load_general_settings(cli_only_config: bool = False) -> None:
     parser.add_argument('--config', help='path to config file', default=None)
     if not cli_only_config:
         parser.add_argument('--http-port', help='http api port', default=0, type=int)
+        parser.add_argument('--http-host', help='http api host', default='', type=str)
         subparsers = parser.add_subparsers(title="Available applications", dest="app")
         subparsers.add_parser("manager", help="Start manager node")
         subparsers.add_parser("storage", help="Start storage node")
