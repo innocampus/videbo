@@ -1,13 +1,13 @@
 import sys
 from asyncio import get_event_loop
-from argparse import ArgumentParser
-from typing import Any
+from argparse import ArgumentParser, Namespace
 from videbo.web import HTTPClient
 
 
 def setup_cli_args(parser: ArgumentParser):
     subparsers = parser.add_subparsers(title="Available CLI commands", dest="cmd", required=True)
 
+    # Manager commands:
     subparsers.add_parser("manager-show-nodes", help="List of all nodes")
 
     create_dist_node = subparsers.add_parser("manager-create-distributor-node",
@@ -27,9 +27,21 @@ def setup_cli_args(parser: ArgumentParser):
     remove_dist_node = subparsers.add_parser("manager-remove-distributor-node", help="Remove/shutdown a dynamic node")
     remove_dist_node.add_argument("node", help="name of the dynamic node instance")
 
+    # Storage commands:
+    find_orphaned_files = subparsers.add_parser(
+        name="storage-find-orphaned-files",
+        help="Identify files existing in storage that are unknown to any LMS."
+    )
+    find_orphaned_files.add_argument(
+        '-d', '--delete',
+        action='store_true',
+        help="Deletes all orphaned files from storage and distributor nodes."
+    )
 
-def run(args: Any):
+
+def run(args: Namespace):
     from .manager import get_all_nodes, create_distributor_node, set_distributor_status, remove_distributor_node
+    from .storage import find_orphaned_files
 
     HTTPClient.create_client_session()
     try:
@@ -43,6 +55,8 @@ def run(args: Any):
             fut = set_distributor_status(args, True)
         elif args.cmd == "manager-remove-distributor-node":
             fut = remove_distributor_node(args)
+        elif args.cmd == "storage-find-orphaned-files":
+            fut = find_orphaned_files(args)
         else:
             print("Invalid cli command argument given.")
             sys.exit(3)
