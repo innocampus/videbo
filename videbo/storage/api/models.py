@@ -1,5 +1,5 @@
 from enum import Enum
-from typing import Optional, List
+from typing import Optional, List, Set
 
 from videbo.web import BaseJWTData, JSONBaseModel
 
@@ -9,6 +9,14 @@ class FileType(Enum):
     THUMBNAIL = "thumbnail"
     VIDEO_TEMP = "video_temp"
     THUMBNAIL_TEMP = "thumbnail_temp"
+
+    @classmethod
+    def is_valid(cls, value: str) -> bool:
+        return value in cls.values()
+
+    @classmethod
+    def values(cls) -> Set[str]:
+        return set(member.value for member in cls.__members__.values())
 
 
 class UploadFileJWTData(BaseJWTData):
@@ -44,5 +52,25 @@ class StorageStatus(JSONBaseModel):
     distributor_nodes: List[str]  # list of base_urls
 
 
+class StorageFileInfo(JSONBaseModel):
+    hash: str
+    file_extension: str
+    file_size: int  # in MB
+
+    def __repr__(self) -> str:
+        return self.hash + self.file_extension
+
+    def __str__(self) -> str:
+        return repr(self)
+
+
+class StorageFilesList(JSONBaseModel):
+    files: List[StorageFileInfo]
+
+
 class DistributorNodeInfo(JSONBaseModel):
     base_url: str
+
+
+class DeleteFilesList(JSONBaseModel):
+    hashes: List[str]

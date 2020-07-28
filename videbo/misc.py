@@ -45,3 +45,10 @@ class TaskManager:
 
         cls._tasks.add(task)
         task.add_done_callback(task_done)
+
+
+async def gather_in_batches(batch_size: int, *aws, return_exceptions: bool = False) -> list:
+    results = []
+    for idx in range(0, len(aws), batch_size):
+        results += await asyncio.gather(*aws[idx:idx + batch_size], return_exceptions=return_exceptions)
+    return results

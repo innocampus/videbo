@@ -2,6 +2,7 @@ import asyncio
 import logging
 import pathlib
 import urllib.parse
+from distutils.util import strtobool
 from aiohttp import BodyPartReader
 from aiohttp.web import Request, Response
 from aiohttp.web import FileResponse
@@ -18,6 +19,7 @@ from aiohttp.web_exceptions import HTTPFound, HTTPServiceUnavailable
 from typing import List
 
 from videbo.web import ensure_json_body, register_route_with_cors, json_response as model_json_response
+from videbo.web import ensure_no_reverse_proxy
 from videbo.auth import external_jwt_encode
 from videbo.auth import ensure_jwt_data_and_role
 from videbo.auth import Role, JWT_ISS_INTERNAL
@@ -34,6 +36,7 @@ from videbo.storage.api.models import SaveFileJWTData
 from videbo.storage.api.models import DeleteFileJWTData
 from videbo.storage.api.models import RequestFileJWTData
 from videbo.storage.api.models import FileType, StorageStatus, DistributorNodeInfo
+from videbo.storage.api.models import StorageFileInfo, StorageFilesList, DeleteFilesList
 from videbo.storage.distribution import DistributionNodeInfo
 from videbo.storage.util import TempFile
 from videbo.storage.util import FileStorage
@@ -432,3 +435,36 @@ async def get_status(request: Request, _jwt_data: BaseJWTData):
     status.distributor_nodes = storage.distribution_controller.get_dist_node_base_urls()
 
     return model_json_response(status)
+
+
+@routes.get(r'/api/storage/files')
+@ensure_no_reverse_proxy
+@ensure_jwt_data_and_role(Role.admin)
+async def get_files_list(request: Request, _jwt_data: BaseJWTData) -> Response:
+    files = []
+    storage = FileStorage.get_instance()
+    if request.query:
+        orphaned = request.query.get('orphaned')
+        if orphaned:
+            orphaned = bool(strtobool(orphaned.lower()))
+        files_dict = await storage.filtered_files(orphaned=orphaned)
+    else:
+        files_dict = storage.all_files()
+    for file in files_dict.values():
+        files.append(StorageFileInfo(hash=file.hash, file_extension=file.file_extension, file_size=file.file_size))
+    return model_json_response(StorageFilesList(files=files))
+
+
+@routes.post('/api/storage/delete')
+@ensure_no_reverse_proxy
+@ensure_jwt_data_and_role(Role.admin)
+@ensure_json_body()
+async def batch_delete_files(_request: Request, _jwt_data: BaseJWTData, data: DeleteFilesList) -> Response:
+    storage = FileStorage.get_instance()
+    removed_list = await storage.remove_files(*data.hashes)
+    results = zip(data.hashes, removed_list)
+    not_deleted = [file_hash for file_hash, success in results if not success]
+    if not_deleted:
+        return json_response({'status': 'incomplete', 'not_deleted': not_deleted})
+    return json_response({'status': 'ok'})
+

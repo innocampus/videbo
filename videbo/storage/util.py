@@ -5,9 +5,10 @@ import tempfile
 import time
 from _sha256 import SHA256Type
 from pathlib import Path
-from typing import Optional, Tuple, Dict, BinaryIO
+from copy import deepcopy
+from typing import Optional, Dict, BinaryIO, List, Iterable
 
-from videbo.misc import TaskManager
+from videbo.misc import TaskManager, gather_in_batches
 from videbo.lms_api import LMSSitesCollection, LMSAPIError
 from videbo.video import VideoInfo
 from videbo.video import Video
@@ -17,9 +18,11 @@ from . import storage_logger
 from . import storage_settings
 from .distribution import DistributionController, FileNodes
 from .exceptions import *
+from .api.models import FileType
 
 FILE_EXT_WHITELIST = ('.mp4', '.webm')
 THUMB_EXT = '.jpg'
+VALID_EXTENSIONS = set(FILE_EXT_WHITELIST + (THUMB_EXT, ))
 
 
 class HashedVideoFile:
@@ -51,6 +54,10 @@ class StoredHashedVideoFile(HashedVideoFile):
         return self.views < other.views
 
 
+_FilesDict = Dict[str, HashedVideoFile]
+_StoredFilesDict = Dict[str, StoredHashedVideoFile]
+
+
 class FileStorage:
     """Manages all stored files with their hashes as file names."""
     _instance: Optional["FileStorage"] = None
@@ -68,7 +75,7 @@ class FileStorage:
         self.storage_dir: Path = Path(self.path, "storage")
         self.temp_dir: Path = Path(self.path, "temp")
         self.temp_out_dir: Path = Path(self.temp_dir, "out")
-        self._cached_files: Dict[str, StoredHashedVideoFile] = {}  # map hashes to files
+        self._cached_files: _StoredFilesDict = {}  # map hashes to files
         self._cached_files_total_size: int = 0  # in bytes
         self.distribution_controller: DistributionController = DistributionController()
 
@@ -131,6 +138,89 @@ class FileStorage:
 
     def get_files_count(self) -> int:
         return len(self._cached_files)
+
+    def all_files(self) -> _StoredFilesDict:
+        return deepcopy(self._cached_files)
+
+    async def filtered_files(self, orphaned: bool = None, extensions: Iterable[str] = None,
+                             types: Iterable[str] = None) -> _StoredFilesDict:
+        """
+        Returns a dictionary of stored files (keys being the files' hashes) that match the filter criteria.
+
+        All parameters act as filters;
+        if None is passed as an argument, no filtering is applied with respect to that parameter.
+
+        This method only ever actually awaits, if filtering by orphan status is applied.
+
+        Args:
+            orphaned (optional):
+                If True, filters out every file that at least one LMS knows about;
+                conversely, if False, filters out files that no LMS knows about.
+            extensions (optional):
+                Iterable of strings representing the file extensions the filtered files should have
+            types (optional):
+                Iterable of strings representing the FileType members the filtered files should correspond to
+        """
+        files = self.all_files()
+        hashes_orphaned = {} if orphaned is None else await self._file_hashes_orphaned_dict(files)
+
+        if extensions is None:
+            extensions = VALID_EXTENSIONS
+        else:
+            extensions = set(extensions)
+            invalid_extensions = extensions.intersection(VALID_EXTENSIONS)
+            if invalid_extensions:
+                raise ValueError(f"Invalid file extension(s): {invalid_extensions}")
+
+        valid_file_types = FileType.values()
+        if types is None:
+            types = valid_file_types
+        else:
+            types = set(types)
+            invalid_types = types.intersection(valid_file_types)
+            if invalid_types:
+                raise ValueError(f"Invalid file type(s): {invalid_types}")
+
+        filtered = {}
+        for file_hash, file in files.items():
+            if file.file_extension not in extensions:
+                continue
+            if hashes_orphaned and hashes_orphaned[file_hash] != orphaned:
+                continue
+            # TODO: Filter by file type; this is a placeholder:
+            assert types is not None
+            filtered[file_hash] = file
+        return filtered
+
+    async def _file_hashes_orphaned_dict(self, hashed_files_dict: _StoredFilesDict = None) -> Dict[str, bool]:
+        """
+        Checks the orphan status for stored files.
+        A file is defined to be orphaned, iff not a single LMS knows about its existence.
+
+        Args:
+            hashed_files_dict (optional):
+                If passed a dictionary of stored files (with keys being their hashes), only they are checked;
+                by default all stored files (at the moment of the method call) are checked.
+
+        Returns:
+            Dictionary with keys being hashes of the files that were checked, and values being booleans
+            indicating whether the file with the corresponding hash is an orphan.
+        """
+        hash_orphaned_dict: Dict[str, bool] = {}  # Output
+        # Copy currently cached files, if none were passed, and disregard storage changes from here on
+        if hashed_files_dict is None:
+            hashed_files_dict = self.all_files()
+        storage_logger.info(f"Checking {len(hashed_files_dict)} files for their orphan status...")
+
+        async def is_orphan(file: StoredHashedVideoFile) -> bool:
+            return not await lms_has_file(file)
+        # Gather calls to is_orphan() coroutines for each file; the awaited result is a list of booleans.
+        orphaned_list: List[bool] = await gather_in_batches(20, *(is_orphan(f) for f in hashed_files_dict.values()))
+        # Both the `files` dictionary (since Python 3.6) and the `asyncio.gather` function preserve order,
+        # therefore each hash's index in `files.keys()` can be used to get the corresponding `is_orphan` value.
+        for idx, key in enumerate(hashed_files_dict.keys()):
+            hash_orphaned_dict[key] = orphaned_list[idx]
+        return hash_orphaned_dict
 
     async def get_file(self, file_hash: str, file_extension: str) -> StoredHashedVideoFile:
         """Get video file in storage and check that it really exists."""
@@ -265,6 +355,44 @@ class FileStorage:
 
         storage_logger.info(f"Removed {thumb_nr} thumbnails for file with hash {file.hash} permanently from storage.")
 
+    async def remove_files(self, *hashes: str) -> List[bool]:
+        """
+        Gathers and awaits calls to the check_lms_and_remove_file method,
+        passing one of the files into each call.
+        Returns a list of booleans, the value of which signifies whether the file with the corresponding index
+        was successfully deleted.
+        """
+        async def call(file: StoredHashedVideoFile) -> bool:
+            return await self.check_lms_and_remove_file(file)
+        return await gather_in_batches(20, *(call(self._cached_files[h]) for h in hashes))
+
+    async def check_lms_and_remove_file(self, file: StoredHashedVideoFile, origin: str = None) -> bool:
+        """
+        If lms_has_file(...) returns False, indicating that the no site (except the origin, if passed) knows the file,
+        the file is removed.
+
+        Args:
+            file:
+                Self-explanatory
+            origin (optional):
+                Passed to lms_has_file(...)
+
+        Returns:
+            True, if removal of the video file (and its thumbnails) was successful; False otherwise.
+        """
+        try:
+            file_is_known = await lms_has_file(file, origin=origin)
+        except LMSAPIError:
+            storage_logger.info(f"Video delete: Could not check all LMS for file: {file}. Not deleting.")
+            return False
+        if file_is_known:
+            storage_logger.info(f"Video delete: One LMS still has the video. Do not delete.")
+            return False
+        await self.remove_thumbs(file)
+        await self.remove(file)
+        storage_logger.info(f"Deleted video {file} permanently")
+        return True
+
     def garbage_collect_temp_dir(self) -> int:
         """Delete files older than GC_TEMP_FILES_SECS."""
         count = 0
@@ -367,36 +495,46 @@ def is_allowed_file_ending(filename: Optional[str]) -> bool:
     return filename.lower().endswith(FILE_EXT_WHITELIST)
 
 
-def schedule_video_delete(hash: str, file_ext: str, origin: Optional[str] = None) -> None:
-    async def task():
+def schedule_video_delete(file_hash: str, file_ext: str, origin: Optional[str] = None) -> None:
+    async def task() -> None:
+        file_storage = FileStorage.get_instance()
         try:
-            file_storage = FileStorage.get_instance()
-            file = await file_storage.get_file(hash, file_ext)
-
-            # Check that all LMS do not have the file in their db.
-            # Skip origin site as this is the site that is requesting the delete and it still has the file
-            # at this moment.
-            for site in LMSSitesCollection.get_all().sites:
-                if origin is None or not site.base_url.startswith(origin):
-                    try:
-                        exists = await site.video_exists(hash, file_ext)
-                        storage_logger.info(f"Video delete: Site {site.base_url} has video {exists}")
-                        if exists:
-                            # One site still has the file. Do not delete the file.
-                            storage_logger.info(f"Video delete: One site still has the video. Do not delete.")
-                            return
-                    except LMSAPIError:
-                        # Just in case. When one site cannot be reached, do not delete the file (it may still
-                        # have the file).
-                        storage_logger.warning(f"Video delete: LMS error occurred for file {hash}{file_ext}. "
-                                               f"Do not delete file.")
-                        return
-
-            await file_storage.remove_thumbs(file)
-            await file_storage.remove(file)
-            storage_logger.info(f"Deleted video {hash}{file_ext} permanently")
+            file = await file_storage.get_file(file_hash, file_ext)
         except FileDoesNotExistError:
-            storage_logger.info(f"Video delete: file not found: {hash}{file_ext}")
-
-    storage_logger.info(f"Delete video with hash {hash}")
+            storage_logger.info(f"Video delete: file not found: {file_hash}{file_ext}.")
+            return
+        await file_storage.check_lms_and_remove_file(file, origin=origin)
+    storage_logger.info(f"Delete video with hash {file_hash}")
     TaskManager.fire_and_forget_task(asyncio.create_task(task()))
+
+
+async def lms_has_file(file: StoredHashedVideoFile, origin: str = None) -> bool:
+    """
+    Checks LMS Sites for the existence of a stored file on one of them.
+    Assuming all LMS sites of interest are checked and this returns False, the file is referred to as *orphaned*.
+    Re-raises LMSAPIError after logging it.
+
+    Args:
+        file:
+            Instance of a stored video file (StoredHashedVideoFile class), the existence of which should be checked
+        origin (optional):
+            If passed a string, the site with a matching base url is excluded from the check, presumably because
+            it is the site requesting the deletion and thus still has the file in question.
+
+    Returns:
+        True, if the video file in question exists on **at least one** of the LMS sites; False otherwise.
+    """
+    for site in LMSSitesCollection.get_all().sites:
+        if origin and site.base_url.startswith(origin):
+            continue
+        storage_logger.debug(f"Checking LMS {site.base_url} for file {file}.")
+        try:
+            exists = await site.video_exists(file.hash, file.file_extension)
+        except LMSAPIError:
+            storage_logger.warning(f"LMSAPIError occurred on {site.base_url}.")
+            raise
+        else:
+            if exists:  # Else, continue looping through sites
+                storage_logger.debug(f"The site {site.base_url} has video {file}")
+                return True
+    return False

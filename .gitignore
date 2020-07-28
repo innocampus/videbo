@@ -4,9 +4,13 @@
 __pycache__
 *.pyc
 venv
+.venv
+.tmp
 .idea
 dev_generate_requests.py
 config.ini.j2
 .lego
 /ansible/*.retry
 manager.db
+Pipfile
+Pipfile.lock
