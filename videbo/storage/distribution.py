@@ -4,10 +4,53 @@ from videbo.misc import TaskManager
 from videbo.web import HTTPClient, HTTPResponseError
 from videbo.distributor.api.models import DistributorCopyFile, DistributorDeleteFiles,\
     DistributorDeleteFilesResponse, DistributorStatus, DistributorFileList
-from . import storage_settings, storage_logger
-from .exceptions import FileDoesNotExistError
+from videbo.storage import storage_settings, storage_logger
+from videbo.storage.exceptions import FileDoesNotExistError
 if TYPE_CHECKING:
-    from .util import StoredHashedVideoFile
+    from videbo.storage.util import StoredHashedVideoFile
+
+
+class NothingScheduled(Exception):
+    pass
+
+
+class DownloadScheduler:
+    """
+    Helper class to collect files that should be downloaded ASAP.
+
+    Additionally, the `in` operator can be used on an instance to determine if a file is already scheduled,
+    and the built-in `len(...)` function can be used get the number of files currently scheduled.
+    """
+
+    def __init__(self) -> None:
+        self.files_from_urls: Set[Tuple[StoredHashedVideoFile, str]] = set()
+
+    def schedule(self, file: 'StoredHashedVideoFile', from_url: str) -> None:
+        self.files_from_urls.add((file, from_url))
+        storage_logger.info(f"File {file} from {from_url} now scheduled for download")
+
+    def next(self) -> Tuple['StoredHashedVideoFile', str]:
+        """
+        If any files are left to be downloaded, chose the one with the highest number of views.
+        Note that the `StoredHashedVideoFile` class compares objects by their `.views` attribute.
+        """
+        try:
+            tup = max(self.files_from_urls, key=lambda x: x[0])
+        except ValueError:
+            raise NothingScheduled
+        else:
+            self.files_from_urls.discard(tup)
+            storage_logger.info(f"Next file to download: {tup[0]} from {tup[1]}")
+            return tup
+
+    def __contains__(self, item: 'StoredHashedVideoFile') -> bool:
+        for file, _ in self.files_from_urls:
+            if file == item:
+                return True
+        return False
+
+    def __len__(self) -> int:
+        return len(self.files_from_urls)
 
 
 class DistributionNodeInfo:
@@ -19,6 +62,7 @@ class DistributionNodeInfo:
         self.free_space: int = 0  # in MB
         self.stored_videos: Set["StoredHashedVideoFile"] = set()
         self.loading: Set["StoredHashedVideoFile"] = set()  # Node is currently downloading these files.
+        self.awaiting_download = DownloadScheduler()  # Files waiting to be downloaded
         self.watcher_task: Optional[asyncio.Task] = None
         self.good: bool = False  # node is reachable
 
@@ -92,43 +136,51 @@ class DistributionNodeInfo:
         self.watcher_task.cancel()
         self.watcher_task = None
 
-    def put_video(self, file: "StoredHashedVideoFile", from_node: Optional["DistributionNodeInfo"]) -> None:
+    def put_video(self, file: "StoredHashedVideoFile", from_node: "DistributionNodeInfo" = None) -> None:
         """Copy a video from one node to another.
         If from_node is None, copy from the storage node."""
-        if file in self.loading:
+        if file in self.loading or file in self.awaiting_download:
             return
+        from_url = from_node.base_url if from_node else storage_settings.public_base_url
+        if len(self.loading) < storage_settings.max_parallel_copying_tasks:
+            TaskManager.fire_and_forget_task(asyncio.create_task(self._copy_file_task(file, from_url)))
+        else:
+            self.awaiting_download.schedule(file, from_url)
 
-        async def copy_file_task():
-            try:
-                from_url = ""
-                if from_node:
-                    from_url = from_node.base_url
-                else:
-                    from_url = storage_settings.public_base_url
-                url = f"{self.base_url}/api/distributor/copy/{file.hash}{file.file_extension}"
-                data = DistributorCopyFile(from_base_url=from_url, file_size=file.file_size)
-                storage_logger.info(f"Asking distributor to copy {file.hash} from {from_url} to {self.base_url}")
-                fut_request = HTTPClient.internal_request_node("POST", url, data, timeout=1800)
-                status, ret = await asyncio.wait_for(fut_request, 1800)
-                if status == 200:
-                    self.stored_videos.add(file)
-                    storage_logger.info(f"Copied video {file.hash} from {from_url} to {self.base_url}")
-                else:
-                    file.nodes.remove_node(self)
-                    storage_logger.error(f"Error when copying video {file.hash} from {from_url} to {self.base_url}, "
-                                         f"http status {status}")
-            except:
-                file.nodes.remove_node(self)
-                storage_logger.exception(f"Error when copying video {file.hash} from {from_url} to {self.base_url}")
-                raise
-            finally:
-                self.loading.discard(file)
-                file.nodes.copying = False
-
-        self.loading.add(file)
+    async def _copy_file_task(self, file: 'StoredHashedVideoFile', from_url: str) -> None:
         file.nodes.add_node(self)
         file.nodes.copying = True
-        TaskManager.fire_and_forget_task(asyncio.create_task(copy_file_task()))
+        self.loading.add(file)
+        url = f"{self.base_url}/api/distributor/copy/{file.hash}{file.file_extension}"
+        data = DistributorCopyFile(from_base_url=from_url, file_size=file.file_size)
+        try:
+            storage_logger.info(f"Asking distributor to copy {file.hash} from {from_url} to {self.base_url}")
+            status, ret = await HTTPClient.internal_request_node("POST", url, data, timeout=1800)
+        except Exception as e:
+            file.nodes.remove_node(self)  # This node cannot serve the file
+            storage_logger.exception(f"Error when copying video {file.hash} from {from_url} to {self.base_url}")
+            raise e
+        else:
+            if status == 200:
+                self.stored_videos.add(file)  # Successfully copied; this node can now serve the file
+                storage_logger.info(f"Copied video {file.hash} from {from_url} to {self.base_url}")
+            else:
+                file.nodes.remove_node(self)  # This node cannot serve the file
+                storage_logger.error(f"Error when copying video {file.hash} from {from_url} to {self.base_url}, "
+                                     f"http status {status}")
+        finally:
+            # Regardless of copying success or failure, always remove the file from `.loading`
+            # and set the file's FileNodes `.copying` attribute to `False`.
+            self.loading.discard(file)
+            file.nodes.copying = False
+            if len(self.loading) >= storage_settings.max_parallel_copying_tasks:
+                return
+            # Check if other files are scheduled for download and if they are, fire off the next copying task.
+            try:
+                next_file, next_from_url = self.awaiting_download.next()
+            except NothingScheduled:
+                return
+            TaskManager.fire_and_forget_task(asyncio.create_task(self._copy_file_task(next_file, next_from_url)))
 
     async def _remove_files(self, rem_files: List[Tuple[str, str]]):
         """

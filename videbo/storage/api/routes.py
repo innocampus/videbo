@@ -336,7 +336,7 @@ async def video_check_redirect(request: Request, file: StoredHashedVideoFile) ->
                         # Redirect to node where the client needs to wait until the node downloaded the file.
                         # Wait a moment to give distributor node time getting notified to copy the file.
                         await asyncio.sleep(1)
-                        video_redirect_to_node(request, to_node, file)
+                        return video_redirect_to_node(request, to_node, file)
                     else:
                         # Serve file.
                         return
@@ -351,19 +351,17 @@ async def video_check_redirect(request: Request, file: StoredHashedVideoFile) ->
                 return
     elif has_complete_file:
         # One distribution node that can serve the file.
-        video_redirect_to_node(request, node, file)
+        return video_redirect_to_node(request, node, file)
     else:
         # There is only a distribution node that is downloading the file however.
         if own_tx_load > 0.5:
             # Redirect to node where the client needs to wait until the node downloaded the file.
             # Wait a moment to give distributor node time getting notified to copy the file.
             await asyncio.sleep(1)
-            video_redirect_to_node(request, node, file)
+            return video_redirect_to_node(request, node, file)
         else:
             # Serve file.
             return
-
-    raise Exception("video_check_redirect: should not reach this line")
 
 
 def video_redirect_to_node(request: Request, node: DistributionNodeInfo, file: StoredHashedVideoFile):
