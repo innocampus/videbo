@@ -141,7 +141,7 @@ class DNSManagerINWX(DNSManager):
             try:
                 api.login(self.username, self.password)
             except Exception:
-                raise DNSAPIError()
+                raise DNSAPILoginError()
 
             try:
                 yield api
@@ -151,7 +151,7 @@ class DNSManagerINWX(DNSManager):
                 try:
                     api.logout()
                 except Exception:
-                    raise DNSAPIError()
+                    raise DNSAPILogoutError()
 
     async def _get_all_records(self) -> List[DNSRecord]:
         return await get_event_loop().run_in_executor(None, self._get_all_records_sync)
@@ -167,7 +167,7 @@ class DNSManagerINWX(DNSManager):
             try:
                 ret: dict = api.call_api(api_method="nameserver.info", method_params=params)
             except Exception:
-                raise DNSAPIError()
+                raise DNSAPICallError()
             if ret['code'] == 1000 and ret['resData']['domain'] == self.domain:
                 for record in ret['resData']['record']:
                     new_record = DNSRecord(type=record['type'], name=record['name'], content=record['content'],
@@ -177,7 +177,7 @@ class DNSManagerINWX(DNSManager):
                 return found_records
             raise DNSAPIError()
 
-    async def _add_record(self, record: DNSRecord):
+    async def _add_record(self, record: DNSRecord) -> None:
         """
         First fetches all existing records.
         If an existing record with the requested `type` and `name` exists, the record is updated.
@@ -186,6 +186,7 @@ class DNSManagerINWX(DNSManager):
         existing_records = await get_event_loop().run_in_executor(None, self._get_all_records_sync)
         for ex_rec in existing_records:
             if ex_rec.type == record.type and ex_rec.name == record.name:
+                record.id = ex_rec.id
                 return await self._update_record(record)
         get_event_loop().run_in_executor(None, self._add_record_sync, record)
 
@@ -206,16 +207,16 @@ class DNSManagerINWX(DNSManager):
             try:
                 ret: dict = api.call_api(api_method="nameserver.createRecord", method_params=params)
             except Exception:
-                raise DNSAPIError()
+                raise DNSAPICallError()
             if ret['code'] == 1000:
                 record.id = ret['resData']['id']
             else:
                 raise DNSAPIError()
 
-    async def _update_record(self, record: DNSRecord):
+    async def _update_record(self, record: DNSRecord) -> None:
         await get_event_loop().run_in_executor(None, self._update_record_sync, record)
 
-    def _update_record_sync(self, record: DNSRecord):
+    def _update_record_sync(self, record: DNSRecord) -> None:
         """
         Documentation - method:
         https://www.inwx.de/en/help/apidoc/f/ch02s13.html#nameserver.updateRecord
@@ -232,30 +233,24 @@ class DNSManagerINWX(DNSManager):
             try:
                 ret: dict = api.call_api(api_method="nameserver.updateRecord", method_params=params)
             except Exception:
-                raise DNSAPIError()
+                raise DNSAPICallError()
             if ret['code'] != 1000:
                 raise DNSAPIError()
 
-    async def _remove_record(self, record: DNSRecord):
+    async def _remove_record(self, record: DNSRecord) -> None:
         await get_event_loop().run_in_executor(None, self._remove_record_sync, record)
 
-    def _remove_record_sync(self, record: DNSRecord):
-        try:
-            api: INWX.ApiClient
-            with self.context_manager_session() as api:
-                params = {
-                    'id': record.id,
-                }
+    def _remove_record_sync(self, record: DNSRecord) -> None:
+        params = {'id': record.id}
+        with self.context_manager_session() as api:
+            try:
                 ret: dict = api.call_api(api_method="nameserver.deleteRecord", method_params=params)
-
-                if ret['code'] == 1000 or ret['code'] == 2303:
-                    # 2303 means record does not exist, don't treat this as an error
-                    record.id = None
-                    return
-                else:
-                    raise DNSAPIError()
-        except Exception:
-            raise DNSAPIError()
+            except Exception:
+                raise DNSAPICallError()
+            if ret['code'] not in (1000, 2303):  # 2303 means record does not exist, don't treat this as an error
+                raise DNSAPIError()
+            record.id = None
+            return
 
 
 def get_dns_api_by_provider(definitions: CloudInstanceDefsController) -> Optional[DNSManager]:
@@ -270,4 +265,16 @@ def get_dns_api_by_provider(definitions: CloudInstanceDefsController) -> Optiona
 
 
 class DNSAPIError(Exception):
+    pass
+
+
+class DNSAPILoginError(DNSAPIError):
+    pass
+
+
+class DNSAPILogoutError(DNSAPIError):
+    pass
+
+
+class DNSAPICallError(DNSAPIError):
     pass
