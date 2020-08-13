@@ -188,7 +188,7 @@ class DNSManagerINWX(DNSManager):
             if ex_rec.type == record.type and ex_rec.name == record.name:
                 record.id = ex_rec.id
                 return await self._update_record(record)
-        get_event_loop().run_in_executor(None, self._add_record_sync, record)
+        await get_event_loop().run_in_executor(None, self._add_record_sync, record)
 
     def _add_record_sync(self, record: DNSRecord) -> None:
         """
