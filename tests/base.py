@@ -33,14 +33,17 @@ class BaseTestCase(_TestCase, unittest.TestCase):
         """
         To provide access to to basic configuration during testing.
         """
-        if settings.config.sections():
-            return  # Config was already read
-        config_file = Path(os.path.join(settings.topdir, cls.CONFIG_FILE_NAME))
-        if not config_file.is_file():
-            print(f"Config file does not exist: {config_file}")
-            sys.exit(3)
-        settings.config.read(config_file)
-        settings.load()
+        if not settings.config.sections():
+            load_basic_config_from(cls.CONFIG_FILE_NAME)
+
+
+def load_basic_config_from(config_file_name: str) -> None:
+    config_file = Path(os.path.join(settings.topdir, config_file_name))
+    if not config_file.is_file():
+        print(f"Config file does not exist: {config_file}")
+        sys.exit(3)
+    settings.config.read(config_file)
+    settings.load()
 
 
 def async_test(future):
