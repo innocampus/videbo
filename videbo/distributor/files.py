@@ -1,7 +1,7 @@
 import asyncio
 import os
 from aiohttp import ClientTimeout
-from asyncio import get_running_loop, Event, wait_for, TimeoutError
+from asyncio import get_running_loop, Event, wait_for
 from pathlib import Path
 from time import time
 from typing import Optional, Dict, Union, Set
@@ -24,12 +24,13 @@ class CopyFileStatus:
 
 
 class DistributorHashedVideoFile(HashedVideoFile):
-    __slots__ = "copy_status", "file_size"
+    __slots__ = 'copy_status', 'file_size', 'last_requested'
 
     def __init__(self, file_hash: str, file_extension: str):
         super().__init__(file_hash, file_extension)
         self.copy_status: Optional[CopyFileStatus] = None
         self.file_size: int = -1  # in bytes
+        self.last_requested: int = -1  # UNIX timestamp (seconds); -1 means never/unknown
 
 
 class DistributorFileController:
@@ -99,6 +100,37 @@ class DistributorFileController:
             return True
 
         return False
+
+    async def get_file(self, file_hash: str, wait: int = 60) -> DistributorHashedVideoFile:
+        """
+        If a file with the provided hash is controlled by the distributor, return the representing object.
+        If the file is being downloaded right now, wait for it.
+
+        Args:
+            file_hash: Self-explanatory
+            wait (optional): Maximum number of seconds to wait, if the file is being copied.
+
+        Raises:
+            NoSuchFile:
+                if no file with a hash like this is controlled by this node
+            TooManyWaitingClients:
+                self-explanatory
+            asyncio.TimeoutError:
+                if during the specified maximum `wait` time, the file was not fully copied
+        """
+        try:
+            dist_file = self.files[file_hash]
+        except KeyError:
+            raise NoSuchFile()
+        if dist_file.copy_status:
+            if self.waiting >= self.MAX_WAITING_CLIENTS:
+                raise TooManyWaitingClients()
+            try:
+                self.waiting += 1
+                await dist_file.copy_status.wait_for(wait)  # May raise asyncio.TimeoutError
+            finally:
+                self.waiting -= 1
+        return dist_file
 
     async def get_free_space(self) -> int:
         """Returns free space in MB excluding the space that should be empty."""
@@ -220,4 +252,8 @@ class CopyFileError(Exception):
 
 
 class TooManyWaitingClients(Exception):
+    pass
+
+
+class NoSuchFile(Exception):
     pass

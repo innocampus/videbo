@@ -1,7 +1,7 @@
 import asyncio
 import urllib.parse
 from aiohttp.web import Request, Response, RouteTableDef, FileResponse
-from aiohttp.web_exceptions import HTTPNotFound, HTTPNotAcceptable, HTTPOk, HTTPServiceUnavailable, \
+from aiohttp.web_exceptions import HTTPNotFound, HTTPOk, HTTPServiceUnavailable, \
     HTTPInternalServerError
 from time import time
 from typing import List, Tuple
@@ -13,7 +13,7 @@ from videbo.misc import sanitize_filename
 from videbo.storage.api.models import RequestFileJWTData, FileType
 from videbo.storage.util import HashedVideoFile
 from videbo.distributor import logger, distributor_settings
-from videbo.distributor.files import file_controller, TooManyWaitingClients
+from videbo.distributor.files import file_controller, TooManyWaitingClients, NoSuchFile
 from .models import DistributorStatus, DistributorCopyFile, DistributorDeleteFiles, DistributorDeleteFilesResponse,\
     DistributorFileList, DistributorCopyFileStatus
 
@@ -112,18 +112,19 @@ async def request_file(request: Request, jwt_data: RequestFileJWTData):
     if jwt_data.type != FileType.VIDEO:
         logger.info(f"Invalid request type: {jwt_data.type}")
         raise HTTPNotFound()
-
-    video = HashedVideoFile(jwt_data.hash, jwt_data.file_ext)
+    file_hash, file_ext = jwt_data.hash, jwt_data.file_ext
     try:
-        if not (await file_controller.file_exists(video, 60)):
-            logger.info(f"Requested file that does not exist on this node: {video.hash}")
-            raise HTTPNotFound()
+        video = await file_controller.get_file(file_hash)
+    except NoSuchFile:
+        logger.info(f"Requested file that does not exist on this node: {file_hash}")
+        raise HTTPNotFound()
     except asyncio.TimeoutError:
-        logger.info(f"Waited for file, but timeout reached, file {video.hash}")
+        logger.info(f"Waited for file, but timeout reached, file {file_hash}")
         raise HTTPServiceUnavailable()
     except TooManyWaitingClients:
-        logger.info(f"Too many waiting users, file {video.hash}")
+        logger.info(f"Too many waiting users, file {file_hash}")
         raise HTTPServiceUnavailable()
+    video.last_requested = int(time())
 
     headers = {
         "Cache-Control": "private, max-age=50400",
@@ -143,7 +144,7 @@ async def request_file(request: Request, jwt_data: RequestFileJWTData):
     path = file_controller.get_path_or_nginx_redirect(video)
     if isinstance(path, str):
         headers["X-Accel-Redirect"] = path
-        content_type = get_content_type_for_video(video.file_extension)
+        content_type = get_content_type_for_video(file_ext)
         return Response(headers=headers, content_type=content_type)
 
     return FileResponse(path, headers=headers)
