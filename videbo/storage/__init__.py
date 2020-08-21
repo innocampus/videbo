@@ -21,6 +21,7 @@ class StorageSettings(SettingsSectionBase):
     server_status_page: str
     copy_to_dist_views_threshold: int
     reset_views_every_hours: int
+    dist_free_space_target_ratio: float
     max_parallel_copying_tasks: int
 
     def load(self):

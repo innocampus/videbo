@@ -1,5 +1,5 @@
 import asyncio
-from typing import Optional, Set, Tuple, List, TYPE_CHECKING
+from typing import Optional, Set, Tuple, List, Iterable, TYPE_CHECKING
 from videbo.misc import TaskManager
 from videbo.web import HTTPClient, HTTPResponseError
 from videbo.distributor.api.models import DistributorCopyFile, DistributorDeleteFiles,\
@@ -60,11 +60,20 @@ class DistributionNodeInfo:
         self.tx_max_rate: int = 0  # in Mbit/s
         self.tx_load: float = 0.0  # tx_current_rate / tx_max_rate
         self.free_space: int = 0  # in MB
+        self.files_total_size: int = 0  # in MB
         self.stored_videos: Set["StoredHashedVideoFile"] = set()
         self.loading: Set["StoredHashedVideoFile"] = set()  # Node is currently downloading these files.
         self.awaiting_download = DownloadScheduler()  # Files waiting to be downloaded
         self.watcher_task: Optional[asyncio.Task] = None
         self.good: bool = False  # node is reachable
+
+    @property
+    def total_space(self) -> float:
+        return self.free_space + self.files_total_size
+
+    @property
+    def free_space_ratio(self) -> float:
+        return self.free_space / self.total_space
 
     async def start_watching(self):
         async def watcher():
@@ -78,6 +87,7 @@ class DistributionNodeInfo:
                         self.tx_max_rate = ret.tx_max_rate
                         self.tx_load = self.tx_current_rate / self.tx_max_rate
                         self.free_space = ret.free_space
+                        self.files_total_size = ret.files_total_size
                         await self.set_node_status(True)
                     else:
                         storage_logger.error(f"<Distribution watcher {self.base_url}> http status {status}")
@@ -182,29 +192,42 @@ class DistributionNodeInfo:
                 return
             TaskManager.fire_and_forget_task(asyncio.create_task(self._copy_file_task(next_file, next_from_url)))
 
-    async def _remove_files(self, rem_files: List[Tuple[str, str]]):
+    async def _remove_files(self, rem_files: List[Tuple[str, str]]) -> Optional[DistributorDeleteFilesResponse]:
         """
         :argument rem_files List of (hash, file extension)
         """
+        url = f"{self.base_url}/api/distributor/delete"
+        data = DistributorDeleteFiles(files=rem_files)
+        ret: DistributorDeleteFilesResponse
         try:
-            url = f"{self.base_url}/api/distributor/delete"
-            data = DistributorDeleteFiles(files=rem_files)
-            ret: DistributorDeleteFilesResponse
             status, ret = await asyncio.wait_for(HTTPClient.internal_request_node("POST", url, data,
                                                                                   DistributorDeleteFilesResponse), 60)
-            if status == 200:
-                self.free_space = ret.free_space
-        except:
-            pass
+        except Exception as e:
+            storage_logger.exception(str(e))
+            return
+        if status == 200:
+            self.free_space = ret.free_space
+            return ret
 
-    async def remove_videos(self, files: List["StoredHashedVideoFile"]):
-        rem_files = []
+    async def remove_videos(self, files: Iterable["StoredHashedVideoFile"]) -> None:
+        hashes_extensions, to_discard = [], {}
         for file in files:
-            rem_files.append((file.hash, file.file_extension))
+            hashes_extensions.append((file.hash, file.file_extension))
+            to_discard[f'{file.hash}.{file.file_extension}'] = file
+        response_data = await self._remove_files(hashes_extensions)  # calls the distributor's API
+        # Only discard files that were actually deleted:
+        not_deleted_size = 0
+        for file_hash, file_ext in response_data.files_skipped:
+            file = to_discard.pop(f'{file_hash}.{file_ext}')
+            not_deleted_size += file.file_size
+        if not_deleted_size:
+            storage_logger.warning(f"{len(response_data.files_skipped)} file(s) taking up {not_deleted_size} MB "
+                                   f"could not be deleted from distributor node {self.base_url}")
+        for file in to_discard.values():
             self.stored_videos.discard(file)
             file.nodes.remove_node(self)
-
-        await self._remove_files(rem_files)
+        storage_logger.info(f"Removed {len(to_discard)} file(s) freeing up {response_data.free_space} MB "
+                            f"on distributor node {self.base_url}")
 
     async def unlink_node(self, stop_watching: bool = True):
         """Do not remove videos on this node, but remove all local references to this node."""
@@ -213,6 +236,27 @@ class DistributionNodeInfo:
         self.stored_videos.clear()
         if stop_watching:
             await self.stop_watching()
+
+    async def free_up_space(self) -> None:
+        """
+        Attempts to remove less popular videos to free-up disk space on the distributor node.
+        """
+        assert 0 <= storage_settings.dist_free_space_target_ratio <= 1
+        if self.free_space_ratio >= storage_settings.dist_free_space_target_ratio:
+            storage_logger.debug(f"{self.free_space} MB ({round(self.free_space_ratio * 100, 1)} %) "
+                                 f"of free space available at {self.base_url}")
+            return
+        mega = 1024 * 1024
+        target_gain = (storage_settings.dist_free_space_target_ratio * self.total_space - self.free_space) * mega
+        to_remove, space_gain = [], 0
+        sorted_videos = sorted(self.stored_videos, reverse=True)
+        while space_gain < target_gain:
+            video = sorted_videos.pop()
+            to_remove.append(video)
+            space_gain += video.file_size
+        storage_logger.info(f"Trying to purge {len(to_remove)} less popular videos "
+                            f"to free up {space_gain / mega} MB of space at {self.base_url}")
+        await self.remove_videos(to_remove)
 
     def __lt__(self, other: "DistributionNodeInfo"):
         return self.tx_load < other.tx_load
@@ -278,6 +322,7 @@ class DistributionController:
         async def task():
             await asyncio.sleep(storage_settings.reset_views_every_hours)
             self._reset()
+            await asyncio.gather(*(dist_node.free_up_space for dist_node in self._dist_nodes))
         TaskManager.fire_and_forget_task(asyncio.create_task(task()))
 
     def count_file_access(self, file: "StoredHashedVideoFile", rid: str) -> None:
