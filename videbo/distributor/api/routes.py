@@ -87,8 +87,7 @@ async def copy_file(request: Request, _jwt_data: BaseJWTData, data: DistributorC
     if new_file.copy_status:
         await new_file.copy_status.wait_for(3600)
         # Recheck that file really exists now.
-        video = HashedVideoFile(request.match_info['hash'], request.match_info['file_ext'])
-        if not (await file_controller.file_exists(video, 1)):
+        if not (await file_controller.file_exists(request.match_info['hash'], 1)):
             raise HTTPInternalServerError()
     raise HTTPOk()
 

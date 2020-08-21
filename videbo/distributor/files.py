@@ -82,24 +82,13 @@ class DistributorFileController:
 
         return self.get_path(file)
 
-    async def file_exists(self, file: HashedVideoFile, wait: int) -> bool:
-        """A file with the hash exists. If the file is being downloaded right now, wait for it.
-        :raises TimeoutError
-        """
-        found = self.files.get(file.hash)
-        if found:
-            if found.copy_status:
-                if self.waiting >= self.MAX_WAITING_CLIENTS:
-                    raise TooManyWaitingClients()
-
-                try:
-                    self.waiting += 1
-                    await found.copy_status.wait_for(wait)
-                finally:
-                    self.waiting -= 1
+    async def file_exists(self, file_hash: str, wait: int) -> bool:
+        try:
+            await self.get_file(file_hash=file_hash, wait=wait)
+        except (NoSuchFile, TooManyWaitingClients, asyncio.TimeoutError):
+            return False
+        else:
             return True
-
-        return False
 
     async def get_file(self, file_hash: str, wait: int = 60) -> DistributorHashedVideoFile:
         """
