@@ -233,12 +233,30 @@ class DistributorFileController:
         TaskManager.fire_and_forget_task(task)
         return new_file
 
-    async def delete_file(self, file: HashedVideoFile) -> None:
-        try:
-            dist_file = self.files.pop(file.hash)
-        except KeyError:
-            return
+    async def delete_file(self, file_hash: str, safe: bool = True) -> None:
+        """
+        Deletes file from disk.
 
+        Args:
+            file_hash: Self-explanatory
+            safe (optional): If `True`, safety period from config is checked before deletion.
+
+        Raises:
+            NoSuchFile:
+                if no file with a hash like this is controlled by this node
+            NotSafeToDelete:
+                if `safe` is True and the file in question was last requested within the configured safety interval
+
+        Returns:
+            `None` upon successful deletion
+        """
+        dist_file = self.files.get(file_hash)
+        if dist_file is None:
+            raise NoSuchFile()
+        cutoff_time = time() - (distributor_settings.last_request_safety_hours * 3600)
+        if safe and dist_file.last_requested > cutoff_time:
+            raise NotSafeToDelete()
+        del self.files[file_hash]
         self.files_total_size -= dist_file.file_size
         path = self.get_path(dist_file)
         await get_running_loop().run_in_executor(None, path.unlink)
@@ -256,4 +274,8 @@ class TooManyWaitingClients(Exception):
 
 
 class NoSuchFile(Exception):
+    pass
+
+
+class NotSafeToDelete(Exception):
     pass

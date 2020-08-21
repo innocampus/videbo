@@ -37,6 +37,7 @@ class DistributorDeleteFiles(JSONBaseModel):
 
 
 class DistributorDeleteFilesResponse(JSONBaseModel):
+    files_skipped: List[Tuple[str, str]]  # (hash, file extension)
     free_space: int  # in MB
 
 

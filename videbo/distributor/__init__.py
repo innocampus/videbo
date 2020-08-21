@@ -14,6 +14,7 @@ class DistributorSettings(SettingsSectionBase):
     nginx_x_accel_location: str
     nginx_x_accel_limit_rate_kbit: int
     server_status_page: str
+    last_request_safety_hours: int
 
     def load(self):
         super().load()

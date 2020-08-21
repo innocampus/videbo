@@ -13,7 +13,7 @@ from videbo.misc import sanitize_filename
 from videbo.storage.api.models import RequestFileJWTData, FileType
 from videbo.storage.util import HashedVideoFile
 from videbo.distributor import logger, distributor_settings
-from videbo.distributor.files import file_controller, TooManyWaitingClients, NoSuchFile
+from videbo.distributor.files import file_controller, TooManyWaitingClients, NoSuchFile, NotSafeToDelete
 from .models import DistributorStatus, DistributorCopyFile, DistributorDeleteFiles, DistributorDeleteFilesResponse,\
     DistributorFileList, DistributorCopyFileStatus
 
@@ -97,12 +97,14 @@ async def copy_file(request: Request, _jwt_data: BaseJWTData, data: DistributorC
 @ensure_jwt_data_and_role(Role.node)
 @ensure_json_body()
 async def delete_files(_request: Request, _jwt_data: BaseJWTData, data: DistributorDeleteFiles):
+    files_skipped: List[Tuple[str, str]] = []
     for file_hash, file_ext in data.files:
-        file = HashedVideoFile(file_hash, file_ext)
-        await file_controller.delete_file(file)
-
+        try:
+            await file_controller.delete_file(file_hash)
+        except (NoSuchFile, NotSafeToDelete):
+            files_skipped.append((file_hash, file_ext))
     free_space = await file_controller.get_free_space()
-    resp = DistributorDeleteFilesResponse(free_space=free_space)
+    resp = DistributorDeleteFilesResponse(files_skipped=files_skipped, free_space=free_space)
     return json_response(resp)
 
 
