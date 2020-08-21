@@ -100,7 +100,7 @@ async def delete_files(_request: Request, _jwt_data: BaseJWTData, data: Distribu
     files_skipped: List[Tuple[str, str]] = []
     for file_hash, file_ext in data.files:
         try:
-            await file_controller.delete_file(file_hash)
+            await file_controller.delete_file(file_hash, safe=data.safe)
         except (NoSuchFile, NotSafeToDelete):
             files_skipped.append((file_hash, file_ext))
     free_space = await file_controller.get_free_space()

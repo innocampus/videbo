@@ -34,6 +34,7 @@ class DistributorCopyFile(JSONBaseModel):
 
 class DistributorDeleteFiles(JSONBaseModel):
     files: List[Tuple[str, str]]  # (hash, file extension)
+    safe: bool = True  # if True, recently requested files will not be deleted
 
 
 class DistributorDeleteFilesResponse(JSONBaseModel):

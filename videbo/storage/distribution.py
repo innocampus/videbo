@@ -192,12 +192,13 @@ class DistributionNodeInfo:
                 return
             TaskManager.fire_and_forget_task(asyncio.create_task(self._copy_file_task(next_file, next_from_url)))
 
-    async def _remove_files(self, rem_files: List[Tuple[str, str]]) -> Optional[DistributorDeleteFilesResponse]:
+    async def _remove_files(self, rem_files: List[Tuple[str, str]],
+                            safe: bool = DistributorDeleteFiles.safe) -> Optional[DistributorDeleteFilesResponse]:
         """
         :argument rem_files List of (hash, file extension)
         """
         url = f"{self.base_url}/api/distributor/delete"
-        data = DistributorDeleteFiles(files=rem_files)
+        data = DistributorDeleteFiles(files=rem_files, safe=safe)
         ret: DistributorDeleteFilesResponse
         try:
             status, ret = await asyncio.wait_for(HTTPClient.internal_request_node("POST", url, data,
@@ -209,12 +210,12 @@ class DistributionNodeInfo:
             self.free_space = ret.free_space
             return ret
 
-    async def remove_videos(self, files: Iterable["StoredHashedVideoFile"]) -> None:
+    async def remove_videos(self, files: Iterable["StoredHashedVideoFile"], safe: bool = DistributorDeleteFiles.safe):
         hashes_extensions, to_discard = [], {}
         for file in files:
             hashes_extensions.append((file.hash, file.file_extension))
             to_discard[f'{file.hash}.{file.file_extension}'] = file
-        response_data = await self._remove_files(hashes_extensions)  # calls the distributor's API
+        response_data = await self._remove_files(hashes_extensions, safe=safe)  # calls the distributor's API
         # Only discard files that were actually deleted:
         not_deleted_size = 0
         for file_hash, file_ext in response_data.files_skipped:
