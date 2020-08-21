@@ -321,7 +321,7 @@ class DistributionController:
     def start_periodic_reset_task(self) -> None:
         async def task():
             await asyncio.sleep(storage_settings.reset_views_every_hours)
-            await asyncio.gather(*(dist_node.free_up_space for dist_node in self._dist_nodes))
+            await asyncio.gather(*(dist_node.free_up_space() for dist_node in self._dist_nodes))
             self._reset()
         TaskManager.fire_and_forget_task(asyncio.create_task(task()))
 
