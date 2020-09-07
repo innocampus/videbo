@@ -31,11 +31,15 @@ class InvalidVideoError(Exception):
         self.audio_codec = audio_codec
 
 
-class CouldNotCreateTempDir(Exception):
+class CouldNotCreateDir(Exception):
     pass
 
 
-class CouldNotCreateTempOutDir(Exception):
+class CouldNotCreateTempDir(CouldNotCreateDir):
+    pass
+
+
+class CouldNotCreateTempOutDir(CouldNotCreateTempDir):
     pass
 
 
