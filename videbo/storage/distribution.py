@@ -192,8 +192,8 @@ class DistributionNodeInfo:
                 return
             TaskManager.fire_and_forget_task(asyncio.create_task(self._copy_file_task(next_file, next_from_url)))
 
-    async def _remove_files(self, rem_files: List[Tuple[str, str]],
-                            safe: bool = DistributorDeleteFiles.safe) -> Optional[DistributorDeleteFilesResponse]:
+    async def _remove_files(self, rem_files: List[Tuple[str, str]], safe: bool = True
+                            ) -> Optional[DistributorDeleteFilesResponse]:
         """
         :argument rem_files List of (hash, file extension)
         """
@@ -210,7 +210,7 @@ class DistributionNodeInfo:
             self.free_space = ret.free_space
             return ret
 
-    async def remove_videos(self, files: Iterable["StoredHashedVideoFile"], safe: bool = DistributorDeleteFiles.safe):
+    async def remove_videos(self, files: Iterable["StoredHashedVideoFile"], safe: bool = True):
         hashes_extensions, to_discard = [], {}
         for file in files:
             hashes_extensions.append((file.hash, file.file_extension))

@@ -1,5 +1,5 @@
 from enum import Enum
-from typing import Optional, List, Set
+from typing import Optional, List, FrozenSet
 
 from videbo.web import BaseJWTData, JSONBaseModel
 
@@ -15,8 +15,8 @@ class FileType(Enum):
         return value in cls.values()
 
     @classmethod
-    def values(cls) -> Set[str]:
-        return set(member.value for member in cls.__members__.values())
+    def values(cls) -> FrozenSet[str]:
+        return frozenset(member.value for member in cls.__members__.values())
 
 
 class UploadFileJWTData(BaseJWTData):

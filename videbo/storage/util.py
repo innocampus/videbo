@@ -6,7 +6,7 @@ import time
 from _sha256 import SHA256Type
 from pathlib import Path
 from copy import deepcopy
-from typing import Optional, Dict, BinaryIO, List, Iterable
+from typing import Optional, Union, Dict, BinaryIO, List, Iterable
 
 from videbo.misc import TaskManager, gather_in_batches
 from videbo.lms_api import LMSSitesCollection, LMSAPIError
@@ -22,7 +22,7 @@ from .api.models import FileType
 
 FILE_EXT_WHITELIST = ('.mp4', '.webm')
 THUMB_EXT = '.jpg'
-VALID_EXTENSIONS = set(FILE_EXT_WHITELIST + (THUMB_EXT, ))
+VALID_EXTENSIONS = frozenset(FILE_EXT_WHITELIST + (THUMB_EXT, ))
 
 
 class HashedVideoFile:
@@ -34,7 +34,7 @@ class HashedVideoFile:
 
         # Extension has to start with a dot.
         if file_extension[0] != ".":
-            raise HashedFileInvalidExtensionError()
+            raise HashedFileInvalidExtensionError(file_extension)
 
     def __str__(self):
         return self.hash + self.file_extension
@@ -58,6 +58,18 @@ _FilesDict = Dict[str, HashedVideoFile]
 _StoredFilesDict = Dict[str, StoredHashedVideoFile]
 
 
+def create_dir_if_not_exists(path: Union[Path, str], mode: int = 0o777, explicit_chmod: bool = False) -> None:
+    path = Path(path)
+    if path.is_dir():
+        return
+    path.mkdir(mode=mode)
+    if explicit_chmod:
+        path.chmod(mode)
+    if not path.is_dir():
+        raise CouldNotCreateTempDir(path)
+    storage_logger.info(f"Created {path}")
+
+
 class FileStorage:
     """Manages all stored files with their hashes as file names."""
     _instance: Optional["FileStorage"] = None
@@ -79,18 +91,8 @@ class FileStorage:
         self._cached_files_total_size: int = 0  # in bytes
         self.distribution_controller: DistributionController = DistributionController()
 
-        if not self.temp_dir.is_dir():
-            self.temp_dir.mkdir(mode=0o755)
-            if not self.temp_dir.is_dir():
-                raise CouldNotCreateTempDir()
-            storage_logger.info('Created temp dir in videos dir')
-
-        if not self.temp_out_dir.is_dir():
-            self.temp_out_dir.mkdir(mode=0o777)
-            self.temp_out_dir.chmod(0o777)  # Ensure public
-            if not self.temp_out_dir.is_dir():
-                raise CouldNotCreateTempOutDir()
-            storage_logger.info('Created out dir in temp dir')
+        create_dir_if_not_exists(self.temp_dir, 0o755)
+        create_dir_if_not_exists(self.temp_out_dir, 0o777, explicit_chmod=True)
 
         self._garbage_collector_task = asyncio.create_task(self._garbage_collect_cron())
         TaskManager.fire_and_forget_task(self._garbage_collector_task)
@@ -102,7 +104,7 @@ class FileStorage:
             cls._instance.distribution_controller.start_periodic_reset_task()
         return cls._instance
 
-    def load_file_list(self):
+    def load_file_list(self) -> None:
         """Load all video files in memory"""
         try:
             for obj in self.storage_dir.glob('**/*'):
@@ -112,26 +114,29 @@ class FileStorage:
                         file_hash = file_split[0]
                         file_ext = "." + file_split[1]
                         if file_ext in FILE_EXT_WHITELIST:
-                            self._add_video_to_cache(file_hash, file_ext, obj)
-                            if len(self._cached_files) < 20:
-                                storage_logger.info(f"Found video {file_hash}{file_ext}")
+                            f = self._add_video_to_cache(file_hash, file_ext, obj)
+                            if len(self._cached_files) > 20:
+                                continue
+                            elif len(self._cached_files) == 20:
+                                storage_logger.info("Skip logging the other files that were found")
+                            else:
+                                storage_logger.info(f"Found video {f}")
+        except Exception as e:
+            storage_logger.exception(f"{str(e)} in load_file_list")
+        storage_logger.info(f"Found {len(self._cached_files)} videos in storage")
 
-            if len(self._cached_files) >= 20:
-                storage_logger.info("Skip logging the other files that were found")
-            storage_logger.info(f"Found {len(self._cached_files)} videos in storage")
-        except:
-            storage_logger.exception("Error in load_file_list")
-
-    def _add_video_to_cache(self, file_hash: str, file_extension: str, file_path: Path):
+    def _add_video_to_cache(self, file_hash: str, file_extension: str, file_path: Path) -> StoredHashedVideoFile:
         file = StoredHashedVideoFile(file_hash, file_extension)
         try:
             stat = file_path.stat()
-            file.file_size = stat.st_size
-            self._cached_files[file.hash] = file
-            self._cached_files_total_size += file.file_size
-            self.distribution_controller.add_video(file)
         except FileNotFoundError:
             storage_logger.exception("FileNotFoundError in _add_video_to_cache")
+            return file
+        file.file_size = stat.st_size
+        self._cached_files[file_hash] = file
+        self._cached_files_total_size += file.file_size
+        self.distribution_controller.add_video(file)
+        return file
 
     def get_files_total_size_mb(self) -> int:
         return int(self._cached_files_total_size / 1024 / 1024)
@@ -142,8 +147,8 @@ class FileStorage:
     def all_files(self) -> _StoredFilesDict:
         return deepcopy(self._cached_files)
 
-    async def filtered_files(self, orphaned: bool = None, extensions: Iterable[str] = None,
-                             types: Iterable[str] = None) -> _StoredFilesDict:
+    async def filtered_files(self, orphaned: bool = None, extensions: Iterable[str] = VALID_EXTENSIONS,
+                             types: Iterable[str] = FileType.values()) -> _StoredFilesDict:
         """
         Returns a dictionary of stored files (keys being the files' hashes) that match the filter criteria.
 
@@ -164,22 +169,15 @@ class FileStorage:
         files = self.all_files()
         hashes_orphaned = {} if orphaned is None else await self._file_hashes_orphaned_dict(files)
 
-        if extensions is None:
-            extensions = VALID_EXTENSIONS
-        else:
-            extensions = set(extensions)
-            invalid_extensions = extensions.intersection(VALID_EXTENSIONS)
-            if invalid_extensions:
-                raise ValueError(f"Invalid file extension(s): {invalid_extensions}")
+        extensions = set(extensions)
+        invalid_extensions = extensions.difference(VALID_EXTENSIONS)
+        if invalid_extensions:
+            raise ValueError(f"Invalid file extension(s): {invalid_extensions}")
 
-        valid_file_types = FileType.values()
-        if types is None:
-            types = valid_file_types
-        else:
-            types = set(types)
-            invalid_types = types.intersection(valid_file_types)
-            if invalid_types:
-                raise ValueError(f"Invalid file type(s): {invalid_types}")
+        types = set(types)
+        invalid_types = types.difference(FileType.values())
+        if invalid_types:
+            raise ValueError(f"Invalid file type(s): {invalid_types}")
 
         filtered = {}
         for file_hash, file in files.items():
@@ -235,9 +233,7 @@ class FileStorage:
         video_length = video.get_length()
         thumb_height = storage_settings.thumb_height
         thumb_count = storage_settings.thumb_suggestion_count
-
         video_check_user = storage_settings.check_user
-
         # Generate thumbnails concurrently
         tasks = []
         for thumb_nr in range(thumb_count):
@@ -249,7 +245,6 @@ class FileStorage:
             tasks.append(Video(video_config=VideoConfig(storage_settings)).save_thumbnail(
                 video.video_file, thumb_path, offset, thumb_height, temp_output_file=temp_out_file))
         await asyncio.gather(*tasks)
-
         return thumb_count
 
     @classmethod
@@ -432,17 +427,15 @@ class TempFile:
         """Write data to the file and compute the hash on the fly."""
         if self.is_writing:
             raise PendingWriteOperationError()
-
         self.size += len(data)
         self.is_writing = True
-
         # Run in another thread as there is blocking io.
-        def update_hash_write_file():
-            self.hash.update(data)
-            self.file.write(data)
-            self.is_writing = False
+        await asyncio.get_event_loop().run_in_executor(None, self._update_hash_write_file, data)
+        self.is_writing = False
 
-        await asyncio.get_event_loop().run_in_executor(None, update_hash_write_file)
+    def _update_hash_write_file(self, data: bytes) -> None:
+        self.hash.update(data)
+        self.file.write(data)
 
     async def close(self):
         await asyncio.get_event_loop().run_in_executor(None, self.file.close)
@@ -457,18 +450,17 @@ class TempFile:
             raise PendingWriteOperationError()
         self.is_writing = True  # Don't allow any additional writes.
         file = HashedVideoFile(self.hash.hexdigest(), file_ext)
-
         # Run in another thread as there is blocking io.
-        def move():
-            new_path = self.get_path(self.storage.temp_dir, file)
-            if new_path.is_file():
-                # If a file with the hash already exists, we don't need another copy.
-                self.path.unlink()
-            else:
-                self.path.rename(new_path)
-
-        await asyncio.get_event_loop().run_in_executor(None, move)
+        await asyncio.get_event_loop().run_in_executor(None, self._move, file)
         return file
+
+    def _move(self, file: HashedVideoFile) -> None:
+        new_path = self.get_path(self.storage.temp_dir, file)
+        if new_path.is_file():
+            # If a file with the hash already exists, we don't need another copy.
+            self.path.unlink()
+        else:
+            self.path.rename(new_path)
 
     @classmethod
     def get_path(cls, temp_dir: Path, file: HashedVideoFile) -> Path:
@@ -479,13 +471,13 @@ class TempFile:
         file_name = file.hash + "_" + str(thumb_nr) + THUMB_EXT
         return Path(temp_dir, file_name)
 
-    async def delete(self):
-        def delete_file():
-            self.file.close()
-            if self.path.is_file():
-                self.path.unlink()
+    async def delete(self) -> None:
+        await asyncio.get_event_loop().run_in_executor(None, self._delete_file)
 
-        await asyncio.get_event_loop().run_in_executor(None, delete_file)
+    def _delete_file(self) -> None:
+        self.file.close()
+        if self.path.is_file():
+            self.path.unlink()
 
 
 def is_allowed_file_ending(filename: Optional[str]) -> bool:
@@ -496,16 +488,18 @@ def is_allowed_file_ending(filename: Optional[str]) -> bool:
 
 
 def schedule_video_delete(file_hash: str, file_ext: str, origin: Optional[str] = None) -> None:
-    async def task() -> None:
-        file_storage = FileStorage.get_instance()
-        try:
-            file = await file_storage.get_file(file_hash, file_ext)
-        except FileDoesNotExistError:
-            storage_logger.info(f"Video delete: file not found: {file_hash}{file_ext}.")
-            return
-        await file_storage.check_lms_and_remove_file(file, origin=origin)
     storage_logger.info(f"Delete video with hash {file_hash}")
-    TaskManager.fire_and_forget_task(asyncio.create_task(task()))
+    TaskManager.fire_and_forget_task(asyncio.create_task(_video_delete_task(file_hash, file_ext, origin)))
+
+
+async def _video_delete_task(file_hash: str, file_ext: str, origin: Optional[str] = None) -> None:
+    file_storage = FileStorage.get_instance()
+    try:
+        file = await file_storage.get_file(file_hash, file_ext)
+    except FileDoesNotExistError:
+        storage_logger.info(f"Video delete: file not found: {file_hash}{file_ext}.")
+        return
+    await file_storage.check_lms_and_remove_file(file, origin=origin)
 
 
 async def lms_has_file(file: StoredHashedVideoFile, origin: str = None) -> bool:
