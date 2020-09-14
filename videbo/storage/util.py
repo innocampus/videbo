@@ -354,9 +354,7 @@ class FileStorage:
         Returns a list of booleans, the value of which signifies whether the file with the corresponding index
         was successfully deleted.
         """
-        async def call(file: StoredHashedVideoFile) -> bool:
-            return await self.check_lms_and_remove_file(file)
-        return await gather_in_batches(20, *(call(self._cached_files[h]) for h in hashes))
+        return await gather_in_batches(20, *(self.check_lms_and_remove_file(self._cached_files[h]) for h in hashes))
 
     async def check_lms_and_remove_file(self, file: StoredHashedVideoFile, origin: str = None) -> bool:
         """

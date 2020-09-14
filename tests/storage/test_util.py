@@ -295,7 +295,7 @@ class FileStorageTestCase(BaseTestCase):
     @patch.object(util, 'lms_has_file', new_callable=MagicMock)  # no async; to be used in gather-like function
     @patch.object(util.FileStorage, 'all_files')
     async def test__file_hashes_orphaned_dict(self, mock_all_files, mock_lms_has_file, mock_gather_in_batches):
-        test_dict = {'foo': 1, 'bar': 2}
+        test_dict = {'foo': MagicMock(), 'bar': MagicMock()}
         mock_all_files.return_value = test_dict
         mock_lms_has_file.return_value = 'test'
         mock_gather_in_batches.return_value = [True, False]
@@ -304,6 +304,16 @@ class FileStorageTestCase(BaseTestCase):
         output = await self.storage._file_hashes_orphaned_dict()
         self.assertEqual(output, expected_output)
         mock_all_files.assert_called_once_with()
+        self.assertListEqual(mock_lms_has_file.call_args_list, [call(v) for v in test_dict.values()])
+        mock_gather_in_batches.assert_awaited_once_with(20, *('test' for _ in test_dict))
+
+        mock_all_files.reset_mock()
+        mock_lms_has_file.reset_mock()
+        mock_gather_in_batches.reset_mock()
+
+        output = await self.storage._file_hashes_orphaned_dict(test_dict)
+        self.assertEqual(output, expected_output)
+        mock_all_files.assert_not_called()
         self.assertListEqual(mock_lms_has_file.call_args_list, [call(v) for v in test_dict.values()])
         mock_gather_in_batches.assert_awaited_once_with(20, *('test' for _ in test_dict))
 
@@ -597,26 +607,33 @@ class FileStorageTestCase(BaseTestCase):
         mock_path = 'xyz'
         mock_get_thumb_path.return_value = mock_path
 
-        # if True were returned, method would fall into infinite loop during testing
-        mock_run = mocked_loop_runner(mock_aio, return_value=False)
+        # False must be returned at some point or method would fall into infinite loop during testing
+        returns = [True, False]
+        mock_run = mocked_loop_runner(mock_aio, side_effect=returns)
 
         mock_file = MagicMock(hash='foo')
 
         output = await self.storage.remove_thumbs(mock_file)
         self.assertIsNone(output)
-        mock_get_thumb_path.assert_called_once_with(mock_file, 0)
-        mock_run.assert_awaited_once_with(None, self.storage._delete_file, mock_path)
+        self.assertListEqual(mock_get_thumb_path.call_args_list,
+                             [call(mock_file, i) for i in range(len(returns))])
+        self.assertListEqual(mock_run.call_args_list,
+                             [call(None, self.storage._delete_file, mock_path) for _ in returns])
 
     @async_test
     @patch.object(util, 'gather_in_batches', new_callable=AsyncMock)
-    @patch.object(util.FileStorage, 'check_lms_and_remove_file', new_callable=AsyncMock)
+    @patch.object(util.FileStorage, 'check_lms_and_remove_file', new_callable=MagicMock)  # not async on purpose
     async def test_remove_files(self, mock_check_lms_and_remove_file, mock_gather_in_batches):
+        mock_awaitable = 'abc'
+        mock_check_lms_and_remove_file.return_value = mock_awaitable
         mock_gather_in_batches.return_value = 'test'
-        test_hashes = []  # empty on purpose
+        self.storage._cached_files = {'foo': 1, 'bar': 2, 'baz': 3}
+        test_hashes = ['foo', 'baz']
         output = await self.storage.remove_files(*test_hashes)
         self.assertEqual(output, 'test')
-        mock_check_lms_and_remove_file.assert_not_awaited()
-        mock_gather_in_batches.assert_awaited_once_with(20, *('foo' for _ in test_hashes))
+        self.assertListEqual(mock_check_lms_and_remove_file.call_args_list,
+                             [call(self.storage._cached_files[k]) for k in test_hashes])
+        mock_gather_in_batches.assert_awaited_once_with(20, *(mock_awaitable for _ in test_hashes))
 
     @async_test
     @patch.object(util.FileStorage, 'remove', new_callable=AsyncMock)
@@ -682,9 +699,20 @@ class FileStorageTestCase(BaseTestCase):
     @patch.object(util, 'asyncio')
     async def test__garbage_collect_cron(self, mock_aio):
         mock_run = mocked_loop_runner(mock_aio, return_value=1)
+        # As a way out of the otherwise infinite loop,
+        # have the sleep method cause an arbitrary error that we can catch
         mock_aio.sleep = AsyncMock(side_effect=ValueError)
 
         self.gc_cron_patcher.stop()
+
+        with self.assertRaises(ValueError):
+            await self.storage._garbage_collect_cron()
+        mock_run.assert_awaited_once_with(None, self.storage.garbage_collect_temp_dir)
+        mock_aio.sleep.assert_awaited_once_with(self.storage.GC_ITERATION_SECS)
+
+        mock_run.reset_mock()
+        mock_aio.sleep.reset_mock()
+        mock_run.return_value = 0
 
         with self.assertRaises(ValueError):
             await self.storage._garbage_collect_cron()
@@ -753,6 +781,15 @@ class TempFileTestCase(BaseTestCase):
         self.assertEqual(output, mock_file)
         mock_hashed_file_cls.assert_called_once_with(self.obj.hash.hexdigest.return_value, test_ext)
         mock_run.assert_awaited_once_with(None, self.obj._move, mock_file)
+
+        mock_hashed_file_cls.reset_mock()
+        mock_run.reset_mock()
+        self.obj.is_writing = True
+
+        with self.assertRaises(util.PendingWriteOperationError):
+            await self.obj.persist(test_ext)
+        mock_hashed_file_cls.assert_not_called()
+        mock_run.assert_not_called()
 
     @patch.object(util.TempFile, 'get_path')
     def test__move(self, mock_get_path):
@@ -910,6 +947,15 @@ class FunctionsTestCase(BaseTestCase):
         self.assertFalse(output)
         mock_exists1.assert_awaited_once_with(test_hash, test_ext)
         mock_exists2.assert_awaited_once_with(test_hash, test_ext)
+
+        mock_exists1.reset_mock()
+        mock_exists2.reset_mock()
+        mock_exists1.side_effect = util.LMSAPIError
+        with self.assertRaises(util.LMSAPIError), self.assertLogs(util.storage_logger):
+            await util.lms_has_file(mock_file, origin=None)
+        self.assertFalse(output)
+        mock_exists1.assert_awaited_once_with(test_hash, test_ext)
+        mock_exists2.assert_not_awaited()
 
 
 def mocked_loop_runner(mock_asyncio: MagicMock, mock_cls: Type[M] = AsyncMock, **kwargs) -> M:
