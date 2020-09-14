@@ -292,20 +292,20 @@ class FileStorageTestCase(BaseTestCase):
 
     @async_test
     @patch.object(util, 'gather_in_batches', new_callable=AsyncMock)
-    @patch.object(util, 'lms_has_file', new_callable=AsyncMock)
+    @patch.object(util, 'lms_has_file', new_callable=MagicMock)  # no async; to be used in gather-like function
     @patch.object(util.FileStorage, 'all_files')
     async def test__file_hashes_orphaned_dict(self, mock_all_files, mock_lms_has_file, mock_gather_in_batches):
         test_dict = {'foo': 1, 'bar': 2}
         mock_all_files.return_value = test_dict
-        test_is_orphan = True
-        mock_lms_has_file.return_value = not test_is_orphan
+        mock_lms_has_file.return_value = 'test'
         mock_gather_in_batches.return_value = [True, False]
 
+        expected_output = {'foo': False, 'bar': True}
         output = await self.storage._file_hashes_orphaned_dict()
-        expected_output = {'foo': True, 'bar': False}
         self.assertEqual(output, expected_output)
         mock_all_files.assert_called_once_with()
-        mock_gather_in_batches.assert_awaited_once()
+        self.assertListEqual(mock_lms_has_file.call_args_list, [call(v) for v in test_dict.values()])
+        mock_gather_in_batches.assert_awaited_once_with(20, *('test' for _ in test_dict))
 
     @async_test
     async def test_get_file(self):

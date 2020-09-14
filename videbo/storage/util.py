@@ -209,15 +209,12 @@ class FileStorage:
         if hashed_files_dict is None:
             hashed_files_dict = self.all_files()
         storage_logger.info(f"Checking {len(hashed_files_dict)} files for their orphan status...")
-
-        async def is_orphan(file: StoredHashedVideoFile) -> bool:
-            return not await lms_has_file(file)
-        # Gather calls to is_orphan() coroutines for each file; the awaited result is a list of booleans.
-        orphaned_list: List[bool] = await gather_in_batches(20, *(is_orphan(f) for f in hashed_files_dict.values()))
+        # Gather calls to lms_has_file(...) coroutines for each file; the awaited result is a list of booleans.
+        existing: List[bool] = await gather_in_batches(20, *(lms_has_file(f) for f in hashed_files_dict.values()))
         # Both the `files` dictionary (since Python 3.6) and the `asyncio.gather` function preserve order,
-        # therefore each hash's index in `files.keys()` can be used to get the corresponding `is_orphan` value.
+        # therefore each hash's index in `files.keys()` can be used to get the corresponding `existing` value.
         for idx, key in enumerate(hashed_files_dict.keys()):
-            hash_orphaned_dict[key] = orphaned_list[idx]
+            hash_orphaned_dict[key] = not existing[idx]
         return hash_orphaned_dict
 
     async def get_file(self, file_hash: str, file_extension: str) -> StoredHashedVideoFile:
