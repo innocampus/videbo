@@ -18,6 +18,8 @@ class SettingsSectionBase:
 
             if name == 'http_port' and settings.args.http_port:
                 value = settings.args.http_port
+            elif type is float:
+                value = float(settings.get_config(self._section, name))
             elif type is int:
                 value = int(settings.get_config(self._section, name))
             elif type is bool:
