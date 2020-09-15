@@ -71,3 +71,40 @@ WantedBy=multi-user.target
 
 You may use the CLI tool `/opt/videbo/venv/bin/python -m videbo cli` within `/opt/videbo/server`
 to view all nodes and to manually create/disable/enable/remove nodes.
+
+
+## Testing
+
+Tests are located in the `tests` directory. 
+
+### Running unit tests
+
+The file/directory structure beneath it largely mirrors that of the `videbo` directory, with a test module for nearly every source module. As per convention, unit tests are located in modules with the prefix `test_` in the name. 
+
+E.g. unit tests for the module `videbo.storage.api.routes` are placed in the module `tests.storage.api.test_routes`.
+
+Thus, running `unittest discover` from the standard library should find and run all unit test cases.
+
+Since all unit tests are done with the standard library tools, no other packages need to be installed, and individual tests can be run via the usual `unittest` interface.
+
+### Coverage
+
+To view code coverage, the recommended tool is `coverage` which can be installed with `pip install coverage`; it's documentation can be found [here](https://coverage.readthedocs.io/en/stable/).
+
+For convenience the shell script `coverage.sh` can be executed. This will run unit test discovery through `coverage` and display a report in the terminal. NOTE: The script will delete the `.coverage` file, if one exists before running the tests and creating a new one.
+
+### Comprehensive tests
+
+In addition to regular unit tests, some more monolithic and comprehensive tests are included.
+
+##### DNSManagerINWX
+
+This class is defined in the module `videbo.manager.cloud.dns_api` and it's test case `DNSManagerINWXTestCase` in the corresponding test module has the test method `test_API_interaction`, which not only simulates, but performs actual interactions with the INWX API, creating, updating and eventually deleting DNS records.
+
+This is only done, if both the `domain` parameter in the `general` section and the credentials in the `cloud-inwx` section of the config file are specified (and valid). Otherwise, this test is skipped.
+
+The test is written in a way that should minimize the risk of any unwanted side effects, such as changing "real" pre-existing records or leaving unwanted test-records. To make sure the latter does not happen, do not interrupt this test's execution.
+
+##### Storage routes tests
+
+t.b.p.
