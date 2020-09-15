@@ -14,3 +14,4 @@ config.ini.j2
 manager.db
 Pipfile
 Pipfile.lock
+.coverage
