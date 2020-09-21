@@ -48,7 +48,7 @@ tar -xvf lego_v3.7.0_linux_amd64.tar.gz; mv lego /usr/local/bin/; cd ..; rm -rf 
 15. Obtain a Let's encrypt wildcard certificate with lego.
 16. Copy the `.lego` directory from your home to `/opt/videbo/server`.
 17. Run `./create_deployment_package.sh` from within `/opt/videbo/server`
-18. Create a systemd unit in `/etc/systemd/system/videbo-manager.service`
+18. Create a systemd unit in `/etc/systemd/system/videbo-manager.service`:
 ```
 [Unit]
 Description=Videbo Manager node service
@@ -65,7 +65,7 @@ RestartSec=10s
 [Install]
 WantedBy=multi-user.target
 ```
-19. Enable and start the unit `systemctl enable videbo-manager; systemctl start videbo-manager`
+Enable and start the unit `systemctl enable videbo-manager; systemctl start videbo-manager`
 
 ## Manager Usage
 
