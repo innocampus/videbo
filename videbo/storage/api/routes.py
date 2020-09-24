@@ -93,13 +93,11 @@ async def read_data(request: Request) -> TempFile:
     multipart = await request.multipart()
 
     # Skip to the field that we are interested in.
-    while True:
-        field = await multipart.next()
-        if isinstance(field, BodyPartReader) and field.name == "video":
-            break
-
+    field = await multipart.next()
+    while not isinstance(field, BodyPartReader) or field.name != "video":
         if field is None:
             raise NoValidFileInRequestError()
+        field = await multipart.next()
 
     # First simple file type check.
     if not is_allowed_file_ending(field.filename):
@@ -113,17 +111,16 @@ async def read_data(request: Request) -> TempFile:
     # Create temp file and read data from client.
     storage_logger.info("Start reading file from client")
     file: TempFile = FileStorage.get_instance().create_temp_file()
-    while True:
+
+    chunk_size = 300 * 1024  # Bytes
+    data = await field.read_chunk(chunk_size)
+    while len(data) > 0:
+        print(data, file.size)
         if file.size > max_file_size:
             await file.delete()
             raise FileTooBigError()
-
-        data = await field.read_chunk(300 * 1024)
-        if len(data) == 0:
-            # eof reached
-            break
-
         await file.write(data)
+        data = await field.read_chunk(chunk_size)
 
     await file.close()
     storage_logger.info(f"File was uploaded ({file.size} Bytes)")
