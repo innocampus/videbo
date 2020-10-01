@@ -1,8 +1,9 @@
+from typing import List
 import asyncio
 import logging
-import pathlib
 import urllib.parse
 from distutils.util import strtobool
+
 from aiohttp import BodyPartReader
 from aiohttp.web import Request, Response
 from aiohttp.web import FileResponse
@@ -12,11 +13,8 @@ from aiohttp.web_exceptions import HTTPBadRequest
 from aiohttp.web_exceptions import HTTPForbidden
 from aiohttp.web_exceptions import HTTPNotFound
 from aiohttp.web_exceptions import HTTPNotAcceptable
-from aiohttp.web_exceptions import HTTPUnsupportedMediaType
-from aiohttp.web_exceptions import HTTPRequestEntityTooLarge
 from aiohttp.web_exceptions import HTTPInternalServerError
 from aiohttp.web_exceptions import HTTPFound, HTTPServiceUnavailable
-from typing import List
 
 from videbo.web import ensure_json_body, register_route_with_cors, json_response as model_json_response
 from videbo.web import ensure_no_reverse_proxy
@@ -40,14 +38,11 @@ from videbo.storage.api.models import StorageFileInfo, StorageFilesList, DeleteF
 from videbo.storage.distribution import DistributionNodeInfo
 from videbo.storage.util import TempFile
 from videbo.storage.util import FileStorage
-from videbo.storage.util import FileDoesNotExistError
-from videbo.storage.util import NoValidFileInRequestError
-from videbo.storage.util import FileTooBigError
+from videbo.storage.exceptions import NoValidFileInRequestError
+from videbo.storage.exceptions import FileTooBigError
 from videbo.storage.util import HashedVideoFile, StoredHashedVideoFile
-from videbo.storage.util import FFProbeError
 from videbo.storage.util import is_allowed_file_ending, schedule_video_delete
-from videbo.storage.exceptions import InvalidMimeTypeError
-from videbo.storage.exceptions import InvalidVideoError
+from videbo.exceptions import InvalidMimeTypeError, InvalidVideoError, FFProbeError
 
 from videbo.storage import storage_logger
 from videbo.storage import storage_settings
@@ -128,7 +123,7 @@ async def read_data(request: Request) -> TempFile:
 
 
 @register_route_with_cors(routes, 'GET', '/api/upload/maxsize')
-async def get_max_size(_: Request ):
+async def get_max_size(_: Request):
     """Get max file size in mb."""
     return json_response({'max_size': storage_settings.max_file_size_mb})
 
@@ -225,7 +220,7 @@ async def save_file(request: Request, jwt_data: SaveFileJWTData):
         await file_storage.add_file_from_temp(file)
         thumb_count = storage_settings.thumb_suggestion_count
         await file_storage.add_thumbs_from_temp(file, thumb_count)
-    except FileDoesNotExistError:
+    except FileNotFoundError:
         storage_logger.error('Cannot save file with hash %s to video, file does not exist.', file.hash)
         return json_response({'status': 'error', 'error': 'file_does_not_exist'})
 
@@ -258,7 +253,7 @@ async def request_file(request: Request, jwt_data: RequestFileJWTData):
         # Record the video access and find out if this node serves the file or should redirect to a distributor node.
         try:
             video = await file_storage.get_file(jwt_data.hash, jwt_data.file_ext)
-        except FileDoesNotExistError:
+        except FileNotFoundError:
             raise HTTPNotFound()
 
         # Only consider redirecting the client when it is an external request.
@@ -398,7 +393,7 @@ async def remove_dist_node(_request: Request, _jwt_data: BaseJWTData, data: Dist
 
 @routes.get(r'/api/storage/status')
 @ensure_jwt_data_and_role(Role.manager)
-async def get_status(request: Request, _jwt_data: BaseJWTData):
+async def get_status(_request: Request, _jwt_data: BaseJWTData):
     status = StorageStatus.construct()
     storage = FileStorage.get_instance()
 
@@ -462,4 +457,3 @@ async def batch_delete_files(_request: Request, _jwt_data: BaseJWTData, data: De
     if not_deleted:
         return json_response({'status': 'incomplete', 'not_deleted': not_deleted})
     return json_response({'status': 'ok'})
-

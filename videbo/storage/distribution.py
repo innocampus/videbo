@@ -1,11 +1,11 @@
 import asyncio
 from typing import Optional, Set, Tuple, List, Iterable, TYPE_CHECKING
+
 from videbo.misc import TaskManager
 from videbo.web import HTTPClient, HTTPResponseError
 from videbo.distributor.api.models import DistributorCopyFile, DistributorDeleteFiles,\
     DistributorDeleteFilesResponse, DistributorStatus, DistributorFileList
 from videbo.storage import storage_settings, storage_logger
-from videbo.storage.exceptions import FileDoesNotExistError
 if TYPE_CHECKING:
     from videbo.storage.util import StoredHashedVideoFile
 
@@ -126,7 +126,7 @@ class DistributionNodeInfo:
                         file = await storage.get_file(file_hash, file_extension)
                         self.stored_videos.add(file)
                         file.nodes.add_node(self)
-                    except FileDoesNotExistError:
+                    except FileNotFoundError:
                         storage_logger.info(f"Remove file {file_hash}{file_extension} on {self.base_url} "
                                             f"since file does not exist on storage.")
                         remove_unknown_files.append((file_hash, file_extension))

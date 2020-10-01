@@ -1,12 +1,12 @@
 import asyncio
 import json
-import os
 import shutil
 from pathlib import Path
 from typing import Dict
 from typing import List
 from typing import Optional
-from videbo.storage import storage_settings
+from videbo.exceptions import (FileCmdError, FFMpegError, FFProbeError, InvalidMimeTypeError, InvalidVideoError,
+                               UnknownProgramError)
 
 MIME_TYPE_WHITELIST = ['video/mp4', 'video/webm']
 CONTAINER_WHITELIST = ['mp4', 'webm']
@@ -17,13 +17,14 @@ AUDIO_CODEC_WHITELIST = ['aac', 'vorbis', 'mp3']
 class VideoConfig:
 
     def __init__(self, settings):
-        self.user =  settings.check_user
+        self.user = settings.check_user
         self.binary_ffmpeg = settings.binary_ffmpeg
         self.binary_ffprobe = settings.binary_ffprobe
         self.binary_file = settings.binary_file
         self.video_check_user = settings.check_user
 
-    async def create_sudo_subprocess(self, args: List[str], binary: str = None, stdout: int = asyncio.subprocess.DEVNULL,
+    async def create_sudo_subprocess(self, args: List[str], binary: str = None,
+                                     stdout: int = asyncio.subprocess.DEVNULL,
                                      stderr: int = asyncio.subprocess.DEVNULL) -> asyncio.subprocess.Process:
         if binary == "file":
             program = self.binary_file
@@ -56,7 +57,7 @@ class VideoInfo:
 
         args = ["-b", "-i", str(self.video_file)]
         # Run file command
-        proc = await self._video_config.create_sudo_subprocess(args = args, binary = "file",  stdout=asyncio.subprocess.PIPE)
+        proc = await self._video_config.create_sudo_subprocess(args=args, binary="file", stdout=asyncio.subprocess.PIPE)
         try:
             stdout, stderr = await asyncio.wait_for(proc.communicate(), 10)
             self.mime_type = stdout.decode().strip().split(';')[0]  # strip linebreaks, extract first part
@@ -69,8 +70,9 @@ class VideoInfo:
 
         args = ["-show_format", "-show_streams", "-print_format", "json", str(self.video_file)]
         # Run ffprobe
-        proc = await self._video_config.create_sudo_subprocess(args = args, binary = "ffprobe",  stdout=asyncio.subprocess.PIPE,
-                                                                stderr=asyncio.subprocess.PIPE)
+        proc = await self._video_config.create_sudo_subprocess(args=args, binary="ffprobe",
+                                                               stdout=asyncio.subprocess.PIPE,
+                                                               stderr=asyncio.subprocess.PIPE)
         err = None
         try:
             stdout, stderr = await asyncio.wait_for(proc.communicate(), 10)
@@ -139,7 +141,6 @@ class VideoValidator:
         """Check if this a video whose video/audio codec and container format are on our whitelists."""
         valid_format = False
         valid_video = False
-        valid_audio = False
         video_codec = ''
         audio_codec = ''
 
@@ -218,7 +219,7 @@ class Video:
     def _copy_file(source_file: Path, target_file: Path) -> None:
         # Check source file really exists.
         if not source_file.is_file():
-            raise FileDoesNotExistError()
+            raise FileNotFoundError()
 
         # Copy if destination doesn't exist
         if not target_file.is_file():
@@ -230,40 +231,3 @@ def get_content_type_for_video(file_ext: str):
         return "video/mp4"
     if file_ext == ".webm":
         return "video/webm"
-
-
-class FileCmdError(Exception):
-    def __init__(self, timeout):
-        self.timeout = timeout
-
-
-class FFMpegError(Exception):
-    def __init__(self, timeout, stderr=None):
-        self.timeout = timeout
-        self.stderr = stderr
-
-
-class FFProbeError(Exception):
-    def __init__(self, timeout, stderr=None):
-        self.timeout = timeout
-        self.stderr = stderr
-
-
-class InvalidMimeTypeError(Exception):
-    def __init__(self, mimetype: str):
-        self.mime_type = mimetype
-
-
-class InvalidVideoError(Exception):
-    def __init__(self, container: str = "", video_codec: str = "", audio_codec: str = ""):
-        self.container = container
-        self.video_codec = video_codec
-        self.audio_codec = audio_codec
-
-
-class UnknownProgramError(Exception):
-    pass
-
-
-class FileDoesNotExistError(Exception):
-    pass

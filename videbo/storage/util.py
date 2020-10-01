@@ -13,11 +13,12 @@ from videbo.lms_api import LMSSitesCollection, LMSAPIError
 from videbo.video import VideoInfo
 from videbo.video import Video
 from videbo.video import VideoConfig
+from videbo.exceptions import PendingWriteOperationError
 
 from . import storage_logger
 from . import storage_settings
 from .distribution import DistributionController, FileNodes
-from .exceptions import *
+from .exceptions import HashedFileInvalidExtensionError, CouldNotCreateTempDir
 from .api.models import FileType
 
 FILE_EXT_WHITELIST = ('.mp4', '.webm')
@@ -223,7 +224,7 @@ class FileStorage:
         if file and file.file_extension == file_extension:
             return file
 
-        raise FileDoesNotExistError()
+        raise FileNotFoundError()
 
     async def generate_thumbs(self, file: HashedVideoFile, video: VideoInfo) -> int:
         """Generates thumbnail suggestions."""
@@ -284,7 +285,7 @@ class FileStorage:
     def _move_file(path: Path, new_file_path: Path) -> None:
         # Check source file really exists.
         if not path.is_file():
-            raise FileDoesNotExistError()
+            raise FileNotFoundError()
 
         # Ensure dir exists.
         parent = new_file_path.parent
@@ -326,7 +327,7 @@ class FileStorage:
 
         # Run in another thread as there is blocking io.
         if not await asyncio.get_event_loop().run_in_executor(None, self._delete_file, file_path):
-            raise FileDoesNotExistError()
+            raise FileNotFoundError()
 
         # Remove file from cached files and delete all copies on distributor nodes.
         self._cached_files.pop(file.hash)
@@ -491,7 +492,7 @@ async def _video_delete_task(file_hash: str, file_ext: str, origin: Optional[str
     file_storage = FileStorage.get_instance()
     try:
         file = await file_storage.get_file(file_hash, file_ext)
-    except FileDoesNotExistError:
+    except FileNotFoundError:
         storage_logger.info(f"Video delete: file not found: {file_hash}{file_ext}.")
         return
     await file_storage.check_lms_and_remove_file(file, origin=origin)

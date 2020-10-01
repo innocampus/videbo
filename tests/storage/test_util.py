@@ -324,7 +324,7 @@ class FileStorageTestCase(BaseTestCase):
         self.storage._cached_files = {test_hash: mock_file}
         output = await self.storage.get_file(test_hash, test_ext)
         self.assertEqual(output, mock_file)
-        with self.assertRaises(util.FileDoesNotExistError):
+        with self.assertRaises(FileNotFoundError):
             await self.storage.get_file('baz', 'ext')
 
     @async_test
@@ -480,7 +480,7 @@ class FileStorageTestCase(BaseTestCase):
 
         # Case 2
         mock_path.is_file = MagicMock(return_value=False)
-        with self.assertRaises(util.FileDoesNotExistError):
+        with self.assertRaises(FileNotFoundError):
             self.storage._move_file(mock_path, mock_new_file_path)
         mock_path.is_file.assert_called_once_with()
 
@@ -594,7 +594,7 @@ class FileStorageTestCase(BaseTestCase):
         self.mock_dist_controller().remove_video.reset_mock()
         mock_run.return_value = False
 
-        with self.assertRaises(util.FileDoesNotExistError):
+        with self.assertRaises(FileNotFoundError):
             await self.storage.remove(mock_file)
         mock_get_path.assert_called_once_with(mock_file)
         mock_run.assert_awaited_once_with(None, self.storage._delete_file, mock_path)
@@ -915,7 +915,7 @@ class FunctionsTestCase(BaseTestCase):
 
         mock_get_file.reset_mock()
         mock_check_lms_and_remove_file.reset_mock()
-        mock_get_file.side_effect = util.FileDoesNotExistError
+        mock_get_file.side_effect = FileNotFoundError
         self.assertIsNone(await util._video_delete_task(test_hash, test_ext, test_origin))
         mock_get_file.assert_awaited_once_with(test_hash, test_ext)
         mock_check_lms_and_remove_file.assert_not_awaited()
