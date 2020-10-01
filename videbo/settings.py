@@ -1,4 +1,5 @@
 import configparser
+import argparse
 import sys
 from os.path import abspath, dirname
 from pathlib import PurePath
@@ -11,26 +12,24 @@ class SettingsSectionBase:
 
     def load(self):
         from . import settings
-        types = get_type_hints(self)
-        for name, type in types.items():
-            if name[0] == '_':
+        type_hints = get_type_hints(self.__class__)
+        for name, setting_type in type_hints.items():
+            if name.startswith('_'):
                 continue
-
-            if name == 'http_port' and settings.args.http_port:
+            if name == 'http_port' and getattr(settings.args, 'http_port', None):
                 value = settings.args.http_port
-            elif type is float:
+            elif setting_type is float:
                 value = float(settings.get_config(self._section, name))
-            elif type is int:
+            elif setting_type is int:
                 value = int(settings.get_config(self._section, name))
-            elif type is bool:
+            elif setting_type is bool:
                 value = settings.get_config_bool(self._section, name)
-            elif type is str:
+            elif setting_type is str:
                 value = settings.get_config(self._section, name)
-            elif type is PurePath:
+            elif setting_type is PurePath:
                 value = PurePath(settings.get_config(self._section, name))
             else:
                 raise UnknownSettingsDataType()
-
             setattr(self, name, value)
 
 
@@ -55,14 +54,14 @@ class LMSSettings(SettingsSectionBase):
 
 class Settings:
     """Central settings storage."""
-    args: dict
+    args: argparse.Namespace
     config: configparser.ConfigParser
     topdir: str
     general: GeneralSettings
     lms: LMSSettings
 
     def __init__(self):
-        self.args = {}
+        self.args = argparse.Namespace()
         self.config = configparser.ConfigParser()
         self.topdir = dirname(dirname(abspath(__file__)))
         self.general = GeneralSettings()
