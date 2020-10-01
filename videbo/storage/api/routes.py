@@ -110,7 +110,6 @@ async def read_data(request: Request) -> TempFile:
     chunk_size = 300 * 1024  # Bytes
     data = await field.read_chunk(chunk_size)
     while len(data) > 0:
-        print(data, file.size)
         if file.size > max_file_size:
             await file.delete()
             raise FileTooBigError()
