@@ -23,6 +23,7 @@ class StorageSettings(SettingsSectionBase):
     reset_views_every_hours: int
     dist_free_space_target_ratio: float
     max_parallel_copying_tasks: int
+    dist_redirect_prevent_hours: float
 
     def load(self):
         super().load()

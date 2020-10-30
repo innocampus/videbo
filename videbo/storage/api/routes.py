@@ -1,4 +1,5 @@
 from typing import List
+import time
 import asyncio
 import logging
 import urllib.parse
@@ -258,7 +259,7 @@ async def request_file(request: Request, jwt_data: RequestFileJWTData):
         # Only consider redirecting the client when it is an external request.
         if jwt_data.iss != JWT_ISS_INTERNAL:
             file_storage.distribution_controller.count_file_access(video, jwt_data.rid)
-            await video_check_redirect(request, video)
+            await video_check_redirect(request, video, jwt_data.rid)
 
         access_logger.info(f"serve video with hash {video}")
         path = file_storage.get_path(video)
@@ -300,7 +301,7 @@ async def request_file(request: Request, jwt_data: RequestFileJWTData):
     return FileResponse(path, headers=headers)
 
 
-async def video_check_redirect(request: Request, file: StoredHashedVideoFile) -> None:
+async def video_check_redirect(request: Request, file: StoredHashedVideoFile, rid: str) -> None:
     own_tx_load = get_own_tx_load()
     node, has_complete_file = file.nodes.find_good_node(file)
     if node is None:
@@ -320,18 +321,16 @@ async def video_check_redirect(request: Request, file: StoredHashedVideoFile) ->
                         storage_logger.warning(f"Cannot serve video, node too busy (tx load {own_tx_load:.2f}")
                         raise HTTPServiceUnavailable()
                     else:
-                        # Serve file.
-                        return
+                        return  # Serve file
                 else:
+                    file.init_dist_by(rid)
                     if own_tx_load > 0.5:
                         # Redirect to node where the client needs to wait until the node downloaded the file.
                         # Wait a moment to give distributor node time getting notified to copy the file.
                         await asyncio.sleep(1)
                         return video_redirect_to_node(request, to_node, file)
                     else:
-                        # Serve file.
-                        return
-
+                        return  # Serve file
         else:
             if own_tx_load > 0.9:
                 # The file is not requested that often and this storage node is too busy.
@@ -340,6 +339,8 @@ async def video_check_redirect(request: Request, file: StoredHashedVideoFile) ->
             else:
                 # This storage node is not too busy and can serve the file by itself.
                 return
+    elif file.prevent_redirect(rid):
+        return  # Serve file
     elif has_complete_file:
         # One distribution node that can serve the file.
         return video_redirect_to_node(request, node, file)
@@ -351,8 +352,7 @@ async def video_check_redirect(request: Request, file: StoredHashedVideoFile) ->
             await asyncio.sleep(1)
             return video_redirect_to_node(request, node, file)
         else:
-            # Serve file.
-            return
+            return  # Serve file
 
 
 def video_redirect_to_node(request: Request, node: DistributionNodeInfo, file: StoredHashedVideoFile):

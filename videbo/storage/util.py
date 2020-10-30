@@ -6,7 +6,7 @@ import time
 from _sha256 import SHA256Type
 from pathlib import Path
 from copy import deepcopy
-from typing import Optional, Union, Dict, BinaryIO, List, Iterable
+from typing import Optional, Union, Dict, BinaryIO, List, Iterable, Tuple
 
 from videbo.misc import TaskManager, gather_in_batches
 from videbo.lms_api import LMSSitesCollection, LMSAPIError
@@ -42,13 +42,37 @@ class HashedVideoFile:
 
 
 class StoredHashedVideoFile(HashedVideoFile):
-    __slots__ = "file_size", "views", "nodes"
+    __slots__ = "file_size", "views", "nodes", "_dist_initiated"
 
     def __init__(self, file_hash: str, file_extension: str):
         super().__init__(file_hash, file_extension)
         self.file_size: int = -1  # in bytes
         self.views: int = 0
         self.nodes: FileNodes = FileNodes()
+        self._dist_initiated: Optional[Tuple[float, str]] = None
+        # When a video file is requested from the storage node, and this triggers the *first* distribution of that file,
+        # i.e. copying it to a distributor node, the attribute `._dist_initiated` is set to a 2-tuple with the first
+        # element being the timestamp of the moment the copying was initiated and the second element being the string
+        # identifier of the user (as contained in `RequestFileJWTData.rid`), whose request triggered the copying task.
+        # This is part of a work-around to prevent redirects from a storage node to a distributor node for that same
+        # user in the middle of streaming (e.g. by skipping to an unbuffered section of the video), which causes some
+        # sort of network error to be raised on the client's side in many scenarios.
+        # The timestamp is used to decide whether enough time has passed to assume a new streaming session is taking
+        # place and it is safe to redirect.
+
+    def init_dist_by(self, user_rid: str) -> None:
+        self._dist_initiated = time.time(), user_rid
+
+    def prevent_redirect(self, rid: str) -> bool:
+        if self._dist_initiated is None:
+            return False
+        init_time, init_rid = self._dist_initiated
+        if init_rid != rid:
+            return False
+        if time.time() > init_time + 3600 * storage_settings.dist_redirect_prevent_hours:
+            self._dist_initiated = None
+            return False
+        return True
 
     def __lt__(self, other: "StoredHashedVideoFile"):
         """Compare videos by their view counters."""
