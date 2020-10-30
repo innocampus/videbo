@@ -323,13 +323,13 @@ async def video_check_redirect(request: Request, file: StoredHashedVideoFile, ri
                     else:
                         return  # Serve file
                 else:
-                    file.init_dist_by(rid)
                     if own_tx_load > 0.5:
                         # Redirect to node where the client needs to wait until the node downloaded the file.
                         # Wait a moment to give distributor node time getting notified to copy the file.
                         await asyncio.sleep(1)
                         return video_redirect_to_node(request, to_node, file)
                     else:
+                        file.init_dist_by(rid)
                         return  # Serve file
         else:
             if own_tx_load > 0.9:

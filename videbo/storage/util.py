@@ -61,9 +61,14 @@ class StoredHashedVideoFile(HashedVideoFile):
         # place and it is safe to redirect.
 
     def init_dist_by(self, user_rid: str) -> None:
+        """Registers that the *first* time distribution of this video file was triggered by a user."""
         self._dist_initiated = time.time(), user_rid
 
     def prevent_redirect(self, rid: str) -> bool:
+        """
+        Checks the current time and the `rid` argument against the `._dist_initiated` attribute.
+        Returns True only if initial distribution was triggered by a user with the same `rid` and not too long ago.
+        """
         if self._dist_initiated is None:
             return False
         init_time, init_rid = self._dist_initiated
