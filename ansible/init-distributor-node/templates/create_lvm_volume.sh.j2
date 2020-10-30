@@ -4,7 +4,12 @@
 # Depends: lvm2, xfsprogs
 
 DEV_PATTERN="{{ lvm_dev_pattern }}"
-VIDEO_PATH="{{ lvm_video_path }}"
+VIDEO_PATH="{{ stored_videos_path }}"
+
+if [ -z "$DEV_PATTERN" ]; then
+    echo "no devices given"
+    exit
+fi
 
 if vgdisplay | grep -q 'video_vg'; then
 	  >&2 echo "volume group already exists"

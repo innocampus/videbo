@@ -7,7 +7,7 @@
 
 - name: Create video directory
   file:
-    path: "{{ lvm_video_path }}"
+    path: "{{ stored_videos_path }}"
     state: directory
     mode: '0755'
 

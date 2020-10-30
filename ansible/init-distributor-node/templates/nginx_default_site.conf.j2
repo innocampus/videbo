@@ -7,8 +7,8 @@ server {
 
         listen [::]:443 ssl reuseport; # managed by Certbot
         listen 443 ssl reuseport; # managed by Certbot
-        ssl_certificate /etc/videbo-certs/_.tu-berlin-streaming.de.crt;
-        ssl_certificate_key /etc/videbo-certs/_.tu-berlin-streaming.de.key;
+        ssl_certificate {{ certificate_crt_path }};
+        ssl_certificate_key {{ certificate_key_path }};
 
         ssl_session_cache shared:le_nginx_SSL:1m;
         ssl_session_timeout 1440m;
@@ -20,7 +20,7 @@ server {
 
         location /videos {
             internal;
-            alias {{ lvm_video_path }};
+            alias {{ stored_videos_path }};
         }
 
         location / {
@@ -33,6 +33,12 @@ server {
             proxy_send_timeout 1800;
             proxy_read_timeout 3600;
             send_timeout 1800;
+        }
+
+        # In case you are using certbot to get a certificate, you may configure certbot to use the webroot plugin
+        # and point --webroot-path to {{ project_path }}/var/acme-challenge/
+        location /.well-known/acme-challenge/ {
+            root {{ project_path }}/var/acme-challenge/;
         }
 }
 
@@ -47,6 +53,11 @@ server {
             access_log   off;
             allow 127.0.0.1;
             deny all;
+        }
+
+        # see above
+        location /.well-known/acme-challenge/ {
+            root {{ project_path }}/var/acme-challenge/;
         }
 }
 

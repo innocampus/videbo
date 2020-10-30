@@ -1,0 +1,21 @@
+[general]
+internal_api_secret = {{ internal_api_secret }}
+dev_mode = false
+domain =
+certificate_crt_path =
+certificate_key_path =
+
+[lms]
+api_secret = {{ api_secret }}
+moodle_base_urls =
+
+[distributor]
+http_port = 9030
+bound_to_storage_base_url = {{ bound_to_storage_base_url }}
+tx_max_rate_mbit = {{ tx_max_rate_mbit }}
+files_path = {{ stored_videos_path }}
+leave_free_space_mb = {{ leave_free_space_mb }}
+nginx_x_accel_location = /videos
+nginx_x_accel_limit_rate_kbit = {{ nginx_x_accel_limit_rate_kbit }}
+server_status_page = http://127.0.0.1/basic_status
+last_request_safety_hours = 4
