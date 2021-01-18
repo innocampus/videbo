@@ -1,7 +1,7 @@
 import asyncio
 from typing import Optional, Set, Tuple, List, Iterable, TYPE_CHECKING
 
-from videbo.misc import TaskManager
+from videbo.misc import TaskManager, Periodic
 from videbo.web import HTTPClient, HTTPResponseError
 from videbo.distributor.api.models import DistributorCopyFile, DistributorDeleteFiles,\
     DistributorDeleteFilesResponse, DistributorStatus, DistributorFileList
@@ -242,6 +242,8 @@ class DistributionNodeInfo:
         """
         Attempts to remove less popular videos to free-up disk space on the distributor node.
         """
+        if not self.stored_videos:
+            return
         assert 0 <= storage_settings.dist_free_space_target_ratio <= 1
         if self.free_space_ratio >= storage_settings.dist_free_space_target_ratio:
             storage_logger.debug(f"{self.free_space} MB ({round(self.free_space_ratio * 100, 1)} %) "
@@ -321,10 +323,9 @@ class DistributionController:
 
     def start_periodic_reset_task(self) -> None:
         async def task():
-            await asyncio.sleep(storage_settings.reset_views_every_hours)
             await asyncio.gather(*(dist_node.free_up_space() for dist_node in self._dist_nodes))
             self._reset()
-        TaskManager.fire_and_forget_task(asyncio.create_task(task()))
+        Periodic(task)(storage_settings.reset_views_every_hours * 3600)
 
     def count_file_access(self, file: "StoredHashedVideoFile", rid: str) -> None:
         """Increment the video views counter if this is the first time the user viewed the video."""

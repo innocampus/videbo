@@ -2,7 +2,7 @@ import asyncio
 import os
 import logging
 import re
-from typing import Set, Any
+from typing import Set, Any, Optional, Callable, Awaitable
 
 logger = logging.getLogger('videbo-misc')
 
@@ -45,6 +45,32 @@ class TaskManager:
 
         cls._tasks.add(task)
         task.add_done_callback(task_done)
+
+
+class Periodic:
+    def __init__(self, _async_func: Callable[..., Awaitable], *args, **kwargs) -> None:
+        self.async_func = _async_func
+        self.args = args
+        self.kwargs = kwargs
+        self.task_name: str = f'periodic-{self.async_func.__name__}'
+        self._task: Optional[asyncio.Task] = None
+
+    async def loop(self, interval_seconds: int, limit: int = None, call_immediately: bool = False) -> None:
+        if not call_immediately:
+            await asyncio.sleep(interval_seconds)
+        i = 0
+        while limit is None or i < limit:
+            await self.async_func(*self.args, **self.kwargs)
+            await asyncio.sleep(interval_seconds)
+            i += 1
+
+    def __call__(self, interval_seconds: int, limit: int = None, call_immediately: bool = False) -> None:
+        self._task = asyncio.get_event_loop().create_task(self.loop(interval_seconds, limit, call_immediately),
+                                                          name=self.task_name)
+        TaskManager.fire_and_forget_task(self._task)
+
+    def stop(self, msg: str = None) -> bool:
+        return self._task.cancel(msg)
 
 
 async def gather_in_batches(batch_size: int, *aws, return_exceptions: bool = False) -> list:
