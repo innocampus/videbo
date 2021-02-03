@@ -13,6 +13,18 @@ class HashedFileInvalidExtensionError(Exception):
     pass
 
 
+class UploadError(Exception):
+    pass
+
+
+class FormFieldMissing(UploadError):
+    pass
+
+
+class BadFileExtension(UploadError):
+    pass
+
+
 class NoValidFileInRequestError(Exception):
     pass
 

@@ -39,8 +39,8 @@ from videbo.storage.api.models import StorageFileInfo, StorageFilesList, DeleteF
 from videbo.storage.distribution import DistributionNodeInfo
 from videbo.storage.util import TempFile
 from videbo.storage.util import FileStorage
-from videbo.storage.exceptions import NoValidFileInRequestError
 from videbo.storage.exceptions import FileTooBigError
+from videbo.storage.exceptions import FormFieldMissing, BadFileExtension
 from videbo.storage.util import HashedVideoFile, StoredHashedVideoFile
 from videbo.storage.util import is_allowed_file_ending, schedule_video_delete
 from videbo.exceptions import InvalidMimeTypeError, InvalidVideoError, FFProbeError
@@ -52,6 +52,9 @@ routes = RouteTableDef()
 
 access_logger = logging.getLogger('videbo-storage-access')
 EXTERNAL_JWT_LIFE_TIME = 3600
+
+MEGA = 1024 * 1024
+CHUNK_SIZE_DEFAULT = 300 * 1024  # in bytes
 
 
 def generate_video_url(video: HashedVideoFile, temp: bool) -> str:
@@ -83,43 +86,42 @@ def generate_thumb_urls(video: HashedVideoFile, temp: bool, thumb_count: int) ->
     return urls
 
 
-async def read_data(request: Request) -> TempFile:
+async def read_data(request: Request, chunk_size: int = CHUNK_SIZE_DEFAULT) -> TempFile:
     """Read the video file and return the temporary file with the uploaded data."""
-    max_file_size = storage_settings.max_file_size_mb * 1024 * 1024
-    multipart = await request.multipart()
-
-    # Skip to the field that we are interested in.
-    field = await multipart.next()
-    while not isinstance(field, BodyPartReader) or field.name != "video":
-        if field is None:
-            raise NoValidFileInRequestError()
-        field = await multipart.next()
-
-    # First simple file type check.
-    if not is_allowed_file_ending(field.filename):
-        storage_logger.warning(f"file ending not allowed ({field.filename})")
-        raise NoValidFileInRequestError()
-
-    # Check file/content size as reported in the header if supplied.
-    if request.content_length and request.content_length > max_file_size:
-        raise FileTooBigError()
-
-    # Create temp file and read data from client.
+    field = await get_video_payload(request)
     storage_logger.info("Start reading file from client")
     file: TempFile = FileStorage.get_instance().create_temp_file()
-
-    chunk_size = 300 * 1024  # Bytes
     data = await field.read_chunk(chunk_size)
     while len(data) > 0:
-        if file.size > max_file_size:
+        if file.size > storage_settings.max_file_size_mb * MEGA:
             await file.delete()
             raise FileTooBigError()
         await file.write(data)
         data = await field.read_chunk(chunk_size)
-
     await file.close()
     storage_logger.info(f"File was uploaded ({file.size} Bytes)")
     return file
+
+
+async def get_video_payload(request: Request) -> BodyPartReader:
+    """Perform payload checks and extract the part containing the video file."""
+    multipart = await request.multipart()
+    # Skip to the field that we are interested in;
+    # this cannot be another (nested) MultipartReader, but should be a BodyPartReader instance,
+    # and the field name should be `video`.
+    field = await multipart.next()
+    while not isinstance(field, BodyPartReader) or field.name != 'video':
+        if field is None:
+            raise FormFieldMissing()
+        field = await multipart.next()
+    # Simple file extension check.
+    if not is_allowed_file_ending(field.filename):
+        storage_logger.warning(f"file ending not allowed ({field.filename})")
+        raise BadFileExtension()
+    # Check file/content size as reported in the header if supplied.
+    if request.content_length and request.content_length > storage_settings.max_file_size_mb * MEGA:
+        raise FileTooBigError()
+    return field
 
 
 @register_route_with_cors(routes, 'GET', '/api/upload/maxsize')
@@ -142,7 +144,7 @@ async def upload_file(request: Request, jwt_token: UploadFileJWTData):
 
     try:
         file = await read_data(request)
-    except NoValidFileInRequestError:
+    except (FormFieldMissing, BadFileExtension):
         storage_logger.warning("no or invalid file found in request.")
         return json_response({'error': 'invalid_format'}, status=415)
     except FileTooBigError:
@@ -150,7 +152,6 @@ async def upload_file(request: Request, jwt_token: UploadFileJWTData):
         return json_response({'max_size': storage_settings.max_file_size_mb}, status=413)
     except NotADirectoryError:
         raise HTTPInternalServerError()
-
     try:
         video = VideoInfo(video_file=file.path, video_config=VideoConfig(storage_settings))
         validator = VideoValidator(info=video)
