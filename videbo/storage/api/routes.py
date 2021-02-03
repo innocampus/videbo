@@ -1,5 +1,4 @@
-from typing import List
-import time
+from typing import List, Tuple
 import asyncio
 import logging
 import urllib.parse
@@ -86,11 +85,9 @@ def generate_thumb_urls(video: HashedVideoFile, temp: bool, thumb_count: int) ->
     return urls
 
 
-async def read_data(request: Request, chunk_size: int = CHUNK_SIZE_DEFAULT) -> TempFile:
-    """Read the video file and return the temporary file with the uploaded data."""
-    field = await get_video_payload(request)
+async def read_data(file: TempFile, field: BodyPartReader, chunk_size: int = CHUNK_SIZE_DEFAULT) -> None:
+    """Save the video data into temporary file."""
     storage_logger.info("Start reading file from client")
-    file: TempFile = FileStorage.get_instance().create_temp_file()
     data = await field.read_chunk(chunk_size)
     while len(data) > 0:
         if file.size > storage_settings.max_file_size_mb * MEGA:
@@ -100,7 +97,6 @@ async def read_data(request: Request, chunk_size: int = CHUNK_SIZE_DEFAULT) -> T
         data = await field.read_chunk(chunk_size)
     await file.close()
     storage_logger.info(f"File was uploaded ({file.size} Bytes)")
-    return file
 
 
 async def get_video_payload(request: Request) -> BodyPartReader:
@@ -124,86 +120,122 @@ async def get_video_payload(request: Request) -> BodyPartReader:
     return field
 
 
+async def get_video_info(file: TempFile) -> VideoInfo:
+    """Run checks with ffprobe and return info."""
+    video = VideoInfo(video_file=file.path, video_config=VideoConfig(storage_settings))
+    validator = VideoValidator(info=video)
+    await video.fetch_mime_type()
+    try:
+        validator.check_valid_mime_type()
+    except InvalidMimeTypeError as mimetype_err:
+        storage_logger.warning(f"invalid video mime type found in request (mime type: {mimetype_err.mime_type}).")
+        raise
+    try:
+        await video.fetch_info()
+    except FFProbeError as ffprobe_err:
+        storage_logger.warning("invalid video file found in request (ffprobe error, timeout=%i, stderr below).",
+                               ffprobe_err.timeout)
+        if ffprobe_err.stderr is not None:
+            storage_logger.warn(ffprobe_err.stderr)
+        raise
+    try:
+        validator.check_valid_video()
+    except InvalidVideoError as video_err:
+        storage_logger.warning("invalid video file found in request (video: %s, audio: %s, container: %s).",
+                               video_err.video_codec, video_err.audio_codec, video_err.container)
+        raise
+    return video
+
+
+def invalid_format_response() -> Response:
+    storage_logger.warning("no or invalid file found in request.")
+    return json_response({'error': 'invalid_format'}, status=415)
+
+
+def file_too_big_response() -> Response:
+    storage_logger.warning("client wanted to upload file that is too big.")
+    return json_response({'max_size': storage_settings.max_file_size_mb}, status=413)
+
+
+async def save_temp_file(file: TempFile, video_info: VideoInfo) -> Tuple[HashedVideoFile, int, float]:
+    """Saves video in a temporary file and returns its wrapper, thumbnail count and the video duration."""
+    video_duration = int(video_info.get_length())
+    try:
+        file_ext = video_info.get_suggested_file_extension()
+    except InvalidVideoError:
+        raise BadFileExtension()
+    hashed_file = await file.persist(file_ext)
+    file_storage = FileStorage.get_instance()
+    video_info.video_file = file_storage.get_path_in_temp(hashed_file)
+    storage_logger.info(f"saved temp file, size: {file.size}, duration: {video_duration}, hash: {hashed_file.hash}")
+    thumb_count = await file_storage.generate_thumbs(hashed_file, video_info)
+    storage_logger.info(f"saved {thumb_count} temp thumbnails for temp video, hash: {hashed_file.hash}")
+    return hashed_file, thumb_count, video_duration
+
+
+async def read_and_save_temp(file: TempFile, field: BodyPartReader) -> Response:
+    """
+    Reads and saves video payload in a temporary file and returns relevant data in a JSON response (status 200).
+    May return specific error responses instead (other status codes).
+    """
+    try:
+        await read_data(file, field)
+    except FileTooBigError:
+        await file.delete()
+        return file_too_big_response()
+    try:
+        video = await get_video_info(file)
+    except (InvalidMimeTypeError, FFProbeError, InvalidVideoError):
+        await file.delete()
+        return invalid_format_response()
+    try:
+        stored_file, thumb_count, duration = await save_temp_file(file, video)
+    except BadFileExtension:
+        await file.delete()
+        return invalid_format_response()
+    jwt_data = {
+        'hash': stored_file.hash,
+        'file_ext': stored_file.file_extension,
+        'thumbnails_available': thumb_count,
+        'duration': duration,
+    }
+    resp = {
+        'result': 'ok',
+        'jwt': external_jwt_encode(jwt_data, EXTERNAL_JWT_LIFE_TIME),
+        'url': generate_video_url(stored_file, True),
+        'thumbnails': generate_thumb_urls(stored_file, True, thumb_count),
+    }
+    return json_response(resp)
+
+
 @register_route_with_cors(routes, 'GET', '/api/upload/maxsize')
 async def get_max_size(_: Request):
     """Get max file size in mb."""
     return json_response({'max_size': storage_settings.max_file_size_mb})
 
 
-@register_route_with_cors(routes, "POST", "/api/upload/file", ["Authorization"])
+@register_route_with_cors(routes, 'POST', '/api/upload/file', ['Authorization'])
 @ensure_jwt_data_and_role(Role.client)
 async def upload_file(request: Request, jwt_token: UploadFileJWTData):
     """User wants to upload a video."""
-
-    if request.content_type != "multipart/form-data":
-        raise HTTPNotAcceptable(headers={"Accept": "multipart/form-data"})
-
+    if request.content_type != 'multipart/form-data':
+        raise HTTPNotAcceptable(headers={'Accept': 'multipart/form-data'})
     # check JWT permission
     if not jwt_token.is_allowed_to_upload_file:
         raise HTTPForbidden()
-
     try:
-        file = await read_data(request)
+        field = await get_video_payload(request)
     except (FormFieldMissing, BadFileExtension):
-        storage_logger.warning("no or invalid file found in request.")
-        return json_response({'error': 'invalid_format'}, status=415)
+        return invalid_format_response()
     except FileTooBigError:
-        storage_logger.warning("client wanted to upload file that is too big.")
-        return json_response({'max_size': storage_settings.max_file_size_mb}, status=413)
-    except NotADirectoryError:
-        raise HTTPInternalServerError()
+        return file_too_big_response()
+    file: TempFile = FileStorage.get_instance().create_temp_file()
+    # Form this point on, any error should be followed by a cleanup of the temp. file
     try:
-        video = VideoInfo(video_file=file.path, video_config=VideoConfig(storage_settings))
-        validator = VideoValidator(info=video)
-        await video.fetch_mime_type()
-        validator.check_valid_mime_type()
-        await video.fetch_info() 
-        validator.check_valid_video()
-
-        video_duration = int(video.get_length())
-        file_ext = video.get_suggested_file_extension()
-        stored_file = await file.persist(file_ext)
-
-        file_storage = FileStorage.get_instance()
-        video.video_file = file_storage.get_path_in_temp(stored_file)
-        storage_logger.info(f"saved temp file, size: {file.size}, duration: {video_duration}, hash: {stored_file.hash}")
-        thumb_count = await file_storage.generate_thumbs(stored_file, video)
-        storage_logger.info(f"saved {thumb_count} temp thumbnails for temp video, hash: {stored_file.hash}")
-
-        jwt_data = {
-            "hash": stored_file.hash,
-            "file_ext": stored_file.file_extension,
-            "thumbnails_available": thumb_count,
-            "duration": video_duration,
-        }
-
-        resp = {
-            "result": "ok",
-            "jwt": external_jwt_encode(jwt_data, EXTERNAL_JWT_LIFE_TIME),
-            "url": generate_video_url(stored_file, True),
-            "thumbnails": generate_thumb_urls(stored_file, True, thumb_count),
-        }
-        return json_response(resp)
-
-    except FFProbeError as ffprobe_err:
-        storage_logger.warning("invalid video file found in request (ffprobe error, timeout=%i, stderr below).",
-                               ffprobe_err.timeout)
-        if ffprobe_err.stderr is not None:
-            storage_logger.warn(ffprobe_err.stderr)
+        return await read_and_save_temp(file, field)
+    except Exception as e:
         await file.delete()
-        return json_response({'error': 'invalid_format'}, status=415)
-    except InvalidVideoError as video_err:
-        storage_logger.warning("invalid video file found in request (video: %s, audio: %s, container: %s).",
-                               video_err.video_codec, video_err.audio_codec, video_err.container)
-        await file.delete()
-        return json_response({'error': 'invalid_format'}, status=415)
-    except InvalidMimeTypeError as mimetype_err:
-        storage_logger.warning(f"invalid video mime type found in request (mime type: {mimetype_err.mime_type}).")
-        await file.delete()
-        return json_response({'error': 'invalid_format'}, status=415)
-    except Exception as err:
-        await file.delete()
-        storage_logger.exception(err)
+        storage_logger.exception(e)
         raise HTTPInternalServerError()
 
 
