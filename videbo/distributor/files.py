@@ -4,9 +4,9 @@ from aiohttp import ClientTimeout
 from asyncio import get_running_loop, Event, wait_for
 from pathlib import Path
 from time import time
-from typing import Optional, Dict, Union, Set
+from typing import Optional, Dict, Set
 from videbo.auth import internal_jwt_encode
-from videbo.misc import get_free_disk_space, TaskManager
+from videbo.misc import get_free_disk_space, TaskManager, rel_path
 from videbo.web import HTTPClient
 from videbo.storage.util import HashedVideoFile
 from videbo.storage.api.models import RequestFileJWTData, FileType
@@ -67,20 +67,19 @@ class DistributorFileController:
             logger.info("Skip logging the other files that were found")
         logger.info(f"Found {len(self.files)} videos")
 
-    def get_path(self, file: HashedVideoFile, temp: bool = False) -> Path:
+    def get_path(self, file: HashedVideoFile, temp: bool = False, relative: bool = False) -> Path:
+        """
+        Returns the path to a video file that supposedly exists on the node.
+
+        Args:
+            file: Self-explanatory
+            temp: If `True`, the string `.tmp` is appended to the filename.
+            relative: If `True` the node's base path is omitted from the start of the path.
+        """
+        name = str(file)
         if temp:
-            return Path(self.base_path, file.hash[0:2], file.hash + file.file_extension + ".tmp")
-        else:
-            return Path(self.base_path, file.hash[0:2], file.hash + file.file_extension)
-
-    def get_path_or_nginx_redirect(self, file: HashedVideoFile) -> Union[Path, str]:
-        """Returns a str with the information where to internally redirect the request when nginx X-Accel-Redirect
-        is enabled. Otherwise a Path to the filesystem."""
-        loc = distributor_settings.nginx_x_accel_location
-        if loc:
-            return f"{loc}/{file.hash[0:2]}/{file.hash}{file.file_extension}"
-
-        return self.get_path(file)
+            name += '.tmp'
+        return rel_path(name) if relative else Path(self.base_path, rel_path(name))
 
     async def file_exists(self, file_hash: str, wait: int) -> bool:
         try:

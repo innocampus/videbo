@@ -8,7 +8,7 @@ from videbo.settings import SettingsSectionBase
 class StorageSettings(SettingsSectionBase):
     _section = "storage"
     http_port: int
-    videos_path: PurePath
+    files_path: PurePath
     public_base_url: str
     max_file_size_mb: int
     thumb_suggestion_count: int
@@ -24,10 +24,13 @@ class StorageSettings(SettingsSectionBase):
     dist_free_space_target_ratio: float
     max_parallel_copying_tasks: int
     dist_redirect_prevent_hours: float
+    nginx_x_accel_location: str
+    nginx_x_accel_limit_rate_mbit: float
 
     def load(self):
         super().load()
         self.public_base_url = ensure_url_does_not_end_with_slash(self.public_base_url)
+        self.nginx_x_accel_location = ensure_url_does_not_end_with_slash(self.nginx_x_accel_location)
 
         # at least 1 hour
         if self.reset_views_every_hours < 1:

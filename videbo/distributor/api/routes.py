@@ -1,21 +1,21 @@
 import asyncio
-import urllib.parse
-from aiohttp.web import Request, Response, RouteTableDef, FileResponse
+from aiohttp.web import Request, RouteTableDef
 from aiohttp.web_exceptions import HTTPNotFound, HTTPOk, HTTPServiceUnavailable, \
     HTTPInternalServerError
 from time import time
+from pathlib import Path
 from typing import List, Tuple
 from videbo.auth import Role, BaseJWTData, ensure_jwt_data_and_role, JWT_ISS_INTERNAL
 from videbo.network import NetworkInterfaces
-from videbo.video import get_content_type_for_video
-from videbo.web import json_response, ensure_json_body
-from videbo.misc import sanitize_filename
+from videbo.web import json_response, ensure_json_body, file_serve_response
+from videbo.misc import rel_path
 from videbo.storage.api.models import RequestFileJWTData, FileType
 from videbo.storage.util import HashedVideoFile
 from videbo.distributor import logger, distributor_settings
 from videbo.distributor.files import file_controller, TooManyWaitingClients, NoSuchFile, NotSafeToDelete
 from .models import DistributorStatus, DistributorCopyFile, DistributorDeleteFiles, DistributorDeleteFilesResponse,\
     DistributorFileList, DistributorCopyFileStatus
+
 
 routes = RouteTableDef()
 
@@ -126,26 +126,11 @@ async def request_file(request: Request, jwt_data: RequestFileJWTData):
         logger.info(f"Too many waiting users, file {file_hash}")
         raise HTTPServiceUnavailable()
     video.last_requested = int(time())
-
-    headers = {
-        "Cache-Control": "private, max-age=50400",
-    }
-
-    if "downloadas" in request.query:
-        filename = sanitize_filename(request.query["downloadas"])
-        filename = urllib.parse.quote(filename)
-        headers["Content-Disposition"] = f'attachment; filename="{filename}"'
-
-    if jwt_data.iss != JWT_ISS_INTERNAL:
-        # Check rate limit
-        rate_limit = distributor_settings.nginx_x_accel_limit_rate_kbit
-        if rate_limit:
-            headers["X-Accel-Limit-Rate"] = str(int(rate_limit * 1024 / 8))
-
-    path = file_controller.get_path_or_nginx_redirect(video)
-    if isinstance(path, str):
-        headers["X-Accel-Redirect"] = path
-        content_type = get_content_type_for_video(file_ext)
-        return Response(headers=headers, content_type=content_type)
-
-    return FileResponse(path, headers=headers)
+    x_accel = bool(distributor_settings.nginx_x_accel_location)
+    if x_accel:
+        path = Path(distributor_settings.nginx_x_accel_location, rel_path(str(video)))
+    else:
+        path = file_controller.get_path(video)
+    dl = request.query.get('downloadas')
+    limit_rate = float(jwt_data.iss != JWT_ISS_INTERNAL and distributor_settings.x_accel_limit_rate)
+    return file_serve_response(path, x_accel, dl, limit_rate)

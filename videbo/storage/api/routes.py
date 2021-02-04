@@ -3,10 +3,10 @@ import asyncio
 import logging
 import urllib.parse
 from distutils.util import strtobool
+from pathlib import Path
 
 from aiohttp import BodyPartReader
 from aiohttp.web import Request, Response
-from aiohttp.web import FileResponse
 from aiohttp.web import json_response
 from aiohttp.web import RouteTableDef
 from aiohttp.web_exceptions import HTTPBadRequest
@@ -17,13 +17,12 @@ from aiohttp.web_exceptions import HTTPInternalServerError
 from aiohttp.web_exceptions import HTTPFound, HTTPServiceUnavailable
 
 from videbo.web import ensure_json_body, register_route_with_cors, json_response as model_json_response
-from videbo.web import ensure_no_reverse_proxy
+from videbo.web import ensure_no_reverse_proxy, file_serve_response
 from videbo.auth import external_jwt_encode
 from videbo.auth import ensure_jwt_data_and_role
 from videbo.auth import Role, JWT_ISS_INTERNAL
 from videbo.auth import BaseJWTData
-from videbo.misc import get_free_disk_space
-from videbo.misc import sanitize_filename
+from videbo.misc import get_free_disk_space, rel_path
 from videbo.network import NetworkInterfaces
 from videbo.video import VideoInfo
 from videbo.video import VideoValidator
@@ -322,16 +321,12 @@ async def request_file(request: Request, jwt_data: RequestFileJWTData):
         storage_logger.warn(f"file does not exist: {path}")
         raise HTTPNotFound()
 
-    headers = {
-        "Cache-Control": "private, max-age=50400"
-    }
-
-    if "downloadas" in request.query:
-        filename = sanitize_filename(request.query["downloadas"])
-        filename = urllib.parse.quote(filename)
-        headers["Content-Disposition"] = f'attachment; filename="{filename}"'
-
-    return FileResponse(path, headers=headers)
+    x_accel = bool(storage_settings.nginx_x_accel_location)
+    if x_accel:
+        path = Path(storage_settings.nginx_x_accel_location, rel_path(str(video)))
+    dl = request.query.get('downloadas')
+    limit_rate = float(jwt_data.iss != JWT_ISS_INTERNAL and storage_settings.x_accel_limit_rate)
+    return file_serve_response(path, x_accel, dl, limit_rate)
 
 
 async def video_check_redirect(request: Request, file: StoredHashedVideoFile, rid: str) -> None:
@@ -431,7 +426,7 @@ async def get_status(_request: Request, _jwt_data: BaseJWTData):
 
     status.files_total_size = storage.get_files_total_size_mb()
     status.files_count = storage.get_files_count()
-    status.free_space = await get_free_disk_space(str(storage_settings.videos_path))
+    status.free_space = await get_free_disk_space(str(storage_settings.files_path))
 
     status.tx_max_rate = storage_settings.tx_max_rate_mbit
     network = NetworkInterfaces.get_instance()

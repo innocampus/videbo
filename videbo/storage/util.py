@@ -8,7 +8,7 @@ from pathlib import Path
 from copy import deepcopy
 from typing import Optional, Union, Dict, BinaryIO, List, Iterable, Tuple
 
-from videbo.misc import TaskManager, gather_in_batches
+from videbo.misc import TaskManager, gather_in_batches, rel_path
 from videbo.lms_api import LMSSitesCollection, LMSAPIError
 from videbo.video import VideoInfo
 from videbo.video import Video
@@ -130,7 +130,7 @@ class FileStorage:
     @classmethod
     def get_instance(cls) -> "FileStorage":
         if cls._instance is None:
-            cls._instance = FileStorage(Path(storage_settings.videos_path))
+            cls._instance = FileStorage(Path(storage_settings.files_path))
             cls._instance.distribution_controller.start_periodic_reset_task()
         return cls._instance
 
@@ -287,8 +287,7 @@ class FileStorage:
 
     def get_path(self, file: HashedVideoFile) -> Path:
         """Get path where to find a file with its hash."""
-        file_name = file.hash + file.file_extension
-        return Path(self.storage_dir, file.hash[0:2], file_name)
+        return Path(self.storage_dir, rel_path(str(file)))
 
     def get_path_in_temp(self, file: HashedVideoFile) -> Path:
         return TempFile.get_path(self.temp_dir, file)
@@ -296,7 +295,7 @@ class FileStorage:
     def get_thumb_path(self, file: HashedVideoFile, thumb_nr: int) -> Path:
         """Get path where to find a thumbnail with a hash."""
         file_name = file.hash + "_" + str(thumb_nr) + THUMB_EXT
-        return Path(self.storage_dir, file.hash[0:2], file_name)
+        return Path(self.storage_dir, rel_path(file_name))
 
     def get_thumb_path_in_temp(self, file: HashedVideoFile, thumb_nr: int) -> Path:
         return TempFile.get_thumb_path(self.temp_dir, file, thumb_nr)

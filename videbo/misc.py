@@ -2,6 +2,7 @@ import asyncio
 import os
 import logging
 import re
+from pathlib import Path
 from typing import Set, Any, Optional, Callable, Awaitable
 
 logger = logging.getLogger('videbo-misc')
@@ -18,6 +19,16 @@ def sanitize_filename(filename: str) -> str:
     filename = re.sub(r"[^\w \d\-_~,;\[\]().]", "", filename, 0, re.ASCII)  # \w should only match ASCII letters
     filename = re.sub(r"[.]{2,}", ".", filename)
     return filename
+
+
+def rel_path(filename: str) -> Path:
+    """
+    Returns a relative path from a file's name.
+    The path starts with a directory named with the first two characters of the filename followed by the file itself.
+    """
+    if len(Path(filename).parts) != 1:
+        raise ValueError(f"'{filename}' is not a valid filename")
+    return Path(filename[:2], filename)
 
 
 class TaskManager:

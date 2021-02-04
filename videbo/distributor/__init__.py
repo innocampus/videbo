@@ -12,7 +12,7 @@ class DistributorSettings(SettingsSectionBase):
     files_path: PurePath
     leave_free_space_mb: int
     nginx_x_accel_location: str
-    nginx_x_accel_limit_rate_kbit: int
+    nginx_x_accel_limit_rate_mbit: float
     server_status_page: str
     last_request_safety_hours: int
 

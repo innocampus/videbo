@@ -2,6 +2,8 @@ import functools
 import inspect
 import logging
 import pydantic
+import urllib.parse
+from pathlib import Path
 from json import JSONDecodeError
 from typing import Optional, Type, List, Dict, Union, Any, Tuple, Callable
 from time import time
@@ -9,7 +11,9 @@ from aiohttp import web, ClientResponse, ClientSession, ClientError, ClientTimeo
 from aiohttp.web_exceptions import HTTPException, HTTPBadRequest, HTTPUnauthorized
 from videbo.auth import BaseJWTData, internal_jwt_encode, external_jwt_encode, JWT_ISS_EXTERNAL, JWT_ISS_INTERNAL
 from . import settings
-from .misc import TaskManager
+from .misc import TaskManager, sanitize_filename
+from .video import get_content_type_for_video
+
 
 web_logger = logging.getLogger('videbo-web')
 
@@ -114,6 +118,51 @@ def ensure_no_reverse_proxy(func):
         return await func(request, *args, **kwargs)
 
     return wrapper
+
+
+def get_x_accel_headers(redirect_uri: str, limit_rate_bytes: int = None) -> Dict[str, str]:
+    headers = {'X-Accel-Redirect': redirect_uri}
+    if limit_rate_bytes:
+        headers['X-Accel-Limit-Rate'] = str(limit_rate_bytes)
+    return headers
+
+
+def get_x_accel_limit_rate(in_mbit: float) -> int:
+    if in_mbit is None:
+        return 0
+    return int(in_mbit * 2*20 / 8)
+
+
+def file_serve_response(path: Path, x_accel: bool, downloadas: str = None,
+                        x_accel_limit_rate: float = None) -> web.StreamResponse:
+    """
+    Constructs a response object to serve a file either "as is" or via NGINX X-Accel capabilities.
+
+    Args:
+        path:
+            Either the actual full path to the file or the X-Accel-Redirect URI
+        x_accel:
+            If `True`, the response will not reference the file directly, but instead contain relevant X-Accel headers;
+            otherwise a FileResponse is returned.
+        downloadas (optional):
+            The `downloadas` value of the request's query
+        x_accel_limit_rate (optional):
+            Passed to the `get_x_accel_limit_rate` function to get the X-Accel-Limit-Rate value in bytes
+
+    Returns:
+        An appropriately constructed `aiohttp.web.Response` object, if X-Accel is to be used,
+        and a `aiohttp.web.FileResponse` object for the provided file path otherwise.
+    """
+    headers = {'Cache-Control': 'private, max-age=50400'}
+    if downloadas:
+        filename = sanitize_filename(downloadas)
+        filename = urllib.parse.quote(filename)
+        headers['Content-Disposition'] = f'attachment; filename="{filename}"'
+    if x_accel:
+        headers.update(get_x_accel_headers(str(path), get_x_accel_limit_rate(x_accel_limit_rate)))
+        content_type = get_content_type_for_video(''.join(path.suffixes))
+        return web.Response(headers=headers, content_type=content_type)
+    return web.FileResponse(path, headers=headers)
 
 
 class JSONBaseModel(pydantic.BaseModel):
