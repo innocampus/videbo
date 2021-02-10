@@ -245,7 +245,6 @@ async def save_file(request: Request, jwt_data: SaveFileJWTData):
     if not jwt_data.is_allowed_to_save_file:
         storage_logger.info('unauthorized request')
         raise HTTPForbidden()
-
     file = HashedVideoFile(request.match_info['hash'], request.match_info['file_ext'])
     try:
         file_storage = FileStorage.get_instance()
@@ -254,8 +253,7 @@ async def save_file(request: Request, jwt_data: SaveFileJWTData):
         await file_storage.add_thumbs_from_temp(file, thumb_count)
     except FileNotFoundError:
         storage_logger.error('Cannot save file with hash %s to video, file does not exist.', file.hash)
-        return json_response({'status': 'error', 'error': 'file_does_not_exist'})
-
+        return json_response({'status': 'error', 'error': 'file_does_not_exist'}, status=404)
     return json_response({'status': 'ok'})
 
 
@@ -325,7 +323,7 @@ async def request_file(request: Request, jwt_data: RequestFileJWTData):
     if x_accel:
         path = Path(storage_settings.nginx_x_accel_location, rel_path(str(video)))
     dl = request.query.get('downloadas')
-    limit_rate = float(jwt_data.iss != JWT_ISS_INTERNAL and storage_settings.x_accel_limit_rate)
+    limit_rate = float(jwt_data.iss != JWT_ISS_INTERNAL and storage_settings.nginx_x_accel_limit_rate_mbit)
     return file_serve_response(path, x_accel, dl, limit_rate)
 
 

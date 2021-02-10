@@ -10,10 +10,9 @@ class LMSSitesCollection:
     @staticmethod
     def get_all() -> "LMSSitesCollection":
         collection = LMSSitesCollection()
-        urls = settings.lms.moodle_base_urls
-        for url in map(str.strip, urls.split(',')):
-            collection.sites.append(MoodleAPI(url))
-
+        for url in map(str.strip, settings.lms.moodle_base_urls.split(',')):
+            if url:
+                collection.sites.append(MoodleAPI(url))
         return collection
 
 

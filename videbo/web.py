@@ -130,7 +130,7 @@ def get_x_accel_headers(redirect_uri: str, limit_rate_bytes: int = None) -> Dict
 def get_x_accel_limit_rate(in_mbit: float) -> int:
     if in_mbit is None:
         return 0
-    return int(in_mbit * 2*20 / 8)
+    return int(in_mbit * 2**20 / 8)
 
 
 def file_serve_response(path: Path, x_accel: bool, downloadas: str = None,

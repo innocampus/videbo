@@ -132,5 +132,5 @@ async def request_file(request: Request, jwt_data: RequestFileJWTData):
     else:
         path = file_controller.get_path(video)
     dl = request.query.get('downloadas')
-    limit_rate = float(jwt_data.iss != JWT_ISS_INTERNAL and distributor_settings.x_accel_limit_rate)
+    limit_rate = float(jwt_data.iss != JWT_ISS_INTERNAL and distributor_settings.nginx_x_accel_limit_rate_mbit)
     return file_serve_response(path, x_accel, dl, limit_rate)
