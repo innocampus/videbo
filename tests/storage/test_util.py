@@ -359,7 +359,7 @@ class FileStorageTestCase(BaseTestCase):
         mock_video_cls.assert_called_once_with(video_config=mock_init_vid_config)
         mock_video_config_cls.assert_called_once_with(self.mock_settings)
         test_offset = int(test_video_length / test_thumb_count * (thumb_number + 0.5))
-        test_temp_out_file = Path(self.storage.temp_out_dir, mock_file_hash + "_" + str(thumb_number) + util.THUMB_EXT)
+        test_temp_out_file = Path(self.storage.temp_out_dir, mock_file_hash + "_" + str(thumb_number) + util.JPG_EXT)
         mock_save_thumbnail.assert_called_once_with(mock_video_file, mock_thumb_path, test_offset, test_thumb_height,
                                                     temp_output_file=test_temp_out_file)
 
@@ -418,7 +418,7 @@ class FileStorageTestCase(BaseTestCase):
     def test_get_thumb_path(self):
         test_hash, test_number = 'foo', 0
         mock_file = MagicMock(hash=test_hash)
-        expected_name = test_hash + "_" + str(test_number) + util.THUMB_EXT
+        expected_name = test_hash + "_" + str(test_number) + util.JPG_EXT
         expected_output = Path(self.storage.storage_dir, test_hash[0:2], expected_name)
         output = self.storage.get_thumb_path(mock_file, test_number)
         self.assertEqual(output, expected_output)
@@ -823,7 +823,7 @@ class TempFileTestCase(BaseTestCase):
     def test_get_thumb_path(self):
         test_hash = 'foo'
         test_temp_dir, test_file, test_number = Path('test'), MagicMock(hash=test_hash), 1
-        expected_output = Path(test_temp_dir, test_hash + "_" + str(test_number) + util.THUMB_EXT)
+        expected_output = Path(test_temp_dir, test_hash + "_" + str(test_number) + util.JPG_EXT)
         output = self.obj.get_thumb_path(test_temp_dir, test_file, test_number)
         self.assertEqual(output, expected_output)
 

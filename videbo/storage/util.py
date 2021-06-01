@@ -8,7 +8,7 @@ from pathlib import Path
 from copy import deepcopy
 from typing import Optional, Union, Dict, BinaryIO, List, Iterable, Tuple
 
-from videbo.misc import TaskManager, gather_in_batches, rel_path
+from videbo.misc import TaskManager, MemorySizeLRU, gather_in_batches, rel_path
 from videbo.lms_api import LMSSitesCollection, LMSAPIError
 from videbo.video import VideoInfo
 from videbo.video import Video
@@ -22,8 +22,8 @@ from .exceptions import HashedFileInvalidExtensionError, CouldNotCreateTempDir
 from .api.models import FileType
 
 FILE_EXT_WHITELIST = ('.mp4', '.webm')
-THUMB_EXT = '.jpg'
-VALID_EXTENSIONS = frozenset(FILE_EXT_WHITELIST + (THUMB_EXT, ))
+JPG_EXT = '.jpg'  # for thumbnails
+VALID_EXTENSIONS = frozenset(FILE_EXT_WHITELIST + (JPG_EXT,))
 
 
 class HashedVideoFile:
@@ -119,6 +119,7 @@ class FileStorage:
         self.temp_out_dir: Path = Path(self.temp_dir, "out")
         self._cached_files: _StoredFilesDict = {}  # map hashes to files
         self._cached_files_total_size: int = 0  # in bytes
+        self.thumb_memory_cache = MemorySizeLRU(storage_settings.thumb_cache_max_mb * 1024 * 1024)
         self.distribution_controller: DistributionController = DistributionController()
 
         create_dir_if_not_exists(self.temp_dir, 0o755)
@@ -268,7 +269,7 @@ class FileStorage:
             offset = int(video_length / thumb_count * (thumb_nr + 0.5))
             temp_out_file = None
             if video_check_user is not None:
-                temp_out_file = Path(self.temp_out_dir, file.hash + "_" + str(thumb_nr) + THUMB_EXT)
+                temp_out_file = Path(self.temp_out_dir, file.hash + "_" + str(thumb_nr) + JPG_EXT)
             tasks.append(Video(video_config=VideoConfig(storage_settings)).save_thumbnail(
                 video.video_file, thumb_path, offset, thumb_height, temp_output_file=temp_out_file))
         await asyncio.gather(*tasks)
@@ -294,7 +295,7 @@ class FileStorage:
 
     def get_thumb_path(self, file: HashedVideoFile, thumb_nr: int) -> Path:
         """Get path where to find a thumbnail with a hash."""
-        file_name = file.hash + "_" + str(thumb_nr) + THUMB_EXT
+        file_name = file.hash + "_" + str(thumb_nr) + JPG_EXT
         return Path(self.storage_dir, rel_path(file_name))
 
     def get_thumb_path_in_temp(self, file: HashedVideoFile, thumb_nr: int) -> Path:
@@ -492,7 +493,7 @@ class TempFile:
 
     @classmethod
     def get_thumb_path(cls, temp_dir: Path, file: HashedVideoFile, thumb_nr: int) -> Path:
-        file_name = file.hash + "_" + str(thumb_nr) + THUMB_EXT
+        file_name = file.hash + "_" + str(thumb_nr) + JPG_EXT
         return Path(temp_dir, file_name)
 
     async def delete(self) -> None:

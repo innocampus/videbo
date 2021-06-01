@@ -6,7 +6,7 @@ from distutils.util import strtobool
 from pathlib import Path
 
 from aiohttp import BodyPartReader
-from aiohttp.web import Request, Response
+from aiohttp.web import Request, Response, StreamResponse
 from aiohttp.web import json_response
 from aiohttp.web import RouteTableDef
 from aiohttp.web_exceptions import HTTPBadRequest
@@ -17,7 +17,7 @@ from aiohttp.web_exceptions import HTTPInternalServerError
 from aiohttp.web_exceptions import HTTPFound, HTTPServiceUnavailable
 
 from videbo.web import ensure_json_body, register_route_with_cors, json_response as model_json_response
-from videbo.web import ensure_no_reverse_proxy, file_serve_response
+from videbo.web import ensure_no_reverse_proxy, file_serve_response, file_serve_headers
 from videbo.auth import external_jwt_encode
 from videbo.auth import ensure_jwt_data_and_role
 from videbo.auth import Role, JWT_ISS_INTERNAL
@@ -41,6 +41,7 @@ from videbo.storage.exceptions import FileTooBigError
 from videbo.storage.exceptions import FormFieldMissing, BadFileExtension
 from videbo.storage.util import HashedVideoFile, StoredHashedVideoFile
 from videbo.storage.util import is_allowed_file_ending, schedule_video_delete
+from videbo.storage.util import JPG_EXT
 from videbo.exceptions import InvalidMimeTypeError, InvalidVideoError, FFProbeError
 
 from videbo.storage import storage_logger
@@ -53,6 +54,8 @@ EXTERNAL_JWT_LIFE_TIME = 3600
 
 MEGA = 1024 * 1024
 CHUNK_SIZE_DEFAULT = 300 * 1024  # in bytes
+
+CONTENT_TYPES = {JPG_EXT: 'image/jpeg'}
 
 
 def generate_video_url(video: HashedVideoFile, temp: bool) -> str:
@@ -272,53 +275,43 @@ async def delete_file(request: Request, jwt_data: DeleteFileJWTData):
 
 @routes.get('/file')
 @ensure_jwt_data_and_role(Role.client)
-async def request_file(request: Request, jwt_data: RequestFileJWTData):
-    """Serve a video or a thumbnail."""
-
-    # Check all required data.
+async def request_file(request: Request, jwt_data: RequestFileJWTData) -> StreamResponse:
+    """
+    Serve a video or a thumbnail.
+    The JWT must contain a valid `type` attribute (as defined in the `FileType` Enum class) for the request to be
+    processed at all.
+    If an external request is made for a video file, the request may be redirected to a distributor node;
+    if the `video_check_redirect` function decides that it should in fact redirect, a 302 status is raised,
+    and the function is "interrupted".
+    If a thumbnail is requested, the further handling is passed on to `handle_thumbnail_request`.
+    Thus, this function only returns a file serving response itself, if none of the above mentioned conditions are met.
+    If so configured, X-Accel capabilities will be used in that case.
+    """
+    if not FileType.is_valid(jwt_data.type.value):
+        storage_logger.info(f"unknown request type: {jwt_data.type}")
+        raise HTTPBadRequest()
     video = HashedVideoFile(jwt_data.hash, jwt_data.file_ext)
     file_storage = FileStorage.get_instance()
-
     if jwt_data.type == FileType.VIDEO:
         # Record the video access and find out if this node serves the file or should redirect to a distributor node.
         try:
             video = await file_storage.get_file(jwt_data.hash, jwt_data.file_ext)
         except FileNotFoundError:
             raise HTTPNotFound()
-
         # Only consider redirecting the client when it is an external request.
         if jwt_data.iss != JWT_ISS_INTERNAL:
             file_storage.distribution_controller.count_file_access(video, jwt_data.rid)
             await video_check_redirect(request, video, jwt_data.rid)
-
-        access_logger.info(f"serve video with hash {video}")
+        access_logger.info(f"serve video with hash {jwt_data.hash}")
         path = file_storage.get_path(video)
-
     elif jwt_data.type == FileType.VIDEO_TEMP:
-        access_logger.info(f"serve temp video with hash {video}")
+        access_logger.info(f"serve temp video with hash {jwt_data.hash}")
         path = file_storage.get_path_in_temp(video)
-
-    elif jwt_data.type == FileType.THUMBNAIL or jwt_data.type == FileType.THUMBNAIL_TEMP:
-        if jwt_data.thumb_id is None:
-            storage_logger.info('thumb ID is None in JWT')
-            raise HTTPBadRequest()
-
-        if jwt_data.type == FileType.THUMBNAIL:
-            access_logger.info(f"serve thumbnail {jwt_data.thumb_id} for video with hash {video}")
-            path = file_storage.get_thumb_path(video, jwt_data.thumb_id)
-
-        else:
-            access_logger.info(f"serve temp thumbnail {jwt_data.thumb_id} for video with hash {video}")
-            path = file_storage.get_thumb_path_in_temp(video, jwt_data.thumb_id)
-    else:
-        storage_logger.info(f"unknown request type: {jwt_data.type}")
-        raise HTTPBadRequest()
-
-    # Check if the file really exists. If a video file is requested we already know the file should exist.
-    if jwt_data.type != FileType.VIDEO and not (await asyncio.get_event_loop().run_in_executor(None, path.is_file)):
-        storage_logger.warn(f"file does not exist: {path}")
-        raise HTTPNotFound()
-
+    else:  # can only be a thumbnail request, since we check for a valid type in the beginning
+        return await handle_thumbnail_request(jwt_data)
+    # If a video file is requested we already know the file should exist.
+    if jwt_data.type != FileType.VIDEO:
+        await verify_file_exists(path)
     x_accel = bool(storage_settings.nginx_x_accel_location)
     if x_accel:
         path = Path(storage_settings.nginx_x_accel_location, rel_path(str(video)))
@@ -398,6 +391,42 @@ def get_own_tx_load() -> float:
         return 0
     iface = network.get_interface(interfaces[0])
     return (iface.tx_throughput * 8 / 1_000_000) / storage_settings.tx_max_rate_mbit
+
+
+async def verify_file_exists(path: Path) -> None:
+    if not await asyncio.get_event_loop().run_in_executor(None, path.is_file):
+        storage_logger.warn(f"file does not exist: {path}")
+        raise HTTPNotFound()
+
+
+async def handle_thumbnail_request(jwt_data: RequestFileJWTData) -> Response:
+    """
+    Returns a regular `Response` with the previously cached thumbnail data.
+    Uses the `FileStorage` instance's capabilities of storing recently requested thumbnails in RAM.
+    The usual sanity checks apply.
+    """
+    video = HashedVideoFile(jwt_data.hash, jwt_data.file_ext)
+    file_storage = FileStorage.get_instance()
+    if jwt_data.thumb_id is None:
+        storage_logger.info("thumb ID is None in JWT")
+        raise HTTPBadRequest()
+    if jwt_data.type == FileType.THUMBNAIL:
+        access_logger.info(f"serve thumbnail {jwt_data.thumb_id} for video with hash {video}")
+        path = file_storage.get_thumb_path(video, jwt_data.thumb_id)
+    else:
+        access_logger.info(f"serve temp thumbnail {jwt_data.thumb_id} for video with hash {video}")
+        path = file_storage.get_thumb_path_in_temp(video, jwt_data.thumb_id)
+    await verify_file_exists(path)
+    bytes_data = file_storage.thumb_memory_cache.get(path)
+    if bytes_data is None:
+        def read_entire_file_and_close_it() -> bytes:
+            with open(path, 'rb') as f:
+                return f.read()
+        bytes_data = await asyncio.get_event_loop().run_in_executor(None, read_entire_file_and_close_it)
+        # Setting cache maximum size to 0 effectively disables keeping the data:
+        if storage_settings.thumb_cache_max_mb > 0:
+            file_storage.thumb_memory_cache[path] = bytes_data
+    return Response(body=bytes_data, content_type=CONTENT_TYPES[path.suffix], headers=file_serve_headers())
 
 
 @routes.post(r'/api/storage/distributor/add')

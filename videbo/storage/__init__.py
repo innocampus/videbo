@@ -26,6 +26,7 @@ class StorageSettings(SettingsSectionBase):
     dist_redirect_prevent_hours: float
     nginx_x_accel_location: str
     nginx_x_accel_limit_rate_mbit: float
+    thumb_cache_max_mb: int
 
     def load(self):
         super().load()

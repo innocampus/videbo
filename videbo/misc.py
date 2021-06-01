@@ -2,6 +2,8 @@ import asyncio
 import os
 import logging
 import re
+import sys
+from collections import OrderedDict
 from pathlib import Path
 from typing import Set, Any, Optional, Callable, Awaitable
 
@@ -82,6 +84,39 @@ class Periodic:
 
     def stop(self, msg: str = None) -> bool:
         return self._task.cancel(msg)
+
+
+class SizeError(Exception):
+    pass
+
+
+class MemorySizeLRU(OrderedDict):
+    """Limit object memory size, evicting the least recently looked-up key when full."""
+    def __init__(self, max_bytes: int, /, *args, **kwargs):
+        self.max_bytes = max_bytes
+        super().__init__(*args, **kwargs)
+        if sys.getsizeof(self) > self.max_bytes:
+            raise SizeError(f"Items exceed maxsize of {self.max_bytes} bytes")
+
+    def __getitem__(self, key):
+        value = super().__getitem__(key)
+        self.move_to_end(key)
+        return value
+
+    def __setitem__(self, key, value):
+        if key in self:
+            self.move_to_end(key)
+        super().__setitem__(key, value)
+        if sys.getsizeof(self) > 2 * self.max_bytes:
+            # If size is more than twice the maximum, the new item itself must be larger than the maximum;
+            # if we allowed this, the following loop would remove all items from the dictionary,
+            # so we remove the item and raise an error to allow exceptions for this case.
+            del self[key]
+            raise SizeError(f"Item itself exceeds maxsize of {self.max_bytes} bytes")
+        # If size is too large now, remove items until it is less than or equal to `maxsize`
+        iterator = iter(self)
+        while sys.getsizeof(self) > self.max_bytes:
+            del self[next(iterator)]  # delete oldest item
 
 
 async def gather_in_batches(batch_size: int, *aws, return_exceptions: bool = False) -> list:

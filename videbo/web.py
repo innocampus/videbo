@@ -153,16 +153,19 @@ def file_serve_response(path: Path, x_accel: bool, downloadas: str = None,
         An appropriately constructed `aiohttp.web.Response` object, if X-Accel is to be used,
         and a `aiohttp.web.FileResponse` object for the provided file path otherwise.
     """
-    headers = {'Cache-Control': 'private, max-age=50400'}
-    if downloadas:
-        filename = sanitize_filename(downloadas)
-        filename = urllib.parse.quote(filename)
-        headers['Content-Disposition'] = f'attachment; filename="{filename}"'
+    headers = file_serve_headers(downloadas)
     if x_accel:
         headers.update(get_x_accel_headers(str(path), get_x_accel_limit_rate(x_accel_limit_rate)))
         content_type = get_content_type_for_video(''.join(path.suffixes))
         return web.Response(headers=headers, content_type=content_type)
     return web.FileResponse(path, headers=headers)
+
+
+def file_serve_headers(downloadas: str = None) -> Dict[str, str]:
+    headers = {'Cache-Control': 'private, max-age=50400'}
+    if downloadas:
+        headers['Content-Disposition'] = f'attachment; filename="{urllib.parse.quote(sanitize_filename(downloadas))}"'
+    return headers
 
 
 class JSONBaseModel(pydantic.BaseModel):
