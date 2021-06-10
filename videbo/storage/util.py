@@ -8,7 +8,7 @@ from pathlib import Path
 from copy import deepcopy
 from typing import Optional, Union, Dict, BinaryIO, List, Iterable, Tuple
 
-from videbo.misc import TaskManager, MemorySizeLRU, gather_in_batches, rel_path
+from videbo.misc import TaskManager, BytesLimitLRU, gather_in_batches, rel_path
 from videbo.lms_api import LMSSitesCollection, LMSAPIError
 from videbo.video import VideoInfo
 from videbo.video import Video
@@ -119,7 +119,7 @@ class FileStorage:
         self.temp_out_dir: Path = Path(self.temp_dir, "out")
         self._cached_files: _StoredFilesDict = {}  # map hashes to files
         self._cached_files_total_size: int = 0  # in bytes
-        self.thumb_memory_cache = MemorySizeLRU(storage_settings.thumb_cache_max_mb * 1024 * 1024)
+        self.thumb_memory_cache = BytesLimitLRU(storage_settings.thumb_cache_max_mb * 1024 * 1024)
         self.distribution_controller: DistributionController = DistributionController()
 
         create_dir_if_not_exists(self.temp_dir, 0o755)
