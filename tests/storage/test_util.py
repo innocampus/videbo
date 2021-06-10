@@ -36,7 +36,7 @@ class StoredHashedVideoFileTestCase(BaseTestCase):
 
     @patch(TESTED_MODULE_PATH + '.FileNodes')
     @patch(TESTED_MODULE_PATH + '.HashedVideoFile.__init__')
-    def test_init(self, mock_superclass_init, mock_file_nodes):
+    def test_init(self, mock_superclass_init: MagicMock, mock_file_nodes: MagicMock) -> None:
         mock_nodes_obj = 'mock'
         mock_file_nodes.return_value = mock_nodes_obj
 
@@ -50,7 +50,39 @@ class StoredHashedVideoFileTestCase(BaseTestCase):
 
     @patch(TESTED_MODULE_PATH + '.FileNodes')
     @patch(TESTED_MODULE_PATH + '.HashedVideoFile.__init__')
-    def test_lt(self, *_):
+    def test_init_dist_by(self, *_: MagicMock) -> None:
+        test_hash, test_ext = 'test', '.ext'
+        obj = util.StoredHashedVideoFile(file_hash=test_hash, file_extension=test_ext)
+        test_user_rid = 'foo'
+        clocked = time.time()
+        obj.init_dist_by(test_user_rid)
+        t, rid = getattr(obj, '_dist_initiated')
+        self.assertLess(t, time.time())
+        self.assertGreater(t, clocked)
+        self.assertEqual(test_user_rid, rid)
+
+    @patch(TESTED_MODULE_PATH + '.FileNodes')
+    @patch(TESTED_MODULE_PATH + '.HashedVideoFile.__init__')
+    def test_prevent_redirect(self, *_: MagicMock) -> None:
+        test_hash, test_ext = 'test', '.ext'
+        obj = util.StoredHashedVideoFile(file_hash=test_hash, file_extension=test_ext)
+        setattr(obj, '_dist_initiated', None)
+        self.assertFalse(obj.prevent_redirect('foo'))
+        init_time, init_rid = time.time(), 'foo'
+        setattr(obj, '_dist_initiated', (init_time, init_rid))
+        self.assertFalse(obj.prevent_redirect('bar'))
+        with patch(STORAGE_SETTINGS_PATH) as mock_settings:
+            mock_settings.dist_redirect_prevent_hours = 1/3600
+            time.sleep(1)
+            self.assertFalse(obj.prevent_redirect(init_rid))
+            self.assertIsNone(getattr(obj, '_dist_initiated'))
+            setattr(obj, '_dist_initiated', (init_time, init_rid))
+            mock_settings.dist_redirect_prevent_hours = 1
+            self.assertTrue(obj.prevent_redirect(init_rid))
+
+    @patch(TESTED_MODULE_PATH + '.FileNodes')
+    @patch(TESTED_MODULE_PATH + '.HashedVideoFile.__init__')
+    def test_lt(self, *_: MagicMock) -> None:
         test_hash, test_ext = 'test', '.ext'
         obj = util.StoredHashedVideoFile(file_hash=test_hash, file_extension=test_ext)
         obj.views = 10
@@ -67,7 +99,8 @@ class FileStorageTestCase(BaseTestCase):
         # All kinds of mocking:
         self.settings_patcher = patch(STORAGE_SETTINGS_PATH)
         self.mock_settings = self.settings_patcher.start()
-        self.mock_settings.videos_path = self.path
+        self.mock_settings.files_path = self.path
+        self.mock_settings.thumb_cache_max_mb = 0
 
         self.dist_controller_patcher = patch(TESTED_MODULE_PATH + '.DistributionController')
         self.mock_dist_controller = self.dist_controller_patcher.start()
@@ -400,13 +433,15 @@ class FileStorageTestCase(BaseTestCase):
         mock_os.fdopen.assert_called_once_with(mock_fd, mode='wb')
         mock_tempfile_cls.assert_called_once_with(mock_io, Path(mock_path), self.storage)
 
-    def test_get_path(self):
-        test_hash, test_ext = 'foo', 'bar'
-        mock_file = MagicMock(hash=test_hash, file_extension=test_ext)
-        expected_name = test_hash + test_ext
-        expected_output = Path(self.storage.storage_dir, test_hash[0:2], expected_name)
+    @patch.object(util, 'rel_path')
+    def test_get_path(self, mock_rel_path):
+        mock_path = Path('foo/bar')
+        mock_rel_path.return_value = mock_path
+        mock_file = MagicMock()
+        expected_output = Path(self.storage.storage_dir, mock_path)
         output = self.storage.get_path(mock_file)
         self.assertEqual(output, expected_output)
+        mock_rel_path.assert_called_once_with(str(mock_file))
 
     @patch.object(util.TempFile, 'get_path')
     def test_get_path_in_temp(self, mock_temp_file_get_path):
