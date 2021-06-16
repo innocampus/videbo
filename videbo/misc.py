@@ -77,8 +77,10 @@ class Periodic:
             i += 1
 
     def __call__(self, interval_seconds: int, limit: int = None, call_immediately: bool = False) -> None:
-        self._task = asyncio.get_event_loop().create_task(self.loop(interval_seconds, limit, call_immediately),
-                                                          name=self.task_name)
+        self._task = asyncio.get_event_loop().create_task(
+            self.loop(interval_seconds, limit, call_immediately),
+            # name=self.task_name  # 3.8 required
+        )
         TaskManager.fire_and_forget_task(self._task)
 
     def stop(self, msg: str = None) -> bool:
@@ -95,7 +97,7 @@ class BytesLimitLRU(OrderedDict):
     Only `bytes` type values are accepted. Their size is calculated by passing them into the builtin `len()` function.
     """
 
-    def __init__(self, max_bytes: int, other: Iterable[Tuple[Hashable, bytes]] = (), /, **kwargs: bytes) -> None:
+    def __init__(self, max_bytes: int, other: Iterable[Tuple[Hashable, bytes]] = (), **kwargs: bytes) -> None:
         """
         Uses the `dict` constructor to initialize; in addition the `.max_bytes` attribute is set and the protected
         attribute `._total_bytes` used for keeping track of the total size of the values stored is initialized.
