@@ -6,7 +6,7 @@ from videbo.settings import SettingsSectionBase
 
 
 class StorageSettings(SettingsSectionBase):
-    _section = "storage"
+    _section = 'storage'
     http_port: int
     files_path: PurePath
     public_base_url: str
@@ -18,6 +18,7 @@ class StorageSettings(SettingsSectionBase):
     binary_ffmpeg: str
     binary_ffprobe: str
     tx_max_rate_mbit: int
+    static_dist_node_base_urls: str
     server_status_page: str
     copy_to_dist_views_threshold: int
     reset_views_every_hours: int
@@ -55,8 +56,7 @@ def start() -> None:
     async def on_http_startup(app):
         from .util import FileStorage
         NetworkInterfaces.get_instance().start_fetching(storage_settings.server_status_page, storage_logger)
-        storage = FileStorage.get_instance()  # init instance
-        storage.load_file_list()  # This actually does blocking io, but it is only done once.
+        FileStorage.get_instance()  # init instance
 
     async def on_http_cleanup(app):
         await NetworkInterfaces.get_instance().stop_fetching()

@@ -1,7 +1,8 @@
 from enum import Enum
-from typing import Optional, List, FrozenSet
+from typing import Optional, List, FrozenSet, Dict
 
 from videbo.web import BaseJWTData, JSONBaseModel
+from videbo.distributor.api.models import DistributorStatus
 
 
 class FileType(Enum):
@@ -70,6 +71,10 @@ class StorageFilesList(JSONBaseModel):
 
 class DistributorNodeInfo(JSONBaseModel):
     base_url: str
+
+
+class DistributorStatusDict(JSONBaseModel):
+    nodes: Dict[str, DistributorStatus]  # keys are base urls
 
 
 class DeleteFilesList(JSONBaseModel):

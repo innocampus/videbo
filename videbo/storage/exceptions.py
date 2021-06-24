@@ -31,3 +31,19 @@ class NoValidFileInRequestError(Exception):
 
 class FileTooBigError(Exception):
     pass
+
+
+class DistStatusUnknown(Exception):
+    pass
+
+
+class UnknownDistURL(Exception):
+    pass
+
+
+class DistAlreadyDisabled(Exception):
+    pass
+
+
+class DistAlreadyEnabled(Exception):
+    pass

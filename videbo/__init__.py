@@ -1,8 +1,16 @@
-import argparse
 import logging
 import sys
+from argparse import ArgumentParser
 from pathlib import Path
+
 from .settings import Settings
+
+
+# CLI parameters:
+APP = 'app'
+STORAGE, DISTRIBUTOR, CLI = 'storage', 'distributor', 'cli'
+CONFIG = 'config'
+HTTP_HOST, HTTP_PORT = 'http_host', 'http_port'
 
 # Globals that may be useful for all nodes.
 settings = Settings()
@@ -10,58 +18,59 @@ settings = Settings()
 
 def load_general_settings(cli_only_config: bool = False) -> None:
     """Load all settings that are needed for all nodes."""
-    # log level
     logging.basicConfig(level=logging.INFO)
-
-    # get CLI arguments
-    parser = argparse.ArgumentParser()
-    parser.add_argument('--config', help='path to config file', default=None)
+    default_config_file_path = Path(settings.topdir, 'config.ini')
+    # Construct CLI parameters:
+    parser = ArgumentParser()
+    parser.add_argument(
+        '-c', f'--{CONFIG}',
+        type=Path,
+        default=default_config_file_path,
+        help=f"Path to config file; defaults to {default_config_file_path}"
+    )
     if not cli_only_config:
-        parser.add_argument('--http-port', help='http api port', default=0, type=int)
-        parser.add_argument('--http-host', help='http api host', default='', type=str)
-        subparsers = parser.add_subparsers(title="Available applications", dest="app")
-        subparsers.add_parser("manager", help="Start manager node")
-        subparsers.add_parser("storage", help="Start storage node")
-        subparsers.add_parser("distributor", help="Start distributor node")
-        cli_tool = subparsers.add_parser("cli", help="CLI tool")
+        parser.add_argument(
+            '-P', f'--{HTTP_PORT}',
+            type=int,
+            default=0,
+            help="http api port"
+        )
+        parser.add_argument(
+            '-H', f'--{HTTP_HOST}',
+            default='',
+            help="http api port"
+        )
+        subparsers = parser.add_subparsers(title="Available applications", dest=APP)
+        subparsers.add_parser(name=STORAGE, help="Start storage node")
+        subparsers.add_parser(name=DISTRIBUTOR, help="Start distributor node")
         from .cli.args import setup_cli_args
-        setup_cli_args(cli_tool)
-
+        setup_cli_args(subparsers.add_parser(name=CLI, help="CLI tool"))
+    # Parse CLI arguments:
     settings.args = parser.parse_args()
-
-    # read config file
-    if settings.args.config is not None:
-        config_file = Path(settings.args.config)
-    else:
-        config_file = Path(settings.topdir + "/config.ini")
-
-    if not config_file.is_file():
-        print(f"Config file does not exist: {config_file}")
+    # Read config file:
+    config_path = getattr(settings.args, CONFIG)
+    if not config_path.is_file():
+        print(f"Config file does not exist: {config_path}")
         sys.exit(3)
-
-    settings.config.read(config_file)
-
+    settings.config.read(config_path)
     # get all config options that are useful for all nodes
     settings.load()
-
     if settings.general.dev_mode:
-        logging.warning('Development mode is enabled. You should enable this mode only during development!')#
+        logging.warning("Development mode is enabled. You should enable this mode only during development!")
 
 
 def call_subprogram():
     # Hand over to node code
-    if settings.args.app == 'manager':
-        from videbo.manager import start
-        start()
-    elif settings.args.app == 'storage':
+    app = getattr(settings.args, APP)
+    if app == STORAGE:
         from videbo.storage import start
         start()
-    elif settings.args.app == 'distributor':
+    elif app == DISTRIBUTOR:
         from videbo.distributor import start
         start()
-    elif settings.args.app == 'cli':
+    elif app == CLI:
         from .cli.args import run
         run(settings.args)
     else:
-        print("Application must be manager, storage or distributor")
+        print("Application must be storage or distributor")
         sys.exit(2)

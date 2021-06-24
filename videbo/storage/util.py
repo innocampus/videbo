@@ -9,6 +9,7 @@ from copy import deepcopy
 from typing import Optional, Union, Dict, BinaryIO, List, Iterable, Tuple
 
 from videbo.misc import TaskManager, BytesLimitLRU, gather_in_batches, rel_path
+from videbo.web import ensure_url_does_not_end_with_slash
 from videbo.lms_api import LMSSitesCollection, LMSAPIError
 from videbo.video import VideoInfo
 from videbo.video import Video
@@ -102,7 +103,7 @@ def create_dir_if_not_exists(path: Union[Path, str], mode: int = 0o777, explicit
 
 class FileStorage:
     """Manages all stored files with their hashes as file names."""
-    _instance: Optional["FileStorage"] = None
+    _instance: Optional['FileStorage'] = None
 
     # garbage collector
     GC_TEMP_FILES_SECS = 12 * 3600
@@ -129,13 +130,15 @@ class FileStorage:
         TaskManager.fire_and_forget_task(self._garbage_collector_task)
 
     @classmethod
-    def get_instance(cls) -> "FileStorage":
+    def get_instance(cls) -> 'FileStorage':
         if cls._instance is None:
             cls._instance = FileStorage(Path(storage_settings.files_path))
+            cls._instance._load_file_list()
+            cls._instance._register_dist_nodes()
             cls._instance.distribution_controller.start_periodic_reset_task()
         return cls._instance
 
-    def load_file_list(self) -> None:
+    def _load_file_list(self) -> None:
         """Load all video files in memory"""
         try:
             for obj in self.storage_dir.glob('**/*'):
@@ -155,6 +158,14 @@ class FileStorage:
         except Exception as e:
             storage_logger.exception(f"{str(e)} in load_file_list")
         storage_logger.info(f"Found {len(self._cached_files)} videos in storage")
+
+    def _register_dist_nodes(self) -> None:
+        urls = storage_settings.static_dist_node_base_urls.split(',')
+        for url in urls:
+            url = url.strip()
+            if len(url) == 0:
+                continue
+            self.distribution_controller.add_new_dist_node(ensure_url_does_not_end_with_slash(url))
 
     def _add_video_to_cache(self, file_hash: str, file_extension: str, file_path: Path) -> StoredHashedVideoFile:
         file = StoredHashedVideoFile(file_hash, file_extension)

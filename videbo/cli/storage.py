@@ -2,8 +2,9 @@ from typing import Optional, List
 from argparse import Namespace
 from urllib.parse import urlencode
 from distutils.util import strtobool
+import json
 
-from videbo.storage.api.models import StorageFilesList, StorageFileInfo, DeleteFilesList
+from videbo.storage.api.models import StorageFilesList, StorageFileInfo, DeleteFilesList, DistributorNodeInfo
 from videbo.web import HTTPClient
 
 
@@ -95,3 +96,34 @@ async def delete_files(*files: StorageFileInfo) -> None:
     for file_hash in ret['not_deleted']:
         print(file_hash)
     print(f"Please check the storage logs for more information.")
+
+
+async def get_distributor_nodes():
+    url = get_storage_url('/api/storage/distributor/status')
+    http_code, ret = await HTTPClient.internal_request_admin('GET', url)
+    if http_code == 200:
+        print("Distributor nodes:")
+        print(json.dumps(ret.nodes, indent=4))
+    else:
+        print_response(http_code)
+
+
+async def set_distributor_state(base_url: str, enabled: bool) -> None:
+    url = get_storage_url(f'/api/storage/distributor/{"en" if enabled else "dis"}able')
+    http_code, ret = await HTTPClient.internal_request_admin('POST', url, DistributorNodeInfo(base_url=base_url))
+    print_response(http_code)
+
+
+async def disable_distributor_node(base_url: str) -> None:
+    await set_distributor_state(base_url, enabled=False)
+
+
+async def enable_distributor_node(base_url: str) -> None:
+    await set_distributor_state(base_url, enabled=True)
+
+
+def print_response(http_code: int):
+    if http_code == 200:
+        print("Successful! Please check storage log output.")
+    else:
+        print(f"HTTP response code {http_code}! Please check storage log output.")

@@ -14,7 +14,7 @@ from aiohttp.web_exceptions import HTTPForbidden
 from aiohttp.web_exceptions import HTTPNotFound
 from aiohttp.web_exceptions import HTTPNotAcceptable
 from aiohttp.web_exceptions import HTTPInternalServerError
-from aiohttp.web_exceptions import HTTPFound, HTTPServiceUnavailable
+from aiohttp.web_exceptions import HTTPOk, HTTPFound, HTTPServiceUnavailable, HTTPGone, HTTPConflict
 
 from videbo.web import ensure_json_body, register_route_with_cors, json_response as model_json_response
 from videbo.web import ensure_no_reverse_proxy, file_serve_response, file_serve_headers
@@ -32,13 +32,14 @@ from videbo.storage.api.models import UploadFileJWTData
 from videbo.storage.api.models import SaveFileJWTData
 from videbo.storage.api.models import DeleteFileJWTData
 from videbo.storage.api.models import RequestFileJWTData
-from videbo.storage.api.models import FileType, StorageStatus, DistributorNodeInfo
+from videbo.storage.api.models import FileType, StorageStatus, DistributorNodeInfo, DistributorStatusDict
 from videbo.storage.api.models import StorageFileInfo, StorageFilesList, DeleteFilesList
 from videbo.storage.distribution import DistributionNodeInfo
 from videbo.storage.util import TempFile
 from videbo.storage.util import FileStorage
 from videbo.storage.exceptions import FileTooBigError
 from videbo.storage.exceptions import FormFieldMissing, BadFileExtension
+from videbo.storage.exceptions import UnknownDistURL, DistAlreadyDisabled, DistAlreadyEnabled
 from videbo.storage.util import HashedVideoFile, StoredHashedVideoFile
 from videbo.storage.util import is_allowed_file_ending, schedule_video_delete
 from videbo.storage.util import JPG_EXT
@@ -430,23 +431,58 @@ async def handle_thumbnail_request(jwt_data: RequestFileJWTData) -> Response:
 
 
 @routes.post(r'/api/storage/distributor/add')
-@ensure_jwt_data_and_role(Role.manager)
+@ensure_jwt_data_and_role(Role.admin)
 @ensure_json_body()
 async def add_dist_node(_request: Request, _jwt_data: BaseJWTData, data: DistributorNodeInfo):
-    await FileStorage.get_instance().distribution_controller.add_new_dist_node(data.base_url)
-    return Response()
+    FileStorage.get_instance().distribution_controller.add_new_dist_node(data.base_url)
+    raise HTTPOk()
 
 
 @routes.post(r'/api/storage/distributor/remove')
-@ensure_jwt_data_and_role(Role.manager)
+@ensure_jwt_data_and_role(Role.admin)
 @ensure_json_body()
 async def remove_dist_node(_request: Request, _jwt_data: BaseJWTData, data: DistributorNodeInfo):
     await FileStorage.get_instance().distribution_controller.remove_dist_node(data.base_url)
-    return Response()
+    raise HTTPOk()
+
+
+async def set_dist_node_state(base_url: str, enabled: bool) -> None:
+    prefix = 'en' if enabled else 'dis'
+    try:
+        FileStorage.get_instance().distribution_controller.set_node_state(base_url, enabled=enabled)
+    except UnknownDistURL:
+        storage_logger.error(f"Request to {prefix}able unknown distributor node with URL `{base_url}`")
+        raise HTTPGone()
+    except (DistAlreadyDisabled, DistAlreadyEnabled):
+        storage_logger.warning(f"Cannot to {prefix}able distributor node `{base_url}`; already {prefix}abled.")
+        raise HTTPConflict()
+    raise HTTPOk()
+
+
+@routes.post(r'/api/storage/distributor/disable')
+@ensure_jwt_data_and_role(Role.admin)
+@ensure_json_body()
+async def disable_dist_node(_request: Request, _jwt_data: BaseJWTData, data: DistributorNodeInfo):
+    await set_dist_node_state(data.base_url, enabled=False)
+
+
+@routes.post(r'/api/storage/distributor/enable')
+@ensure_jwt_data_and_role(Role.admin)
+@ensure_json_body()
+async def enable_dist_node(_request: Request, _jwt_data: BaseJWTData, data: DistributorNodeInfo):
+    await set_dist_node_state(data.base_url, enabled=True)
+
+
+@routes.get(r'/api/storage/distributor/status')
+@ensure_no_reverse_proxy
+@ensure_jwt_data_and_role(Role.admin)
+async def get_all_dist_nodes(_request: Request, _jwt_data: BaseJWTData):
+    nodes_statuses = FileStorage.get_instance().distribution_controller.get_nodes_status()
+    return json_response(DistributorStatusDict(nodes=nodes_statuses))
 
 
 @routes.get(r'/api/storage/status')
-@ensure_jwt_data_and_role(Role.manager)
+@ensure_jwt_data_and_role(Role.admin)
 async def get_status(_request: Request, _jwt_data: BaseJWTData):
     status = StorageStatus.construct()
     storage = FileStorage.get_instance()
