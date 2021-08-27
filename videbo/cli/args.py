@@ -3,17 +3,22 @@ from asyncio import get_event_loop
 from argparse import ArgumentParser, Namespace
 
 from videbo.web import HTTPClient
-from .storage import find_orphaned_files, get_distributor_nodes, enable_distributor_node, disable_distributor_node
+from .storage import (get_status, find_orphaned_files, get_distributor_nodes, enable_distributor_node,
+                      disable_distributor_node)
 
 
 # CLI commands:
+SHOW_STATUS = 'status'
 FIND_ORPHANS = 'find-orphaned-files'
 SHOW_DIST_NODES, DISABLE_DIST, ENABLE_DIST = 'show-dist-nodes', 'disable-dist-node', 'enable-dist-node'
 
 
 def setup_cli_args(parser: ArgumentParser) -> None:
     subparsers = parser.add_subparsers(title="Available CLI commands", dest="cmd", required=True)
-    # Storage commands:
+    subparsers.add_parser(
+        name=SHOW_STATUS,
+        help="Print status details about main storage node."
+    )
     find_orphans = subparsers.add_parser(
         name=FIND_ORPHANS,
         help="Identify files existing in storage that are unknown to any LMS."
@@ -46,7 +51,9 @@ def setup_cli_args(parser: ArgumentParser) -> None:
 def run(args: Namespace) -> None:
     HTTPClient.create_client_session()
     try:
-        if args.cmd == FIND_ORPHANS:
+        if args.cmd == SHOW_STATUS:
+            fut = get_status()
+        elif args.cmd == FIND_ORPHANS:
             fut = find_orphaned_files(args)
         elif args.cmd == SHOW_DIST_NODES:
             fut = get_distributor_nodes()

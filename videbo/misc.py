@@ -6,14 +6,16 @@ from collections import OrderedDict
 from pathlib import Path
 from typing import Set, Any, Optional, Callable, Awaitable, Hashable, Iterable, Tuple
 
+
 logger = logging.getLogger('videbo-misc')
+MEGA = 1024 * 1024
 
 
 async def get_free_disk_space(path: str) -> int:
     """Get free disk space in the given path. Returns MB."""
     st = await asyncio.get_running_loop().run_in_executor(None, os.statvfs, path)
     free_bytes = st.f_bavail * st.f_frsize
-    return int(free_bytes / 1024 / 1024)
+    return int(free_bytes / MEGA)
 
 
 def sanitize_filename(filename: str) -> str:

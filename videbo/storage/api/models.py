@@ -2,6 +2,7 @@ from enum import Enum
 from typing import Optional, List, FrozenSet, Dict
 
 from videbo.web import BaseJWTData, JSONBaseModel
+from videbo.models import NodeStatus
 from videbo.distributor.api.models import DistributorStatus
 
 
@@ -40,16 +41,7 @@ class RequestFileJWTData(BaseJWTData):
     rid: str  # random string identifying the user
 
 
-class StorageStatus(JSONBaseModel):
-    tx_current_rate: int  # in Mbit/s
-    tx_max_rate: int  # in Mbit/s
-    rx_current_rate: int  # in Mbit/s
-    tx_total: int  # in MB
-    rx_total: int  # in MB
-    current_connections: Optional[int]  # HTTP connections serving videos
-    files_total_size: int  # in MB
-    files_count: int
-    free_space: int  # in MB
+class StorageStatus(NodeStatus):
     distributor_nodes: List[str]  # list of base_urls
 
 

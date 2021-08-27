@@ -4,7 +4,8 @@ from urllib.parse import urlencode
 from distutils.util import strtobool
 import json
 
-from videbo.storage.api.models import StorageFilesList, StorageFileInfo, DeleteFilesList, DistributorNodeInfo
+from videbo.storage.api.models import (StorageFilesList, StorageFileInfo, DeleteFilesList, DistributorNodeInfo,
+                                       StorageStatus)
 from videbo.web import HTTPClient
 
 
@@ -12,6 +13,16 @@ def get_storage_url(path: str) -> str:
     from videbo import settings
     port = settings.get_config('storage', 'http_port')
     return f'http://localhost:{port}{path}'
+
+
+async def get_status():
+    url = get_storage_url('/api/storage/status')
+    # We parse the model back and forth to have the dictionary in the correct order:
+    http_code, ret = await HTTPClient.internal_request_admin('GET', url, None, StorageStatus)
+    if http_code == 200:
+        print(json.dumps(ret.dict(), indent=4))
+    else:
+        print_response(http_code)
 
 
 async def find_orphaned_files(args: Namespace) -> None:
@@ -102,8 +113,7 @@ async def get_distributor_nodes():
     url = get_storage_url('/api/storage/distributor/status')
     http_code, ret = await HTTPClient.internal_request_admin('GET', url)
     if http_code == 200:
-        print("Distributor nodes:")
-        print(json.dumps(ret.nodes, indent=4))
+        print(json.dumps(ret['nodes'], indent=4))
     else:
         print_response(http_code)
 

@@ -1,7 +1,7 @@
 import asyncio
 from typing import Optional, Set, Tuple, List, Dict, Iterable, Callable, TYPE_CHECKING
 
-from videbo.misc import TaskManager, Periodic
+from videbo.misc import MEGA, TaskManager, Periodic
 from videbo.web import HTTPClient, HTTPResponseError
 from videbo.distributor.api.models import (DistributorCopyFile, DistributorDeleteFiles, DistributorDeleteFilesResponse,
                                            DistributorStatus, DistributorFileList)
@@ -9,9 +9,6 @@ from videbo.storage import storage_settings, storage_logger as log
 from .exceptions import DistStatusUnknown, DistAlreadyEnabled, DistAlreadyDisabled, UnknownDistURL
 if TYPE_CHECKING:
     from videbo.storage.util import StoredHashedVideoFile
-
-
-MEGA = 1024 * 1024
 
 
 class DownloadScheduler:
@@ -387,7 +384,6 @@ class DistributionController:
 
     def copy_file_to_one_node(self, file: 'StoredHashedVideoFile') -> Optional[DistributionNodeInfo]:
         # Get a node with tx_load < 0.95, that doesn't already have the file and that has enough space left.
-        to_node = None
         self._dist_nodes.sort()
         mb_size = file.file_size / MEGA  # to MB
 

@@ -1,20 +1,21 @@
 import asyncio
-from aiohttp.web import Request, RouteTableDef
-from aiohttp.web_exceptions import HTTPNotFound, HTTPOk, HTTPServiceUnavailable, \
-    HTTPInternalServerError
 from time import time
 from pathlib import Path
 from typing import List, Tuple
+
+from aiohttp.web import Request, RouteTableDef
+from aiohttp.web_exceptions import HTTPNotFound, HTTPOk, HTTPServiceUnavailable, HTTPInternalServerError
+
 from videbo.auth import Role, BaseJWTData, ensure_jwt_data_and_role, JWT_ISS_INTERNAL
 from videbo.network import NetworkInterfaces
 from videbo.web import json_response, ensure_json_body, file_serve_response
-from videbo.misc import rel_path
+from videbo.misc import MEGA, rel_path
 from videbo.storage.api.models import RequestFileJWTData, FileType
 from videbo.storage.util import HashedVideoFile
 from videbo.distributor import logger, distributor_settings
 from videbo.distributor.files import file_controller, TooManyWaitingClients, NoSuchFile, NotSafeToDelete
 from .models import DistributorStatus, DistributorCopyFile, DistributorDeleteFiles, DistributorDeleteFilesResponse,\
-    DistributorFileList, DistributorCopyFileStatus
+    DistributorFileList
 
 
 routes = RouteTableDef()
@@ -22,49 +23,18 @@ routes = RouteTableDef()
 
 @routes.get(r'/api/distributor/status')
 @ensure_jwt_data_and_role(Role.node)
-async def get_status(request: Request, _jwt_data: BaseJWTData):
+async def get_status(_request: Request, _jwt_data: BaseJWTData):
     status = DistributorStatus.construct()
-    status.bound_to_storage_node_base_url = distributor_settings.bound_to_storage_base_url
-
-    # general information
-    status.free_space = await file_controller.get_free_space()
+    # Same attributes for storage and distributor nodes:
+    status.files_total_size = int(file_controller.files_total_size / MEGA)
     status.files_count = len(file_controller.files)
-    status.files_total_size = int(file_controller.files_total_size / 1024 / 1024)
-    status.waiting_clients = file_controller.waiting
-
-    # network information
+    status.free_space = await file_controller.get_free_space()
     status.tx_max_rate = distributor_settings.tx_max_rate_mbit
-    network = NetworkInterfaces.get_instance()
-    interfaces = network.get_interface_names()
-
-    if distributor_settings.server_status_page:
-        status.current_connections = network.get_server_status()
-
-    if len(interfaces) > 0:
-        # Just take the first network interface.
-        iface = network.get_interface(interfaces[0])
-        status.tx_current_rate = int(iface.tx_throughput * 8 / 1_000_000)
-        status.rx_current_rate = int(iface.rx_throughput * 8 / 1_000_000)
-        status.tx_total = int(iface.tx_bytes / 1024 / 1024)
-        status.rx_total = int(iface.rx_bytes / 1024 / 1024)
-    else:
-        status.tx_current_rate = 0
-        status.rx_current_rate = 0
-        status.tx_total = 0
-        status.rx_total = 0
-        logger.error("No network interface found!")
-
-    # files being copied right now
-    copy_files_status = []
-    for file in file_controller.files_being_copied:
-        duration = time() - file.copy_status.started
-        copy_status = DistributorCopyFileStatus(hash=file.hash, file_ext=file.file_extension,
-                                                loaded=file.copy_status.loaded_bytes,
-                                                file_size=file.file_size,
-                                                duration=duration)
-        copy_files_status.append(copy_status)
-    status.copy_files_status = copy_files_status
-
+    NetworkInterfaces.get_instance().update_node_status(status, distributor_settings.server_status_page, logger)
+    # Specific to distributor nodes:
+    status.copy_files_status = file_controller.get_copy_file_status()
+    status.waiting_clients = file_controller.waiting
+    status.bound_to_storage_node_base_url = distributor_settings.bound_to_storage_base_url
     return json_response(status)
 
 

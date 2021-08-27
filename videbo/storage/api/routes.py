@@ -22,7 +22,7 @@ from videbo.auth import external_jwt_encode
 from videbo.auth import ensure_jwt_data_and_role
 from videbo.auth import Role, JWT_ISS_INTERNAL
 from videbo.auth import BaseJWTData
-from videbo.misc import get_free_disk_space, rel_path
+from videbo.misc import MEGA, get_free_disk_space, rel_path
 from videbo.network import NetworkInterfaces
 from videbo.video import VideoInfo
 from videbo.video import VideoValidator
@@ -53,7 +53,6 @@ routes = RouteTableDef()
 access_logger = logging.getLogger('videbo-storage-access')
 EXTERNAL_JWT_LIFE_TIME = 3600
 
-MEGA = 1024 * 1024
 CHUNK_SIZE_DEFAULT = 300 * 1024  # in bytes
 
 CONTENT_TYPES = {JPG_EXT: 'image/jpeg'}
@@ -478,42 +477,22 @@ async def enable_dist_node(_request: Request, _jwt_data: BaseJWTData, data: Dist
 @ensure_jwt_data_and_role(Role.admin)
 async def get_all_dist_nodes(_request: Request, _jwt_data: BaseJWTData):
     nodes_statuses = FileStorage.get_instance().distribution_controller.get_nodes_status()
-    return json_response(DistributorStatusDict(nodes=nodes_statuses))
+    return model_json_response(DistributorStatusDict(nodes=nodes_statuses))
 
 
 @routes.get(r'/api/storage/status')
 @ensure_jwt_data_and_role(Role.admin)
 async def get_status(_request: Request, _jwt_data: BaseJWTData):
-    status = StorageStatus.construct()
     storage = FileStorage.get_instance()
-
+    status = StorageStatus.construct()
+    # Same attributes for storage and distributor nodes:
     status.files_total_size = storage.get_files_total_size_mb()
     status.files_count = storage.get_files_count()
     status.free_space = await get_free_disk_space(str(storage_settings.files_path))
-
     status.tx_max_rate = storage_settings.tx_max_rate_mbit
-    network = NetworkInterfaces.get_instance()
-    interfaces = network.get_interface_names()
-
-    if storage_settings.server_status_page:
-        status.current_connections = network.get_server_status()
-
-    if len(interfaces) > 0:
-        # Just take the first network interface.
-        iface = network.get_interface(interfaces[0])
-        status.tx_current_rate = int(iface.tx_throughput * 8 / 1_000_000)
-        status.rx_current_rate = int(iface.rx_throughput * 8 / 1_000_000)
-        status.tx_total = int(iface.tx_bytes / 1024 / 1024)
-        status.rx_total = int(iface.rx_bytes / 1024 / 1024)
-    else:
-        status.tx_current_rate = 0
-        status.rx_current_rate = 0
-        status.tx_total = 0
-        status.rx_total = 0
-        storage_logger.error("No network interface found!")
-
+    NetworkInterfaces.get_instance().update_node_status(status, storage_settings.server_status_page, storage_logger)
+    # Specific to storage node:
     status.distributor_nodes = storage.distribution_controller.get_dist_node_base_urls()
-
     return model_json_response(status)
 
 

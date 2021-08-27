@@ -2,13 +2,10 @@ import asyncio
 import re
 from logging import Logger
 from time import time
-from typing import Optional
-from typing import Dict
-from typing import List
-from typing import Union
-from videbo.web import HTTPClient
-from videbo.web import HTTPResponseError
-from videbo.misc import TaskManager
+from typing import Optional, Dict, List, Union
+from videbo.web import HTTPClient, HTTPResponseError
+from videbo.misc import MEGA, TaskManager
+from videbo.models import NodeStatus
 
 
 class PureDataType:
@@ -252,15 +249,15 @@ class NetworkInterfaces:
                             await self._fetch_proc_info()
                         except asyncio.CancelledError:
                             pass
-                        except Exception:
-                            logger.exception("Error in network _fetch_proc_info")
+                        except Exception as e:
+                            logger.exception(f"{e} in network _fetch_proc_info")
 
                         try:
                             await self._fetch_server_status(url=status_page, logger=logger)
                         except asyncio.CancelledError:
                             pass
-                        except Exception:
-                            logger.exception("Error in network _fetch_server_status")
+                        except Exception as e:
+                            logger.exception(f"{e} in network _fetch_server_status")
 
                         await asyncio.sleep(self.interval)
                 finally:
@@ -283,3 +280,22 @@ class NetworkInterfaces:
         """Returns the value if interface and attribute exist, else None"""
         if interface in self._interfaces:
             return getattr(self._interfaces[interface], attr, None)
+
+    def update_node_status(self, status_obj: NodeStatus, server_status_page: str, logger: Logger) -> None:
+        """Updates a given `NodeStatus` (subclass) instance with network interface information"""
+        interfaces = self.get_interface_names()
+        if server_status_page:
+            status_obj.current_connections = self.get_server_status()
+        if len(interfaces) > 0:
+            # Just take the first network interface.
+            interface = self.get_interface(interfaces[0])
+            status_obj.tx_current_rate = int(interface.tx_throughput * 8 / 1_000_000)
+            status_obj.rx_current_rate = int(interface.rx_throughput * 8 / 1_000_000)
+            status_obj.tx_total = int(interface.tx_bytes / MEGA)
+            status_obj.rx_total = int(interface.rx_bytes / MEGA)
+        else:
+            status_obj.tx_current_rate = 0
+            status_obj.rx_current_rate = 0
+            status_obj.tx_total = 0
+            status_obj.rx_total = 0
+            logger.error("No network interface found!")

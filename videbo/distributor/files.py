@@ -1,15 +1,18 @@
 import asyncio
 import os
-from aiohttp import ClientTimeout
 from asyncio import get_running_loop, Event, wait_for
 from pathlib import Path
 from time import time
-from typing import Optional, Dict, Set
+from typing import Optional, Dict, Set, List
+
+from aiohttp import ClientTimeout
+
 from videbo.auth import internal_jwt_encode
-from videbo.misc import get_free_disk_space, TaskManager, rel_path
+from videbo.misc import MEGA, get_free_disk_space, TaskManager, rel_path
 from videbo.web import HTTPClient
 from videbo.storage.util import HashedVideoFile
 from videbo.storage.api.models import RequestFileJWTData, FileType
+from videbo.distributor.api.models import DistributorCopyFileStatus
 from . import logger, distributor_settings
 
 
@@ -166,7 +169,7 @@ class DistributorFileController:
 
                     # Check if we have enough space for this file.
                     new_file.file_size = expected_file_size
-                    file_size_mb = new_file.file_size / 1024 / 1024
+                    file_size_mb = new_file.file_size / MEGA
                     if file_size_mb > free_space:
                         logger.error(f"Error when copying file {file} from {from_url}: Not enough space, "
                                      f"free space {free_space:.1f} MB, file is {file_size_mb:.1f} MB")
@@ -175,7 +178,7 @@ class DistributorFileController:
                     # Load file
                     last_update_time = time()
                     while True:
-                        data = await response.content.read(1024 * 1024)
+                        data = await response.content.read(MEGA)
                         if len(data) == 0:
                             break
                         copy_status.loaded_bytes += len(data)
@@ -184,7 +187,7 @@ class DistributorFileController:
                         # If the download is taking much time, periodically print status.
                         if (time() - last_update_time) > 120:
                             last_update_time = time()
-                            loaded_mb = copy_status.loaded_bytes / 1024 / 1024
+                            loaded_mb = copy_status.loaded_bytes / MEGA
                             percent = 100 * (copy_status.loaded_bytes / expected_file_size)
                             logger.info(f"Still copying, copied {loaded_mb:.1f}/{file_size_mb:.1f} MB "
                                         f"({percent:.1f} %) until now of file {file}")
@@ -248,6 +251,16 @@ class DistributorFileController:
         self.files_total_size -= dist_file.file_size
         path = self.get_path(dist_file)
         await get_running_loop().run_in_executor(None, path.unlink)
+
+    def get_copy_file_status(self) -> List[DistributorCopyFileStatus]:
+        """Returns a list of `DistributorCopyFileStatus` objects, one for each file currently being copied"""
+        now = time()
+        return [
+            DistributorCopyFileStatus(
+                hash=file.hash, file_ext=file.file_extension, loaded=file.copy_status.loaded_bytes,
+                file_size=file.file_size, duration=now - file.copy_status.started
+            ) for file in self.files_being_copied
+        ]
 
 
 file_controller = DistributorFileController()
