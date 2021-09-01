@@ -19,7 +19,6 @@ class StorageSettings(SettingsSectionBase):
     binary_ffprobe: str
     tx_max_rate_mbit: int
     static_dist_node_base_urls: str
-    server_status_page: str
     copy_to_dist_views_threshold: int
     reset_views_every_hours: int
     dist_free_space_target_ratio: float
@@ -28,6 +27,10 @@ class StorageSettings(SettingsSectionBase):
     nginx_x_accel_location: str
     nginx_x_accel_limit_rate_mbit: float
     thumb_cache_max_mb: int
+    server_status_page: str
+    prom_text_file: PurePath
+    prom_update_freq_sec: float
+    prom_label_ip_address: str
 
     def load(self):
         super().load()
@@ -55,8 +58,10 @@ def start() -> None:
 
     async def on_http_startup(app):
         from .util import FileStorage
+        from .monitoring import Monitoring
         NetworkInterfaces.get_instance().start_fetching(storage_settings.server_status_page, storage_logger)
         FileStorage.get_instance()  # init instance
+        await Monitoring.get_instance().run()
 
     async def on_http_cleanup(app):
         await NetworkInterfaces.get_instance().stop_fetching()

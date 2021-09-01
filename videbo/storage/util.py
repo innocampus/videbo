@@ -8,19 +8,18 @@ from pathlib import Path
 from copy import deepcopy
 from typing import Optional, Union, Dict, BinaryIO, List, Iterable, Tuple
 
-from videbo.misc import TaskManager, BytesLimitLRU, gather_in_batches, rel_path
+from videbo.misc import TaskManager, BytesLimitLRU, gather_in_batches, rel_path, get_free_disk_space
 from videbo.web import ensure_url_does_not_end_with_slash
 from videbo.lms_api import LMSSitesCollection, LMSAPIError
-from videbo.video import VideoInfo
-from videbo.video import Video
-from videbo.video import VideoConfig
+from videbo.video import VideoInfo, Video, VideoConfig
+from videbo.network import NetworkInterfaces
 from videbo.exceptions import PendingWriteOperationError
 
 from . import storage_logger
 from . import storage_settings
 from .distribution import DistributionController, FileNodes
 from .exceptions import HashedFileInvalidExtensionError, CouldNotCreateTempDir
-from .api.models import FileType
+from .api.models import FileType, StorageStatus
 
 FILE_EXT_WHITELIST = ('.mp4', '.webm')
 JPG_EXT = '.jpg'  # for thumbnails
@@ -444,6 +443,18 @@ class FileStorage:
                 storage_logger.info(f"Run GC of temp folder: Removed {files_deleted} file(s).")
 
             await asyncio.sleep(self.GC_ITERATION_SECS)
+
+    async def get_status(self) -> StorageStatus:
+        status = StorageStatus.construct()
+        # Same attributes for storage and distributor nodes:
+        status.files_total_size = self.get_files_total_size_mb()
+        status.files_count = self.get_files_count()
+        status.free_space = await get_free_disk_space(str(storage_settings.files_path))
+        status.tx_max_rate = storage_settings.tx_max_rate_mbit
+        NetworkInterfaces.get_instance().update_node_status(status, storage_settings.server_status_page, storage_logger)
+        # Specific to storage node:
+        status.distributor_nodes = self.distribution_controller.get_dist_node_base_urls()
+        return status
 
 
 class TempFile:

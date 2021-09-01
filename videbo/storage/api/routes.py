@@ -484,16 +484,7 @@ async def get_all_dist_nodes(_request: Request, _jwt_data: BaseJWTData):
 @ensure_jwt_data_and_role(Role.admin)
 async def get_status(_request: Request, _jwt_data: BaseJWTData):
     storage = FileStorage.get_instance()
-    status = StorageStatus.construct()
-    # Same attributes for storage and distributor nodes:
-    status.files_total_size = storage.get_files_total_size_mb()
-    status.files_count = storage.get_files_count()
-    status.free_space = await get_free_disk_space(str(storage_settings.files_path))
-    status.tx_max_rate = storage_settings.tx_max_rate_mbit
-    NetworkInterfaces.get_instance().update_node_status(status, storage_settings.server_status_page, storage_logger)
-    # Specific to storage node:
-    status.distributor_nodes = storage.distribution_controller.get_dist_node_base_urls()
-    return model_json_response(status)
+    return model_json_response(await storage.get_status())
 
 
 @routes.get(r'/api/storage/files')

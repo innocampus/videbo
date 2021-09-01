@@ -1,8 +1,10 @@
 import asyncio
 import re
+import socket
 from logging import Logger
 from time import time
 from typing import Optional, Dict, List, Union
+
 from videbo.web import HTTPClient, HTTPResponseError
 from videbo.misc import MEGA, TaskManager
 from videbo.models import NodeStatus
@@ -299,3 +301,9 @@ class NetworkInterfaces:
             status_obj.tx_total = 0
             status_obj.rx_total = 0
             logger.error("No network interface found!")
+
+
+def get_ip_address() -> str:
+    with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as s:
+        s.connect(('github.com', 80))
+        return s.getsockname()[0]
