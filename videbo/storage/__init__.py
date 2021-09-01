@@ -30,7 +30,6 @@ class StorageSettings(SettingsSectionBase):
     server_status_page: str
     prom_text_file: PurePath
     prom_update_freq_sec: float
-    prom_label_ip_address: str
 
     def load(self):
         super().load()

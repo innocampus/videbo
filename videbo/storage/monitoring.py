@@ -1,5 +1,5 @@
 import asyncio
-from typing import Dict, Optional, Type
+from typing import Container, Dict, Optional, Type
 from time import time
 
 from pydantic.main import BaseModel
@@ -8,7 +8,6 @@ from prometheus_client.metrics import Gauge
 from prometheus_client.exposition import write_to_textfile
 
 from videbo.misc import TaskManager
-from videbo.network import get_ip_address
 from videbo.models import NodeStatus
 from .util import FileStorage
 from . import storage_settings, storage_logger
@@ -18,7 +17,6 @@ class Monitoring:
     METRIC_PREFIX = 'videbo_'
     DOC_PLACEHOLDER = '...'
     NODE_TYPE, BASE_URL = 'node_type', 'base_url'
-    LABEL_NAMES = (storage_settings.prom_label_ip_address, NODE_TYPE, BASE_URL)
 
     _instance: Optional['Monitoring'] = None
 
@@ -33,17 +31,18 @@ class Monitoring:
         self.update_freq_sec: float = storage_settings.prom_update_freq_sec
         self.registry = CollectorRegistry()
         self.metrics: Dict[str, Gauge] = {}
-        self.ip: str = get_ip_address()
-        self.add_metrics_from_model(NodeStatus)
+        self.add_metrics_from_model(NodeStatus, exclude={'tx_current_rate', 'rx_current_rate'})
 
-    def add_metrics_from_model(self, model_class: Type[BaseModel]) -> None:
+    def add_metrics_from_model(self, model_class: Type[BaseModel], exclude: Container[str] = ()) -> None:
         for name, field in model_class.__fields__.items():
+            if name in exclude:
+                continue
             if name in self.metrics.keys():
                 storage_logger.warning(f"Existing metric `{name}` is being replaced")
             self.metrics[name] = Gauge(
                 name=self.METRIC_PREFIX + name,
                 documentation=field.field_info.description or self.DOC_PLACEHOLDER,
-                labelnames=(storage_settings.prom_label_ip_address, self.NODE_TYPE, self.BASE_URL),
+                labelnames=(self.NODE_TYPE, self.BASE_URL),
                 registry=self.registry
             )
 
@@ -54,9 +53,9 @@ class Monitoring:
         """
         storage = FileStorage.get_instance()
         storage_status = await storage.get_status()
-        self._update_metrics(storage_status, self.ip, 'storage', storage_settings.public_base_url)
+        self._update_metrics(storage_status, 'storage', storage_settings.public_base_url)
         for url, status in storage.distribution_controller.get_nodes_status().items():
-            self._update_metrics(status, self.ip, 'dist', url)
+            self._update_metrics(status, 'dist', url)
 
     def _update_metrics(self, status_obj: NodeStatus, *labels: str) -> None:
         for name, metric in self.metrics.items():
