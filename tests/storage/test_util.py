@@ -175,7 +175,7 @@ class FileStorageTestCase(BaseTestCase):
             # add method called, no log entry made
             self.storage._cached_files = {n: None for n in range(21)}
             with patch.object(util, 'storage_logger') as mock_logger:
-                self.storage.load_file_list()
+                self.storage._load_file_list()
                 mock__add_video_to_cache.assert_called_once_with(hash_part, ext_part, file_to_load)
                 mock_logger.assert_not_called()
             mock__add_video_to_cache.reset_mock()
@@ -183,19 +183,19 @@ class FileStorageTestCase(BaseTestCase):
             # add method called
             self.storage._cached_files = {n: None for n in range(20)}
             with self.assertLogs(util.storage_logger):
-                self.storage.load_file_list()
+                self.storage._load_file_list()
                 mock__add_video_to_cache.assert_called_once_with(hash_part, ext_part, file_to_load)
             mock__add_video_to_cache.reset_mock()
 
             # add method called (other log case)
             self.storage._cached_files = {n: None for n in range(10)}
             with self.assertLogs(util.storage_logger):
-                self.storage.load_file_list()
+                self.storage._load_file_list()
                 mock__add_video_to_cache.assert_called_once_with(hash_part, ext_part, file_to_load)
 
             mock__add_video_to_cache.side_effect = Exception
             with self.assertLogs(util.storage_logger, logging.ERROR):
-                self.storage.load_file_list()
+                self.storage._load_file_list()
 
         # Dummy files for this test:
         test_dir = Path(self.storage.storage_dir, 'test')
