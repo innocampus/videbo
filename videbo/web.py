@@ -290,15 +290,6 @@ class HTTPClient:
             raise HTTPResponseError()
 
     @classmethod
-    async def internal_request_manager(cls, method: str, url: str,
-                                       json_data: Optional[JSONBaseModel] = None,
-                                       expected_return_type: Optional[Type[JSONBaseModel]] = None,
-                                       timeout: Union[ClientTimeout, int, None] = None) -> Tuple[int, Any]:
-        """Do an internal request with the manager role (without having to specify jwt_data)."""
-        jwt = cls.get_standard_jwt_with_role('manager')
-        return await cls.videbo_request(method, url, jwt, json_data, expected_return_type, timeout)
-
-    @classmethod
     async def internal_request_node(cls, method: str, url: str,
                                     json_data: Optional[JSONBaseModel] = None,
                                     expected_return_type: Optional[Type[JSONBaseModel]] = None,

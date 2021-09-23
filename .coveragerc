@@ -3,7 +3,6 @@ source = .
 branch = true
 omit =
     .venv/*
-    ansible/*
 
 [report]
 fail_under = 100

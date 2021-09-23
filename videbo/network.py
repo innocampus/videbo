@@ -301,9 +301,3 @@ class NetworkInterfaces:
             status_obj.tx_total = 0
             status_obj.rx_total = 0
             logger.error("No network interface found!")
-
-
-def get_ip_address() -> str:
-    with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as s:
-        s.connect(('github.com', 80))
-        return s.getsockname()[0]

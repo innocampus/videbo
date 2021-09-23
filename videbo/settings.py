@@ -41,9 +41,6 @@ class GeneralSettings(SettingsSectionBase):
     _section = 'general'
     internal_api_secret: str
     dev_mode: bool
-    domain: str
-    certificate_crt_path: PurePath
-    certificate_key_path: PurePath
 
 
 class LMSSettings(SettingsSectionBase):

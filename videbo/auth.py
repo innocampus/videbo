@@ -20,10 +20,8 @@ JWT_ISS_INTERNAL = 'int'
 class Role:
     """All roles in a system ordered by powerfulness."""
     client = 0
-    streamer = 1
     lms = 2
-    node = 3  # other node than manager
-    manager = 4
+    node = 3
     admin = 5
 
     @classmethod

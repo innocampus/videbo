@@ -8,9 +8,6 @@ venv
 .tmp
 .idea
 dev_generate_requests.py
-.lego
-/ansible/*.retry
-manager.db
 Pipfile
 Pipfile.lock
 .coverage
