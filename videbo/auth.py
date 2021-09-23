@@ -73,7 +73,7 @@ def internal_jwt_encode(data: Union[Dict, 'BaseJWTData'], expiry: int = 300) -> 
     headers = {
         'kid': JWT_ISS_INTERNAL
     }
-    return jwt.encode(data, settings.general.internal_api_secret, algorithm=JWT_ALGORITHM, headers=headers).decode('ascii')
+    return jwt.encode(data, settings.general.internal_api_secret, algorithm=JWT_ALGORITHM, headers=headers)
 
 
 def external_jwt_decode(encoded: str) -> Dict:
@@ -94,7 +94,7 @@ def external_jwt_encode(data: Union[Dict, 'BaseJWTData'], expiry: int = 300) -> 
     headers = {
         'kid': JWT_ISS_EXTERNAL
     }
-    return jwt.encode(data, settings.lms.api_secret, algorithm=JWT_ALGORITHM, headers=headers).decode('ascii')
+    return jwt.encode(data, settings.lms.api_secret, algorithm=JWT_ALGORITHM, headers=headers)
 
 
 def check_jwt_auth_save_data(request: web.Request, min_role_level: int, model: Type['BaseJWTData']) -> bool:
