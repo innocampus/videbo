@@ -416,13 +416,18 @@ async def handle_thumbnail_request(jwt_data: RequestFileJWTData) -> Response:
     else:
         access_logger.info(f"serve temp thumbnail {jwt_data.thumb_id} for video with hash {video}")
         path = file_storage.get_thumb_path_in_temp(video, jwt_data.thumb_id)
-    await verify_file_exists(path)
+
     bytes_data = file_storage.thumb_memory_cache.get(path)
     if bytes_data is None:
         def read_entire_file_and_close_it() -> bytes:
             with open(path, 'rb') as f:
                 return f.read()
-        bytes_data = await asyncio.get_event_loop().run_in_executor(None, read_entire_file_and_close_it)
+        try:
+            bytes_data = await asyncio.get_event_loop().run_in_executor(None, read_entire_file_and_close_it)
+        except FileNotFoundError:
+            storage_logger.warn(f"file does not exist: {path}")
+            raise HTTPNotFound()
+
         # Setting cache maximum size to 0 effectively disables keeping the data:
         if storage_settings.thumb_cache_max_mb > 0:
             file_storage.thumb_memory_cache[path] = bytes_data

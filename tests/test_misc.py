@@ -46,6 +46,9 @@ class BytesLimitLRUTestCase(TestCase):
         del self.obj[self.ITEMS_LIST[0][0]]  # delete first item
         self.assertDictEqual(OrderedDict(self.ITEMS_LIST[1:-1]), self.obj)
         self.assertEqual(self.ITEMS_BYTES - 2 * self.BYTES_PER_ITEM, getattr(self.obj, '_total_bytes'))
+        with self.assertRaises(KeyError):
+            del self.obj['keydoesnotexit']
+        self.assertEqual(self.ITEMS_BYTES - 2 * self.BYTES_PER_ITEM, getattr(self.obj, '_total_bytes'))
 
     def test_getitem(self) -> None:
         key, value = self.ITEMS_LIST[0]  # The item that was added first to the object

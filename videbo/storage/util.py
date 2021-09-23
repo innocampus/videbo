@@ -380,6 +380,11 @@ class FileStorage:
         # Remove increasing thumbnail ids until file not found
         while True:
             thumb_path = self.get_thumb_path(file, thumb_nr)
+            try:
+                del self.thumb_memory_cache[thumb_path]
+            except KeyError:
+                pass
+
             # Run in another thread as there is blocking io.
             if not await asyncio.get_event_loop().run_in_executor(None, self._delete_file, thumb_path):
                 break
