@@ -237,7 +237,8 @@ class HTTPClient:
                              json_data: Optional[JSONBaseModel] = None,
                              expected_return_type: Optional[Type[JSONBaseModel]] = None,
                              timeout: Union[ClientTimeout, int, None] = None,
-                             external: bool = False) -> Tuple[int, Any]:
+                             external: bool = False,
+                             print_connection_exception: bool = True) -> Tuple[int, Any]:
         """Do a HTTP request, i.e. a request to another node with a JWT using the internal or external secret.
 
         You may transmit json data and specify the expected return type."""
@@ -286,26 +287,31 @@ class HTTPClient:
                     return response.status, some_data
         except (ClientError, UnicodeDecodeError, pydantic.ValidationError, JSONDecodeError, ConnectionError) \
                 as error:
-            web_logger.exception(f"Error while internal web request ({url}).")
+            if print_connection_exception:
+                web_logger.exception(f"Error while internal web request ({url}).")
             raise HTTPResponseError()
 
     @classmethod
     async def internal_request_node(cls, method: str, url: str,
                                     json_data: Optional[JSONBaseModel] = None,
                                     expected_return_type: Optional[Type[JSONBaseModel]] = None,
-                                    timeout: Union[ClientTimeout, int, None] = None) -> Tuple[int, Any]:
+                                    timeout: Union[ClientTimeout, int, None] = None,
+                                    print_connection_exception: bool = True) -> Tuple[int, Any]:
         """Do an internal request with the node role (without having to specify jwt_data)."""
         jwt = cls.get_standard_jwt_with_role('node')
-        return await cls.videbo_request(method, url, jwt, json_data, expected_return_type, timeout)
+        return await cls.videbo_request(method, url, jwt, json_data, expected_return_type, timeout,
+                                        print_connection_exception=print_connection_exception)
 
     @classmethod
     async def internal_request_admin(cls, method: str, url: str,
                                      json_data: Optional[JSONBaseModel] = None,
                                      expected_return_type: Optional[Type[JSONBaseModel]] = None,
-                                     timeout: Union[ClientTimeout, int, None] = None) -> Tuple[int, Any]:
+                                     timeout: Union[ClientTimeout, int, None] = None,
+                                     print_connection_exception: bool = True) -> Tuple[int, Any]:
         """Do an internal request with the node role (without having to specify jwt_data)."""
         jwt = cls.get_standard_jwt_with_role('admin')
-        return await cls.videbo_request(method, url, jwt, json_data, expected_return_type, timeout)
+        return await cls.videbo_request(method, url, jwt, json_data, expected_return_type, timeout,
+                                        print_connection_exception=print_connection_exception)
 
     @classmethod
     def get_standard_jwt_with_role(cls, role: str, external: bool = False) -> str:

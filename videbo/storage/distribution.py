@@ -100,14 +100,18 @@ class DistributionNodeInfo:
 
     async def watcher(self) -> None:
         url = self.base_url + '/api/distributor/status'
+        print_exception = True
         while True:
             try:
-                code, ret = await HTTPClient.internal_request_node('GET', url, expected_return_type=DistributorStatus)
+                code, ret = await HTTPClient.internal_request_node('GET', url, expected_return_type=DistributorStatus,
+                                                                   print_connection_exception=print_exception)
             except HTTPResponseError:
+                print_exception = False
                 if self.is_good:
                     log.exception(f"<Distribution watcher {self.base_url}> http error")
                     await self.set_node_state(False)
             else:
+                print_exception = True
                 if code == 200:
                     self.status = ret
                     if not self.is_good:
@@ -247,7 +251,7 @@ class DistributionNodeInfo:
         for file in to_discard.values():
             self.stored_videos.discard(file)
             file.nodes.remove_node(self)
-        log.info(f"Removed {len(to_discard)} file(s) freeing up {response_data.free_space} MB on {self.base_url}")
+        log.info(f"Removed {len(to_discard)} file(s) (having now {response_data.free_space} MB free space) on {self.base_url}")
 
     async def unlink_node(self, stop_watching: bool = True) -> None:
         """Do not remove videos on this node, but remove all local references to this node."""
@@ -259,7 +263,10 @@ class DistributionNodeInfo:
 
     async def free_up_space(self) -> None:
         """Attempts to remove less popular videos to free-up disk space on the distributor node."""
-        if not self.stored_videos:
+        if not self.stored_videos or not self._enabled:
+            return
+        if not self.is_good:
+            log.info(f"Distributor {self.base_url} is not in a good state. Skip freeing space.")
             return
         assert 0 <= storage_settings.dist_free_space_target_ratio <= 1
         if self.free_space_ratio >= storage_settings.dist_free_space_target_ratio:
@@ -383,7 +390,7 @@ class DistributionController:
         self._videos_sorted.remove(file)
         # Remove all copies from the video.
         for node in file.nodes.nodes:
-            TaskManager.fire_and_forget_task(asyncio.create_task(node.remove_videos([file])))
+            TaskManager.fire_and_forget_task(asyncio.create_task(node.remove_videos([file], False)))
 
     def copy_file_to_one_node(self, file: 'StoredHashedVideoFile') -> Optional[DistributionNodeInfo]:
         # Get a node with tx_load < 0.95, that doesn't already have the file and that has enough space left.
