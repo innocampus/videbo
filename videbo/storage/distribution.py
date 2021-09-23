@@ -121,7 +121,7 @@ class DistributionNodeInfo:
                 elif self.is_good:
                     log.error(f"<Distribution watcher {self.base_url}> http status {code}")
                     await self.set_node_state(False)
-            await asyncio.sleep(2)
+            await asyncio.sleep(5)
 
     def start_watching(self) -> None:
         self.watcher_task = asyncio.create_task(self.watcher())
