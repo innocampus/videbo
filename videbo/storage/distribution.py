@@ -1,4 +1,5 @@
 import asyncio
+from timeit import default_timer as timer
 from typing import Optional, Set, Tuple, List, Dict, Iterable, Callable, TYPE_CHECKING
 
 from videbo.misc import MEGA, TaskManager, Periodic
@@ -357,7 +358,9 @@ class DistributionController:
     def start_periodic_reset_task(self) -> None:
         async def task():
             await asyncio.gather(*(dist_node.free_up_space() for dist_node in self._dist_nodes))
+            start = timer()
             self._reset()
+            log.info(f"Periodic reset task finished (took {(timer() - start):.2f}s)")
         Periodic(task)(interval_seconds=storage_settings.reset_views_every_hours * 3600)
 
     def count_file_access(self, file: 'StoredHashedVideoFile', rid: str) -> None:
