@@ -6,6 +6,7 @@ from pydantic.main import BaseModel
 from prometheus_client.registry import CollectorRegistry
 from prometheus_client.metrics import Gauge
 from prometheus_client.exposition import write_to_textfile
+from prometheus_client.process_collector import ProcessCollector
 
 from videbo.misc import TaskManager
 from videbo.models import NodeStatus
@@ -32,6 +33,7 @@ class Monitoring:
         self.registry = CollectorRegistry()
         self.metrics: Dict[str, Gauge] = {}
         self.add_metrics_from_model(NodeStatus, exclude={'tx_current_rate', 'rx_current_rate'})
+        self.process_collector = ProcessCollector(registry=self.registry)
 
     def add_metrics_from_model(self, model_class: Type[BaseModel], exclude: Container[str] = ()) -> None:
         for name, field in model_class.__fields__.items():
