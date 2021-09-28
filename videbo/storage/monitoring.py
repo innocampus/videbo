@@ -1,4 +1,4 @@
-from typing import Container, Dict, Optional, Type
+from typing import Container, Dict, Tuple, Callable, Optional, Type
 
 from pydantic.main import BaseModel
 from prometheus_client.registry import CollectorRegistry
@@ -8,6 +8,8 @@ from prometheus_client.process_collector import ProcessCollector
 
 from videbo.misc import Periodic
 from videbo.models import NodeStatus
+from videbo.distributor.api.models import DistributorStatus
+from .api.models import StorageStatus
 from .util import FileStorage
 from . import storage_settings, storage_logger
 
@@ -28,7 +30,7 @@ class Monitoring:
     @staticmethod
     def delete_text_file() -> None:
         storage_settings.prom_text_file.unlink()
-        storage_logger.info("Deleted monitoring text file")
+        storage_logger.info(f"Deleted monitoring text file {storage_settings.prom_text_file}")
 
     def __init__(self) -> None:
         self._periodic: Periodic = Periodic(self.update_all_metrics)
@@ -36,22 +38,42 @@ class Monitoring:
 
         self.update_freq_sec: float = storage_settings.prom_update_freq_sec
         self.registry = CollectorRegistry()
-        self.metrics: Dict[str, Gauge] = {}
-        self.add_metrics_from_model(NodeStatus, exclude={'tx_current_rate', 'rx_current_rate'})
+        self.metrics: Dict[str, Tuple[Gauge, Optional[Callable]]] = {}
+        self._add_metrics_from_model(StorageStatus, exclude={'distributor_nodes'})
+        self._add_metrics_from_model(DistributorStatus, exclude={'bound_to_storage_node_base_url', 'copy_files_status'})
+        self._init_calc_metrics()
+
         self.process_collector = ProcessCollector(registry=self.registry)
 
-    def add_metrics_from_model(self, model_class: Type[BaseModel], exclude: Container[str] = ()) -> None:
+    def _add_metrics_from_model(self, model_class: Type[BaseModel], exclude: Container[str] = ()) -> None:
+        """Adds metrics to be taken directly "as is" from a status object."""
         for name, field in model_class.__fields__.items():
             if name in exclude:
                 continue
             if name in self.metrics.keys():
-                storage_logger.warning(f"Existing metric `{name}` is being replaced")
-            self.metrics[name] = Gauge(
+                continue
+            self.metrics[name] = (
+                Gauge(
+                    name=self.METRIC_PREFIX + name,
+                    documentation=field.field_info.description or self.DOC_PLACEHOLDER,
+                    labelnames=(self.NODE_TYPE, self.BASE_URL),
+                    registry=self.registry
+                ),
+                None
+            )
+
+    def _init_calc_metrics(self) -> None:
+        """Adds metrics that have to be calculated from a status object's attributes."""
+        name = 'num_files_being_copied'
+        self.metrics[name] = (
+            Gauge(
                 name=self.METRIC_PREFIX + name,
-                documentation=field.field_info.description or self.DOC_PLACEHOLDER,
+                documentation=self.DOC_PLACEHOLDER,
                 labelnames=(self.NODE_TYPE, self.BASE_URL),
                 registry=self.registry
-            )
+            ),
+            lambda status_obj: len(status_obj.copy_files_status)
+        )
 
     async def update_all_metrics(self) -> None:
         """
@@ -67,11 +89,16 @@ class Monitoring:
         write_to_textfile(storage_settings.prom_text_file, self.registry)
 
     def _update_metrics(self, status_obj: NodeStatus, *labels: str) -> None:
-        for name, metric in self.metrics.items():
-            val = getattr(status_obj, name)
-            metric.labels(*labels).set(val or 0)
+        for name, (metric, get_value) in self.metrics.items():
+            try:
+                val = get_value(status_obj) if get_value else getattr(status_obj, name)
+            except AttributeError:
+                pass  # some metrics apply exclusively to the storage node or a distributor, but not both
+            else:
+                metric.labels(*labels).set(val or 0)
 
     async def run(self) -> None:
+        storage_logger.info(f"Started monitoring and writing to {storage_settings.prom_text_file}")
         self._periodic(self.update_freq_sec, call_immediately=True)
 
     async def stop(self) -> None:
