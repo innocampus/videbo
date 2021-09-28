@@ -1,6 +1,6 @@
 import logging
 
-from pathlib import PurePath
+from pathlib import Path
 from videbo.web import start_web_server, ensure_url_does_not_end_with_slash
 from videbo.settings import SettingsSectionBase
 
@@ -8,7 +8,7 @@ from videbo.settings import SettingsSectionBase
 class StorageSettings(SettingsSectionBase):
     _section = 'storage'
     http_port: int
-    files_path: PurePath
+    files_path: Path
     public_base_url: str
     max_file_size_mb: int
     thumb_suggestion_count: int
@@ -28,7 +28,7 @@ class StorageSettings(SettingsSectionBase):
     nginx_x_accel_limit_rate_mbit: float
     thumb_cache_max_mb: int
     server_status_page: str
-    prom_text_file: PurePath
+    prom_text_file: Path
     prom_update_freq_sec: float
 
     def load(self):
@@ -48,6 +48,7 @@ storage_settings = StorageSettings()
 def start() -> None:
     from videbo import settings
     from videbo.network import NetworkInterfaces
+    from .monitoring import Monitoring
     from .api.routes import routes, access_logger
     storage_settings.load()
 
@@ -57,12 +58,12 @@ def start() -> None:
 
     async def on_http_startup(app):
         from .util import FileStorage
-        from .monitoring import Monitoring
         NetworkInterfaces.get_instance().start_fetching(storage_settings.server_status_page, storage_logger)
         FileStorage.get_instance()  # init instance
         await Monitoring.get_instance().run()
 
     async def on_http_cleanup(app):
+        await Monitoring.get_instance().stop()
         await NetworkInterfaces.get_instance().stop_fetching()
 
     start_web_server(storage_settings.http_port, routes, on_http_startup, on_http_cleanup)

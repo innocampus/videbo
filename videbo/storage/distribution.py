@@ -447,5 +447,10 @@ class DistributionController:
     def get_dist_node_base_urls(self) -> List[str]:
         return [n.base_url for n in self._dist_nodes]
 
-    def get_nodes_status(self) -> Dict[str, DistributorStatus]:
-        return {n.base_url: n.status for n in self._dist_nodes}
+    def get_nodes_status(self, only_good: bool = False, only_enabled: bool = False) -> Dict[str, DistributorStatus]:
+        output_dict = {}
+        for node in self._dist_nodes:
+            if (only_good and not node.is_good) or (only_enabled and not node.is_enabled):
+                continue
+            output_dict[node.base_url] = node.status
+        return output_dict

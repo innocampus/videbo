@@ -1,5 +1,5 @@
 import logging
-from pathlib import PurePath, Path
+from pathlib import Path
 from videbo.web import start_web_server, ensure_url_does_not_end_with_slash
 from videbo.settings import SettingsSectionBase
 
@@ -9,7 +9,7 @@ class DistributorSettings(SettingsSectionBase):
     http_port: int
     bound_to_storage_base_url: str
     tx_max_rate_mbit: int
-    files_path: PurePath
+    files_path: Path
     leave_free_space_mb: int
     nginx_x_accel_location: str
     nginx_x_accel_limit_rate_mbit: float
@@ -33,9 +33,8 @@ def start() -> None:
     distributor_settings.load()
 
     # Ensure dir exists and load all files in it if there are any.
-    path = Path(distributor_settings.files_path)
-    path.mkdir(parents=True, exist_ok=True)
-    file_controller.load_file_list(path)
+    distributor_settings.files_path.mkdir(parents=True, exist_ok=True)
+    file_controller.load_file_list(distributor_settings.files_path)
 
     async def on_http_startup(app):
         NetworkInterfaces.get_instance().start_fetching(distributor_settings.server_status_page, logger)

@@ -2,7 +2,7 @@ import configparser
 import argparse
 import sys
 from os.path import abspath, dirname
-from pathlib import PurePath
+from pathlib import Path
 from typing import get_type_hints
 
 
@@ -26,8 +26,8 @@ class SettingsSectionBase:
                 value = settings.get_config_bool(self._section, name)
             elif setting_type is str:
                 value = settings.get_config(self._section, name)
-            elif setting_type is PurePath:
-                value = PurePath(settings.get_config(self._section, name))
+            elif setting_type is Path:
+                value = Path(settings.get_config(self._section, name))
             else:
                 raise UnknownSettingsDataType()
             setattr(self, name, value)

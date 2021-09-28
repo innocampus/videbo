@@ -131,7 +131,7 @@ class FileStorage:
     @classmethod
     def get_instance(cls) -> 'FileStorage':
         if cls._instance is None:
-            cls._instance = FileStorage(Path(storage_settings.files_path))
+            cls._instance = FileStorage(storage_settings.files_path)
             cls._instance._load_file_list()
             cls._instance._register_dist_nodes()
             cls._instance.distribution_controller.start_periodic_reset_task()
