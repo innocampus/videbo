@@ -22,7 +22,7 @@ from videbo.auth import external_jwt_encode
 from videbo.auth import ensure_jwt_data_and_role
 from videbo.auth import Role, JWT_ISS_INTERNAL
 from videbo.auth import BaseJWTData
-from videbo.misc import MEGA, get_free_disk_space, rel_path
+from videbo.misc import MEGA, rel_path
 from videbo.network import NetworkInterfaces
 from videbo.video import VideoInfo
 from videbo.video import VideoValidator
@@ -32,7 +32,7 @@ from videbo.storage.api.models import UploadFileJWTData
 from videbo.storage.api.models import SaveFileJWTData
 from videbo.storage.api.models import DeleteFileJWTData
 from videbo.storage.api.models import RequestFileJWTData
-from videbo.storage.api.models import FileType, StorageStatus, DistributorNodeInfo, DistributorStatusDict
+from videbo.storage.api.models import FileType, DistributorNodeInfo, DistributorStatusDict
 from videbo.storage.api.models import StorageFileInfo, StorageFilesList, DeleteFilesList
 from videbo.storage.distribution import DistributionNodeInfo
 from videbo.storage.util import TempFile
@@ -231,7 +231,9 @@ async def upload_file(request: Request, jwt_token: UploadFileJWTData):
         return invalid_format_response()
     except FileTooBigError:
         return file_too_big_response()
-    file: TempFile = FileStorage.get_instance().create_temp_file()
+    storage = FileStorage.get_instance()
+    file: TempFile = storage.create_temp_file()
+    storage.num_current_uploads += 1
     # Form this point on, any error should be followed by a cleanup of the temp. file
     try:
         return await read_and_save_temp(file, field)
@@ -239,6 +241,8 @@ async def upload_file(request: Request, jwt_token: UploadFileJWTData):
         await file.delete()
         storage_logger.exception(e)
         raise HTTPInternalServerError()
+    finally:
+        storage.num_current_uploads -= 1
 
 
 @routes.get('/api/save/file/{hash:[0-9a-f]{64}}{file_ext:\\.[0-9a-z]{1,10}}')

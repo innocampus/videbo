@@ -119,6 +119,7 @@ class FileStorage:
         self.temp_out_dir: Path = Path(self.temp_dir, "out")
         self._cached_files: _StoredFilesDict = {}  # map hashes to files
         self._cached_files_total_size: int = 0  # in bytes
+        self.num_current_uploads: int = 0
         self.thumb_memory_cache = BytesLimitLRU(storage_settings.thumb_cache_max_mb * 1024 * 1024)
         self.distribution_controller: DistributionController = DistributionController()
 
@@ -459,6 +460,7 @@ class FileStorage:
         NetworkInterfaces.get_instance().update_node_status(status, storage_settings.server_status_page, storage_logger)
         # Specific to storage node:
         status.distributor_nodes = self.distribution_controller.get_dist_node_base_urls()
+        status.num_current_uploads = self.num_current_uploads
         return status
 
 

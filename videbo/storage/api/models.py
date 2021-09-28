@@ -43,6 +43,7 @@ class RequestFileJWTData(BaseJWTData):
 
 class StorageStatus(NodeStatus):
     distributor_nodes: List[str]  # list of base_urls
+    num_current_uploads: int
 
 
 class StorageFileInfo(JSONBaseModel):
