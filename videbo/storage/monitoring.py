@@ -1,4 +1,4 @@
-from typing import Container, Dict, Tuple, Callable, Optional, Type
+from typing import Container, Dict, Tuple, Set, Callable, Optional, Type
 
 from pydantic.main import BaseModel
 from prometheus_client.registry import CollectorRegistry
@@ -39,6 +39,7 @@ class Monitoring:
         self.update_freq_sec: float = storage_settings.prom_update_freq_sec
         self.registry = CollectorRegistry()
         self.metrics: Dict[str, Tuple[Gauge, Optional[Callable]]] = {}
+        self.dist_urls: Set[str] = set()
         self._add_metrics_from_model(StorageStatus, exclude={'distributor_nodes'})
         self._add_metrics_from_model(DistributorStatus, exclude={'bound_to_storage_node_base_url', 'copy_files_status'})
         self._init_calc_metrics()
@@ -83,8 +84,15 @@ class Monitoring:
         """
         storage = FileStorage.get_instance()
         storage_status = await storage.get_status()
+        dist_status_dict = storage.distribution_controller.get_nodes_status(only_good=True, only_enabled=True)
+        # Make sure the distributors returned here have not changed;
+        # if they did in any way, clear the metrics before calling the update method.
+        urls = set(dist_status_dict.keys())
+        if urls != self.dist_urls:
+            self._clear_all_metrics()
+            self.dist_urls = urls
         self._update_metrics(storage_status, 'storage', storage_settings.public_base_url)
-        for url, status in storage.distribution_controller.get_nodes_status(only_good=True, only_enabled=True).items():
+        for url, status in dist_status_dict.items():
             self._update_metrics(status, 'dist', url)
         write_to_textfile(storage_settings.prom_text_file, self.registry)
 
@@ -96,6 +104,10 @@ class Monitoring:
                 pass  # some metrics apply exclusively to the storage node or a distributor, but not both
             else:
                 metric.labels(*labels).set(val or 0)
+
+    def _clear_all_metrics(self) -> None:
+        for metric, _ in self.metrics.values():
+            metric.clear()
 
     async def run(self) -> None:
         storage_logger.info(f"Started monitoring and writing to {storage_settings.prom_text_file}")
