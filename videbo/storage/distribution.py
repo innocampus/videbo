@@ -108,7 +108,7 @@ class DistributionNodeInfo:
             except HTTPResponseError:
                 print_exception = False
                 if self.is_good:
-                    log.exception(f"<Distribution watcher {self.base_url}> http error")
+                    log.error(f"<Distribution watcher {self.base_url}> http error")
                     await self.set_node_state(False)
             else:
                 print_exception = True
