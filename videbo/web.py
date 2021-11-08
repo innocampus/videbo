@@ -162,7 +162,10 @@ def file_serve_response(path: Path, x_accel: bool, downloadas: str = None,
 
 
 def file_serve_headers(downloadas: str = None) -> Dict[str, str]:
-    headers = {'Cache-Control': 'private, max-age=50400'}
+    headers = {
+        'Cache-Control': 'private, max-age=50400',
+        'Access-Control-Allow-Origin': '*'
+    }
     if downloadas:
         headers['Content-Disposition'] = f'attachment; filename="{urllib.parse.quote(sanitize_filename(downloadas))}"'
     return headers

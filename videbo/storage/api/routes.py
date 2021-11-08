@@ -305,7 +305,7 @@ async def request_file(request: Request, jwt_data: RequestFileJWTData) -> Stream
         # Only consider redirecting the client when it is an external request.
         if jwt_data.iss != JWT_ISS_INTERNAL:
             file_storage.distribution_controller.count_file_access(video, jwt_data.rid)
-            await video_check_redirect(request, video, jwt_data.rid)
+            await video_check_redirect(request, video)
         access_logger.info(f"serve video with hash {jwt_data.hash}")
         path = file_storage.get_path(video)
     elif jwt_data.type == FileType.VIDEO_TEMP:
@@ -324,7 +324,7 @@ async def request_file(request: Request, jwt_data: RequestFileJWTData) -> Stream
     return file_serve_response(path, x_accel, dl, limit_rate)
 
 
-async def video_check_redirect(request: Request, file: StoredHashedVideoFile, rid: str) -> None:
+async def video_check_redirect(request: Request, file: StoredHashedVideoFile) -> None:
     own_tx_load = get_own_tx_load()
     node, has_complete_file = file.nodes.find_good_node(file)
     if node is None:
@@ -352,7 +352,6 @@ async def video_check_redirect(request: Request, file: StoredHashedVideoFile, ri
                         await asyncio.sleep(1)
                         return video_redirect_to_node(request, to_node, file)
                     else:
-                        file.init_dist_by(rid)
                         return  # Serve file
         else:
             if own_tx_load > 0.9:
@@ -362,8 +361,6 @@ async def video_check_redirect(request: Request, file: StoredHashedVideoFile, ri
             else:
                 # This storage node is not too busy and can serve the file by itself.
                 return
-    elif file.prevent_redirect(rid):
-        return  # Serve file
     elif has_complete_file:
         # One distribution node that can serve the file.
         return video_redirect_to_node(request, node, file)
@@ -385,7 +382,7 @@ def video_redirect_to_node(request: Request, node: DistributionNodeInfo, file: S
     downloadas = request.query.getone("downloadas", None)
     if downloadas:
         url += "&downloadas=" + urllib.parse.quote(downloadas)
-    raise HTTPFound(url)
+    raise HTTPFound(url, headers={'Access-Control-Allow-Origin': '*'})
 
 
 def get_own_tx_load() -> float:
