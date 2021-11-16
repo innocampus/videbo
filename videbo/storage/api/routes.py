@@ -325,6 +325,14 @@ async def request_file(request: Request, jwt_data: RequestFileJWTData) -> Stream
 
 
 async def video_check_redirect(request: Request, file: StoredHashedVideoFile) -> None:
+    """
+    This function attempts to find a distributor node that can serve the file and decides if redirection is in order.
+    If no redirect should happen (i.e. the storage node should serve the file), this function simply returns.
+    Otherwise either an error is raised, if all nodes are too busy, or a redirect to a distributor is issued.
+    This function is also responsible for initiating distribution, i.e. copying the file to another node.
+    """
+    if request.http_range.start > 0:
+        return
     own_tx_load = get_own_tx_load()
     node, has_complete_file = file.nodes.find_good_node(file)
     if node is None:
@@ -382,7 +390,7 @@ def video_redirect_to_node(request: Request, node: DistributionNodeInfo, file: S
     downloadas = request.query.getone("downloadas", None)
     if downloadas:
         url += "&downloadas=" + urllib.parse.quote(downloadas)
-    raise HTTPFound(url, headers={'Access-Control-Allow-Origin': '*'})
+    raise HTTPFound(url)
 
 
 def get_own_tx_load() -> float:
