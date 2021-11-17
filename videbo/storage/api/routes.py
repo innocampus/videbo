@@ -331,8 +331,8 @@ async def video_check_redirect(request: Request, file: StoredHashedVideoFile) ->
     Otherwise either an error is raised, if all nodes are too busy, or a redirect to a distributor is issued.
     This function is also responsible for initiating distribution, i.e. copying the file to another node.
     """
-    if request.http_range.start > 0:
-        return
+    if request.http_range.start is not None and request.http_range.start > 0:
+        return  # Do not redirect if the range header is present and the start is not zero
     own_tx_load = get_own_tx_load()
     node, has_complete_file = file.nodes.find_good_node(file)
     if node is None:
