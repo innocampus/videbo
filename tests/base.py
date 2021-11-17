@@ -17,11 +17,17 @@ from videbo import settings
 NATIVE_ASYNC_TESTS = sys.version_info >= (3, 8)
 
 
+# To have IDEs recognize subclasses of our `BaseTestCase` as inheriting from `unittest.TestCase`, we make sure it
+# always first inherits from `unittest.TestCase` and then if possible from `unittest.IsolatedAsyncioTestCase` as we
+# get it dynamically; if it is not possible we let the second superclass be an empty placeholder.
+class _TestCase:
+    pass
+
+
 if NATIVE_ASYNC_TESTS:
     _TestCase = getattr(unittest, 'IsolatedAsyncioTestCase')
     AsyncMock = getattr(unittest.mock, 'AsyncMock')
 else:
-    _TestCase = unittest.TestCase
     AsyncMock = AsyncMockHelper
 
 

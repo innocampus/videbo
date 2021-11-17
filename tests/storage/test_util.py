@@ -1,6 +1,7 @@
 from typing import TypeVar, Type
 from unittest.mock import patch, MagicMock, call, Mock
 from pathlib import Path
+import shutil
 import time
 import logging
 
@@ -50,38 +51,6 @@ class StoredHashedVideoFileTestCase(BaseTestCase):
 
     @patch(TESTED_MODULE_PATH + '.FileNodes')
     @patch(TESTED_MODULE_PATH + '.HashedVideoFile.__init__')
-    def test_init_dist_by(self, *_: MagicMock) -> None:
-        test_hash, test_ext = 'test', '.ext'
-        obj = util.StoredHashedVideoFile(file_hash=test_hash, file_extension=test_ext)
-        test_user_rid = 'foo'
-        clocked = time.time()
-        obj.init_dist_by(test_user_rid)
-        t, rid = getattr(obj, '_dist_initiated')
-        self.assertLess(t, time.time())
-        self.assertGreater(t, clocked)
-        self.assertEqual(test_user_rid, rid)
-
-    @patch(TESTED_MODULE_PATH + '.FileNodes')
-    @patch(TESTED_MODULE_PATH + '.HashedVideoFile.__init__')
-    def test_prevent_redirect(self, *_: MagicMock) -> None:
-        test_hash, test_ext = 'test', '.ext'
-        obj = util.StoredHashedVideoFile(file_hash=test_hash, file_extension=test_ext)
-        setattr(obj, '_dist_initiated', None)
-        self.assertFalse(obj.prevent_redirect('foo'))
-        init_time, init_rid = time.time(), 'foo'
-        setattr(obj, '_dist_initiated', (init_time, init_rid))
-        self.assertFalse(obj.prevent_redirect('bar'))
-        with patch(STORAGE_SETTINGS_PATH) as mock_settings:
-            mock_settings.dist_redirect_prevent_hours = 1/3600
-            time.sleep(1)
-            self.assertFalse(obj.prevent_redirect(init_rid))
-            self.assertIsNone(getattr(obj, '_dist_initiated'))
-            setattr(obj, '_dist_initiated', (init_time, init_rid))
-            mock_settings.dist_redirect_prevent_hours = 1
-            self.assertTrue(obj.prevent_redirect(init_rid))
-
-    @patch(TESTED_MODULE_PATH + '.FileNodes')
-    @patch(TESTED_MODULE_PATH + '.HashedVideoFile.__init__')
     def test_lt(self, *_: MagicMock) -> None:
         test_hash, test_ext = 'test', '.ext'
         obj = util.StoredHashedVideoFile(file_hash=test_hash, file_extension=test_ext)
@@ -103,7 +72,7 @@ class FileStorageTestCase(BaseTestCase):
         self.mock_settings.thumb_cache_max_mb = 0
 
         self.dist_controller_patcher = patch(TESTED_MODULE_PATH + '.DistributionController')
-        self.mock_dist_controller = self.dist_controller_patcher.start()
+        self.mock_dist_controller_cls = self.dist_controller_patcher.start()
 
         self.create_dir_patcher = patch(TESTED_MODULE_PATH + '.create_dir_if_not_exists')
         self.mock_create_dir = self.create_dir_patcher.start()
@@ -125,7 +94,7 @@ class FileStorageTestCase(BaseTestCase):
 
     def tearDown(self) -> None:
         super().tearDown()
-        self.path.rmdir()
+        shutil.rmtree(self.path)
         self.task_mgr_patcher.stop()
         self.asyncio_create_task_patcher.stop()
         self.gc_cron_patcher.stop()
@@ -141,7 +110,7 @@ class FileStorageTestCase(BaseTestCase):
         self.assertEqual(self.storage.temp_out_dir, Path(self.storage.temp_dir, 'out'))
         self.assertEqual(self.storage._cached_files, {})
         self.assertEqual(self.storage._cached_files_total_size, 0)
-        self.assertEqual(self.storage.distribution_controller, self.mock_dist_controller())
+        self.assertEqual(self.storage.distribution_controller, self.mock_dist_controller_cls())
 
         create_temp_call = call(self.storage.temp_dir, 0o755)
         create_temp_out_call = call(self.storage.temp_out_dir, 0o777, explicit_chmod=True)
@@ -220,6 +189,20 @@ class FileStorageTestCase(BaseTestCase):
             test_dir.rmdir()
             self.storage.storage_dir.rmdir()
 
+    @patch.object(util, 'ensure_url_does_not_end_with_slash')
+    def test__register_dist_nodes(self, mock_ensure_url_does_not_end_with_slash):
+        mock_ensure_url_does_not_end_with_slash.return_value = mock_url = 'xyz'
+        mock_add_new_dist_node = self.mock_dist_controller_cls.return_value.add_new_dist_node
+        self.mock_settings.static_dist_node_base_urls = ''
+        self.storage._register_dist_nodes()
+        mock_ensure_url_does_not_end_with_slash.assert_not_called()
+        mock_add_new_dist_node.assert_not_called()
+        foo, bar = 'foo', '   bar  '
+        self.mock_settings.static_dist_node_base_urls = f'{foo},{bar},'
+        self.storage._register_dist_nodes()
+        mock_ensure_url_does_not_end_with_slash.assert_has_calls([call(foo), call(bar.strip())])
+        mock_add_new_dist_node.assert_has_calls([call(mock_url), call(mock_url)])
+
     @patch.object(util, 'StoredHashedVideoFile')
     def test__add_video_to_cache(self, mock_hvf_class):
         mock_file_obj = MagicMock()
@@ -228,7 +211,7 @@ class FileStorageTestCase(BaseTestCase):
         mock_stat_method = MagicMock(return_value=MagicMock(st_size=mock_file_size))
         mock_file_path = MagicMock()
         mock_file_path.stat = mock_stat_method
-        self.mock_dist_controller.add_video = MagicMock()
+        self.mock_dist_controller_cls.add_video = MagicMock()
 
         test_total_size, test_hash, test_ext = 10, 'abc', '.ext'
         self.storage._cached_files_total_size = test_total_size
@@ -240,12 +223,12 @@ class FileStorageTestCase(BaseTestCase):
         self.assertEqual(mock_file_obj.file_size, mock_file_size)
         self.assertIs(self.storage._cached_files[test_hash], mock_file_obj)
         self.assertEqual(self.storage._cached_files_total_size, test_total_size + mock_file_size)
-        self.mock_dist_controller().add_video.assert_called_once_with(mock_file_obj)
+        self.mock_dist_controller_cls().add_video.assert_called_once_with(mock_file_obj)
         self.assertIs(out, mock_file_obj)
 
         mock_hvf_class.reset_mock()
         mock_stat_method.reset_mock()
-        self.mock_dist_controller().add_video.reset_mock()
+        self.mock_dist_controller_cls().add_video.reset_mock()
         mock_stat_method.side_effect = FileNotFoundError
         with self.assertLogs(util.storage_logger, logging.ERROR):
             out = self.storage._add_video_to_cache(file_hash=test_hash,
@@ -253,7 +236,7 @@ class FileStorageTestCase(BaseTestCase):
                                                    file_path=mock_file_path)
         mock_hvf_class.assert_called_once_with(test_hash, test_ext)
         mock_stat_method.assert_called_once_with()
-        self.mock_dist_controller().add_video.assert_not_called()
+        self.mock_dist_controller_cls().add_video.assert_not_called()
         self.assertIs(out, mock_file_obj)
 
     def test_get_files_total_size_mb(self):
@@ -622,18 +605,18 @@ class FileStorageTestCase(BaseTestCase):
         mock_run.assert_awaited_once_with(None, self.storage._delete_file, mock_path)
         self.assertNotIn(test_hash, self.storage._cached_files)
         self.assertEqual(self.storage._cached_files_total_size, 1)
-        self.mock_dist_controller().remove_video.assert_called_once_with(mock_file)
+        self.mock_dist_controller_cls().remove_video.assert_called_once_with(mock_file)
 
         mock_get_path.reset_mock()
         mock_run.reset_mock()
-        self.mock_dist_controller().remove_video.reset_mock()
+        self.mock_dist_controller_cls().remove_video.reset_mock()
         mock_run.return_value = False
 
         with self.assertRaises(FileNotFoundError):
             await self.storage.remove(mock_file)
         mock_get_path.assert_called_once_with(mock_file)
         mock_run.assert_awaited_once_with(None, self.storage._delete_file, mock_path)
-        self.mock_dist_controller().remove_video.assert_not_called()
+        self.mock_dist_controller_cls().remove_video.assert_not_called()
 
     @async_test
     @patch.object(util, 'asyncio')
@@ -755,6 +738,33 @@ class FileStorageTestCase(BaseTestCase):
         mock_aio.sleep.assert_awaited_once_with(self.storage.GC_ITERATION_SECS)
 
         self.gc_cron_patcher.start()
+
+    @async_test
+    @patch.object(util.StorageStatus, 'construct')
+    @patch.object(util.FileStorage, 'get_files_total_size_mb')
+    @patch.object(util.FileStorage, 'get_files_count')
+    @patch.object(util, 'get_free_disk_space')
+    @patch.object(util.NetworkInterfaces, 'get_instance')
+    async def test_get_status(self, mock_ni_get_instance, mock_get_free_disk_space, mock_get_files_count,
+                              mock_get_files_total_size_mb, mock_status_construct):
+        mock_get_dist_node_base_urls = self.mock_dist_controller_cls.return_value.get_dist_node_base_urls
+        mock_get_dist_node_base_urls.return_value = mock_dist_node_urls = ['foo', 'bar']
+        mock_update_node_status = mock_ni_get_instance.return_value.update_node_status
+        mock_get_free_disk_space.return_value = mock_free_disk_space = 999
+        mock_get_files_count.return_value = mock_files_count = 111
+        mock_get_files_total_size_mb.return_value = mock_files_total_size = 555
+        mock_status_construct.return_value = mock_status = MagicMock()
+        output = await self.storage.get_status()
+        self.assertEqual(mock_status, output)
+        self.assertEqual(mock_files_total_size, output.files_total_size)
+        self.assertEqual(mock_files_count, output.files_count)
+        self.assertEqual(mock_free_disk_space, output.free_space)
+        mock_get_free_disk_space.assert_awaited_once_with(str(self.mock_settings.files_path))
+        self.assertEqual(self.mock_settings.tx_max_rate_mbit, output.tx_max_rate)
+        mock_update_node_status.assert_called_once_with(mock_status, self.mock_settings.server_status_page,
+                                                        util.storage_logger)
+        self.assertEqual(mock_dist_node_urls, output.distributor_nodes)
+        self.assertEqual(self.storage.num_current_uploads, output.num_current_uploads)
 
 
 class TempFileTestCase(BaseTestCase):
