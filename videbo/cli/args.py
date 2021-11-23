@@ -66,4 +66,4 @@ def run(args: Namespace) -> None:
             sys.exit(3)
         get_event_loop().run_until_complete(fut)
     finally:
-        get_event_loop().run_until_complete(HTTPClient.close_all(None))
+        get_event_loop().run_until_complete(HTTPClient.close_all())

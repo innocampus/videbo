@@ -1,5 +1,7 @@
 import logging
+from typing import AsyncIterator
 from pathlib import Path
+from aiohttp.web_app import Application
 from videbo.web import start_web_server, ensure_url_does_not_end_with_slash
 from videbo.settings import SettingsSectionBase
 
@@ -36,10 +38,9 @@ def start() -> None:
     distributor_settings.files_path.mkdir(parents=True, exist_ok=True)
     file_controller.load_file_list(distributor_settings.files_path)
 
-    async def on_http_startup(app):
+    async def network_context(_app: Application) -> AsyncIterator[None]:
         NetworkInterfaces.get_instance().start_fetching(distributor_settings.server_status_page, logger)
-
-    async def on_http_cleanup(app):
+        yield
         await NetworkInterfaces.get_instance().stop_fetching()
 
-    start_web_server(distributor_settings.http_port, routes, on_http_startup, on_http_cleanup)
+    start_web_server(distributor_settings.http_port, routes, network_context)

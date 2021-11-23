@@ -38,7 +38,7 @@ def load_general_settings(cli_only_config: bool = False) -> None:
         parser.add_argument(
             '-H', f'--{HTTP_HOST}',
             default='',
-            help="http api port"
+            help="http api host"
         )
         subparsers = parser.add_subparsers(title="Available applications", dest=APP)
         subparsers.add_parser(name=STORAGE, help="Start storage node")

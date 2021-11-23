@@ -25,4 +25,4 @@ jwt = internal_jwt_encode(jwt_data, 24*3600)
 
 
 # ------------------------
-get_event_loop().run_until_complete(HTTPClient.close_all(None))
+get_event_loop().run_until_complete(HTTPClient.close_all())

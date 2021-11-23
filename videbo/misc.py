@@ -40,7 +40,7 @@ class TaskManager:
     _tasks: Set[asyncio.Task] = set()
 
     @classmethod
-    async def cancel_all(cls, app: Any):
+    def cancel_all(cls):
         logger.info(f"TaskManager: cancel all remaining {len(cls._tasks)} tasks")
         for task in cls._tasks:
             task.cancel()

@@ -1,6 +1,7 @@
 import logging
-
+from typing import AsyncIterator
 from pathlib import Path
+from aiohttp.web_app import Application
 from videbo.web import start_web_server, ensure_url_does_not_end_with_slash
 from videbo.settings import SettingsSectionBase
 
@@ -55,14 +56,19 @@ def start() -> None:
         # Do not log simple video accesses when not in dev mode.
         access_logger.setLevel(logging.WARNING)
 
-    async def on_http_startup(app):
-        from .util import FileStorage
+    async def network_context(_app: Application) -> AsyncIterator[None]:
         NetworkInterfaces.get_instance().start_fetching(storage_settings.server_status_page, storage_logger)
-        FileStorage.get_instance()  # init instance
-        await Monitoring.get_instance().run()
-
-    async def on_http_cleanup(app):
-        await Monitoring.get_instance().stop()
+        yield
         await NetworkInterfaces.get_instance().stop_fetching()
 
-    start_web_server(storage_settings.http_port, routes, on_http_startup, on_http_cleanup)
+    async def storage_context(_app: Application) -> AsyncIterator[None]:
+        from .util import FileStorage
+        FileStorage.get_instance()  # init instance
+        yield  # No cleanup necessary
+
+    async def monitoring_context(_app: Application) -> AsyncIterator[None]:
+        await Monitoring.get_instance().run()
+        yield
+        await Monitoring.get_instance().stop()
+
+    start_web_server(storage_settings.http_port, routes, network_context, storage_context, monitoring_context)

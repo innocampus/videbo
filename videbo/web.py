@@ -5,9 +5,10 @@ import pydantic
 import urllib.parse
 from pathlib import Path
 from json import JSONDecodeError
-from typing import Optional, Type, List, Dict, Union, Any, Tuple, Callable
+from typing import Optional, Type, List, Dict, Union, Any, Tuple, Callable, AsyncIterator
 from time import time
-from aiohttp import web, ClientResponse, ClientSession, ClientError, ClientTimeout
+from aiohttp import web
+from aiohttp.client import ClientResponse, ClientSession, ClientError, ClientTimeout
 from aiohttp.web_exceptions import HTTPException, HTTPBadRequest, HTTPUnauthorized
 from videbo.auth import BaseJWTData, internal_jwt_encode, external_jwt_encode, JWT_ISS_EXTERNAL, JWT_ISS_INTERNAL
 from . import settings
@@ -18,38 +19,42 @@ from .video import get_content_type_for_video
 web_logger = logging.getLogger('videbo-web')
 
 
-def start_web_server(port: int, routes, on_startup: Optional[Callable] = None, on_cleanup: Optional[Callable] = None,
-                     access_logger: Optional[logging.Logger] = None):
+async def session_context(_app: web.Application) -> AsyncIterator:
+    """
+    Creates the singleton session instance on the first iteration, and closes it on the second.
+    This coroutine can be used in the `.cleanup_ctx` list of the aiohttp `Application`.
+    """
+    HTTPClient.create_client_session()
+    yield
+    await HTTPClient.close_all()
+
+
+async def cancel_tasks(_app: web.Application) -> None: TaskManager.cancel_all()
+
+
+def start_web_server(port: int, routes, *cleanup_contexts: Callable, access_logger: Optional[logging.Logger] = None):
     """
     Starts a web server
     :param port: int
     :param routes: Any
-    :param on_startup: Optional[Callable]
-    :param on_cleanup: Optional[Callable]
+    :param cleanup_contexts: Sequence[Callable]
     :param access_logger: Optional[Logger]
         If access_logger is None, default aiohttp logger - with less verbosity on production - will be used instead.
     :return:
     """
-    HTTPClient.create_client_session()
-
     app = web.Application()
     app.add_routes(routes)
-    if on_startup:
-        app.on_startup.append(on_startup)
-    if on_cleanup:
-        app.on_cleanup.append(on_cleanup)
+    app.cleanup_ctx.append(session_context)
+    app.cleanup_ctx.extend(cleanup_contexts)
+    app.on_shutdown.append(cancel_tasks)  # executed **before** cleanup
     if access_logger is None:
         access_logger = logging.getLogger("aiohttp.access")
         if not settings.general.dev_mode:
             # reduce verbosity on production servers
             access_logger.setLevel(logging.ERROR)
-    app.on_shutdown.append(HTTPClient.close_all)
-    app.on_shutdown.append(TaskManager.cancel_all)
-
     host = "127.0.0.1"
     if settings.args.http_host:
         host = settings.args.http_host
-        
     web.run_app(app, host=host, port=port, access_log=access_logger)
 
 
@@ -231,7 +236,7 @@ class HTTPClient:
         cls.session = ClientSession() # TODO use TCPConnector and use limit_per_host option
 
     @classmethod
-    async def close_all(cls, app: web.Application):
+    async def close_all(cls):
         await cls.session.close()
 
     @classmethod
