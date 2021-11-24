@@ -11,7 +11,7 @@ from videbo.web import HTTPClient
 
 def get_storage_url(path: str) -> str:
     from videbo import settings
-    port = settings.get_config('storage', 'http_port')
+    port = settings.get_config('storage', 'listen_port')
     return f'http://localhost:{port}{path}'
 
 

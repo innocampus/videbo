@@ -12,12 +12,14 @@ class SettingsSectionBase:
 
     def load(self):
         from . import settings
+        cli_args = vars(settings.args)
         type_hints = get_type_hints(self.__class__)
         for name, setting_type in type_hints.items():
             if name.startswith('_'):
                 continue
-            if name == 'http_port' and getattr(settings.args, 'http_port', None):
-                value = settings.args.http_port
+            value = cli_args.get(name)
+            if value is not None:
+                pass
             elif setting_type is float:
                 value = float(settings.get_config(self._section, name))
             elif setting_type is int:

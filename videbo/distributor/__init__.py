@@ -8,7 +8,8 @@ from videbo.settings import SettingsSectionBase
 
 class DistributorSettings(SettingsSectionBase):
     _section = "distributor"
-    http_port: int
+    listen_address: str
+    listen_port: int
     bound_to_storage_base_url: str
     tx_max_rate_mbit: int
     files_path: Path
@@ -43,4 +44,4 @@ def start() -> None:
         yield
         await NetworkInterfaces.get_instance().stop_fetching()
 
-    start_web_server(distributor_settings.http_port, routes, network_context)
+    start_web_server(distributor_settings.listen_port, routes, network_context)

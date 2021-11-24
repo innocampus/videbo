@@ -10,7 +10,7 @@ from .settings import Settings
 APP = 'app'
 STORAGE, DISTRIBUTOR, CLI = 'storage', 'distributor', 'cli'
 CONFIG = 'config'
-HTTP_HOST, HTTP_PORT = 'http_host', 'http_port'
+LISTEN_ADDRESS, LISTEN_PORT = 'listen_address', 'listen_port'
 
 # Globals that may be useful for all nodes.
 settings = Settings()
@@ -30,14 +30,12 @@ def load_general_settings(cli_only_config: bool = False) -> None:
     )
     if not cli_only_config:
         parser.add_argument(
-            '-P', f'--{HTTP_PORT}',
+            '-P', f'--{LISTEN_PORT}',
             type=int,
-            default=0,
             help="http api port"
         )
         parser.add_argument(
-            '-H', f'--{HTTP_HOST}',
-            default='',
+            '-H', f'--{LISTEN_ADDRESS}',
             help="http api host"
         )
         subparsers = parser.add_subparsers(title="Available applications", dest=APP)

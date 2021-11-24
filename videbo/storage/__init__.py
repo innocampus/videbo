@@ -8,7 +8,8 @@ from videbo.settings import SettingsSectionBase
 
 class StorageSettings(SettingsSectionBase):
     _section = 'storage'
-    http_port: int
+    listen_address: str
+    listen_port: int
     files_path: Path
     public_base_url: str
     max_file_size_mb: int
@@ -71,4 +72,4 @@ def start() -> None:
         yield
         await Monitoring.get_instance().stop()
 
-    start_web_server(storage_settings.http_port, routes, network_context, storage_context, monitoring_context)
+    start_web_server(storage_settings.listen_port, routes, network_context, storage_context, monitoring_context)

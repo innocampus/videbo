@@ -53,8 +53,8 @@ def start_web_server(port: int, routes, *cleanup_contexts: Callable, access_logg
             # reduce verbosity on production servers
             access_logger.setLevel(logging.ERROR)
     host = "127.0.0.1"
-    if settings.args.http_host:
-        host = settings.args.http_host
+    if settings.args.listen_address:
+        host = settings.args.listen_address
     web.run_app(app, host=host, port=port, access_log=access_logger)
 
 
