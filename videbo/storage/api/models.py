@@ -1,8 +1,8 @@
 from enum import Enum
 from typing import Optional, List, FrozenSet, Dict
 
-from videbo.web import BaseJWTData, JSONBaseModel
 from videbo.models import NodeStatus
+from videbo.web import BaseJWTData, JSONBaseModel
 from videbo.distributor.api.models import DistributorStatus
 
 

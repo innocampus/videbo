@@ -6,12 +6,13 @@ from prometheus_client.metrics import Gauge
 from prometheus_client.exposition import write_to_textfile
 from prometheus_client.process_collector import ProcessCollector
 
+from videbo.settings import settings
 from videbo.misc import Periodic
 from videbo.models import NodeStatus
 from videbo.distributor.api.models import DistributorStatus
-from .api.models import StorageStatus
 from .util import FileStorage
-from . import storage_settings, storage_logger
+from .api.models import StorageStatus
+from . import storage_logger
 
 
 class Monitoring:
@@ -29,14 +30,14 @@ class Monitoring:
 
     @staticmethod
     def delete_text_file() -> None:
-        storage_settings.prom_text_file.unlink()
-        storage_logger.info(f"Deleted monitoring text file {storage_settings.prom_text_file}")
+        settings.prom_text_file.unlink()
+        storage_logger.info(f"Deleted monitoring text file {settings.prom_text_file}")
 
     def __init__(self) -> None:
         self._periodic: Periodic = Periodic(self.update_all_metrics)
         self._periodic.post_stop_callbacks.append(self.delete_text_file)
 
-        self.update_freq_sec: float = storage_settings.prom_update_freq_sec
+        self.update_freq_sec: float = settings.prom_update_freq_sec
         self.registry = CollectorRegistry()
         self.metrics: Dict[str, Tuple[Gauge, Optional[Callable]]] = {}
         self.dist_urls: Set[str] = set()
@@ -91,10 +92,10 @@ class Monitoring:
         if urls != self.dist_urls:
             self._clear_all_metrics()
             self.dist_urls = urls
-        self._update_metrics(storage_status, 'storage', storage_settings.public_base_url)
+        self._update_metrics(storage_status, 'storage', settings.public_base_url)
         for url, status in dist_status_dict.items():
             self._update_metrics(status, 'dist', url)
-        write_to_textfile(storage_settings.prom_text_file, self.registry)
+        write_to_textfile(settings.prom_text_file, self.registry)
 
     def _update_metrics(self, status_obj: NodeStatus, *labels: str) -> None:
         for name, (metric, get_value) in self.metrics.items():
@@ -110,7 +111,7 @@ class Monitoring:
             metric.clear()
 
     async def run(self) -> None:
-        storage_logger.info(f"Started monitoring and writing to {storage_settings.prom_text_file}")
+        storage_logger.info(f"Started monitoring and writing to {settings.prom_text_file}")
         self._periodic(self.update_freq_sec, call_immediately=True)
 
     async def stop(self) -> None:

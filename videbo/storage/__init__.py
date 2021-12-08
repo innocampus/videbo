@@ -1,64 +1,65 @@
 import logging
-from typing import AsyncIterator
 from pathlib import Path
+from typing import AsyncIterator, List, Set, Optional
+
 from aiohttp.web_app import Application
-from videbo.web import start_web_server, ensure_url_does_not_end_with_slash
-from videbo.settings import SettingsSectionBase
+from pydantic import validator
+
+from videbo.base_settings import CommonSettings, PROJECT_DIR
+from videbo.misc import ensure_url_does_not_end_with_slash as normalize_url
 
 
-class StorageSettings(SettingsSectionBase):
+class StorageSettings(CommonSettings):
     _section = 'storage'
-    listen_address: str
-    listen_port: int
-    files_path: Path
-    public_base_url: str
-    max_file_size_mb: int
-    thumb_suggestion_count: int
-    thumb_height: int
-    check_user: str
-    binary_file: str
-    binary_ffmpeg: str
-    binary_ffprobe: str
-    tx_max_rate_mbit: int
-    static_dist_node_base_urls: str
-    copy_to_dist_views_threshold: int
-    reset_views_every_hours: int
-    dist_free_space_target_ratio: float
-    max_parallel_copying_tasks: int
-    nginx_x_accel_location: str
-    nginx_x_accel_limit_rate_mbit: float
-    thumb_cache_max_mb: int
-    server_status_page: str
-    prom_text_file: Path
-    prom_update_freq_sec: float
 
-    def load(self):
-        super().load()
-        self.public_base_url = ensure_url_does_not_end_with_slash(self.public_base_url)
-        self.nginx_x_accel_location = ensure_url_does_not_end_with_slash(self.nginx_x_accel_location)
+    listen_port: int = 9020
+    files_path: Path = Path('/tmp/videbo/storage')
+    public_base_url: str = 'http://localhost:9020'
+    max_file_size_mb: float = 200.0
+    thumb_suggestion_count: int = 3
+    thumb_height: int = 90
+    mime_types_allowed: Set[str] = {'video/mp4', 'video/webm'}
+    container_formats_allowed: Set[str] = {'mp4', 'webm'}
+    video_codecs_allowed: Set[str] = {'h264', 'vp8'}
+    audio_codecs_allowed: Set[str] = {'aac', 'vorbis'}
+    check_user: str = None
+    binary_file: str = 'file'
+    binary_ffmpeg: str = 'ffmpeg'
+    binary_ffprobe: str = 'ffprobe'
+    static_dist_node_base_urls: List[str] = ['http://localhost:9030/', ]
+    copy_to_dist_views_threshold: int = 3
+    reset_views_every_hours: int = 4
+    dist_free_space_target_ratio: float = 0.1
+    max_parallel_copying_tasks: int = 20
+    thumb_cache_max_mb: int = 30
+    prom_text_file: Optional[Path] = None
+    prom_update_freq_sec: float = 15.0
+    test_video_file_path: Path = Path(PROJECT_DIR, 'tests', 'test_video.mp4')
 
-        # at least 1 hour
-        if self.reset_views_every_hours < 1:
-            self.reset_views_every_hours = 1
+    @validator('reset_views_every_hours')
+    def ensure_min_reset_freq(cls, freq: int) -> int:
+        return max(freq, 1)
+
+    _norm_public_base_url = validator('public_base_url', allow_reuse=True)(normalize_url)
+    _norm_dist_node_urls = validator('static_dist_node_base_urls', each_item=True, allow_reuse=True)(normalize_url)
 
 
 storage_logger = logging.getLogger('videbo-storage')
-storage_settings = StorageSettings()
 
 
 def start() -> None:
-    from videbo import settings
+    from videbo.web import start_web_server
     from videbo.network import NetworkInterfaces
-    from .monitoring import Monitoring
     from .api.routes import routes, access_logger
-    storage_settings.load()
+    from videbo.settings import settings
 
-    if not settings.general.dev_mode:
-        # Do not log simple video accesses when not in dev mode.
-        access_logger.setLevel(logging.WARNING)
+    if settings.dev_mode:
+        logging.warning("Development mode is enabled. You should enable this mode only during development!")
+    else:
+        access_logger.setLevel(logging.ERROR)
 
     async def network_context(_app: Application) -> AsyncIterator[None]:
-        NetworkInterfaces.get_instance().start_fetching(storage_settings.server_status_page, storage_logger)
+        NetworkInterfaces.get_instance().start_fetching(settings.server_status_page, storage_logger)
         yield
         await NetworkInterfaces.get_instance().stop_fetching()
 
@@ -68,8 +69,13 @@ def start() -> None:
         yield  # No cleanup necessary
 
     async def monitoring_context(_app: Application) -> AsyncIterator[None]:
-        await Monitoring.get_instance().run()
-        yield
-        await Monitoring.get_instance().stop()
+        if settings.prom_text_file:
+            from .monitoring import Monitoring
+            await Monitoring.get_instance().run()
+            yield
+            await Monitoring.get_instance().stop()
+        else:
+            yield
 
-    start_web_server(storage_settings.listen_port, routes, network_context, storage_context, monitoring_context)
+    start_web_server(routes, network_context, storage_context, monitoring_context, address=settings.listen_address,
+                     port=settings.listen_port, access_logger=access_logger)

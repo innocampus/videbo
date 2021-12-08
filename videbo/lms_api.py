@@ -1,6 +1,8 @@
 from typing import List, Optional, Type, Tuple, Any
-from .web import ensure_url_does_not_end_with_slash, HTTPClient, JSONBaseModel, HTTPResponseError
-from . import settings
+
+from .settings import settings
+from .misc import ensure_url_does_not_end_with_slash
+from .web import HTTPClient, JSONBaseModel, HTTPResponseError
 
 
 class LMSSitesCollection:
@@ -10,7 +12,7 @@ class LMSSitesCollection:
     @staticmethod
     def get_all() -> "LMSSitesCollection":
         collection = LMSSitesCollection()
-        for url in map(str.strip, settings.lms.moodle_base_urls.split(',')):
+        for url in settings.lms_base_urls:
             if url:
                 collection.sites.append(MoodleAPI(url))
         return collection

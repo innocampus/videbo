@@ -1,9 +1,9 @@
-from typing import TypeVar, Type
-from unittest.mock import patch, MagicMock, call, Mock
-from pathlib import Path
+import logging
 import shutil
 import time
-import logging
+from unittest.mock import patch, MagicMock, call, Mock
+from pathlib import Path
+from typing import TypeVar, Type
 
 from tests.base import BaseTestCase, async_test, AsyncMock
 from videbo.storage import util
@@ -12,7 +12,7 @@ from videbo.storage import util
 M = TypeVar('M', bound=Mock)
 
 TESTED_MODULE_PATH = 'videbo.storage.util'
-STORAGE_SETTINGS_PATH = TESTED_MODULE_PATH + '.storage_settings'
+STORAGE_SETTINGS_PATH = TESTED_MODULE_PATH + '.settings'
 
 
 class HashedVideoFileTestCase(BaseTestCase):
@@ -123,18 +123,23 @@ class FileStorageTestCase(BaseTestCase):
             util.FileStorage(Path('/doesnotexist'))
 
     def test_get_instance(self):
+        url1, url2 = 'foo', 'bar'
+        self.mock_settings.static_dist_node_base_urls = [url1, url2]
         obj = util.FileStorage.get_instance()
         self.assertIsInstance(obj.distribution_controller, MagicMock)
+        obj.distribution_controller.add_new_dist_node.assert_has_calls([call(url1), call(url2)])
         obj.distribution_controller.start_periodic_reset_task.assert_called_once_with()
 
         # Check that another call to the tested method will not try to create a new object,
         # but will return the previously created one:
+        obj.distribution_controller.add_new_dist_node.reset_mock()
         obj.distribution_controller.start_periodic_reset_task.reset_mock()
         with patch.object(util.FileStorage, '__init__', return_value=None) as mock_init:
             check_obj = util.FileStorage.get_instance()
             self.assertIs(check_obj, obj)
             self.assertIsInstance(check_obj.distribution_controller, MagicMock)  # to fool type checking
             mock_init.assert_not_called()
+            check_obj.distribution_controller.add_new_dist_node.assert_not_called()
             check_obj.distribution_controller.start_periodic_reset_task.assert_not_called()
 
     @patch.object(util.FileStorage, '_add_video_to_cache', return_value='foo')
@@ -188,20 +193,6 @@ class FileStorageTestCase(BaseTestCase):
             file_to_load.unlink()
             test_dir.rmdir()
             self.storage.storage_dir.rmdir()
-
-    @patch.object(util, 'ensure_url_does_not_end_with_slash')
-    def test__register_dist_nodes(self, mock_ensure_url_does_not_end_with_slash):
-        mock_ensure_url_does_not_end_with_slash.return_value = mock_url = 'xyz'
-        mock_add_new_dist_node = self.mock_dist_controller_cls.return_value.add_new_dist_node
-        self.mock_settings.static_dist_node_base_urls = ''
-        self.storage._register_dist_nodes()
-        mock_ensure_url_does_not_end_with_slash.assert_not_called()
-        mock_add_new_dist_node.assert_not_called()
-        foo, bar = 'foo', '   bar  '
-        self.mock_settings.static_dist_node_base_urls = f'{foo},{bar},'
-        self.storage._register_dist_nodes()
-        mock_ensure_url_does_not_end_with_slash.assert_has_calls([call(foo), call(bar.strip())])
-        mock_add_new_dist_node.assert_has_calls([call(mock_url), call(mock_url)])
 
     @patch.object(util, 'StoredHashedVideoFile')
     def test__add_video_to_cache(self, mock_hvf_class):
@@ -373,7 +364,7 @@ class FileStorageTestCase(BaseTestCase):
         thumb_number = 0
         mock_get_thumb_path_in_temp.assert_called_once_with(mock_file, thumb_number)
         mock_video_cls.assert_called_once_with(video_config=mock_init_vid_config)
-        mock_video_config_cls.assert_called_once_with(self.mock_settings)
+        mock_video_config_cls.assert_called_once_with()
         test_offset = int(test_video_length / test_thumb_count * (thumb_number + 0.5))
         test_temp_out_file = Path(self.storage.temp_out_dir, mock_file_hash + "_" + str(thumb_number) + util.JPG_EXT)
         mock_save_thumbnail.assert_called_once_with(mock_video_file, mock_thumb_path, test_offset, test_thumb_height,
@@ -388,7 +379,7 @@ class FileStorageTestCase(BaseTestCase):
         self.assertEqual(output, test_thumb_count)
         mock_get_thumb_path_in_temp.assert_called_once_with(mock_file, thumb_number)
         mock_video_cls.assert_called_once_with(video_config=mock_init_vid_config)
-        mock_video_config_cls.assert_called_once_with(self.mock_settings)
+        mock_video_config_cls.assert_called_once_with()
         mock_save_thumbnail.assert_called_once_with(mock_video_file, mock_thumb_path, test_offset, test_thumb_height,
                                                     temp_output_file=None)
 

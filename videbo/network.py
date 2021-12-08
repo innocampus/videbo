@@ -1,13 +1,12 @@
 import asyncio
 import re
-import socket
 from logging import Logger
 from time import time
 from typing import Optional, Dict, List, Union
 
-from videbo.web import HTTPClient, HTTPResponseError
 from videbo.misc import MEGA, TaskManager
 from videbo.models import NodeStatus
+from videbo.web import HTTPClient, HTTPResponseError
 
 
 class PureDataType:

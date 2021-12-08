@@ -1,17 +1,23 @@
+import logging
 import functools
 import inspect
-import logging
-import pydantic
 import urllib.parse
 from pathlib import Path
 from json import JSONDecodeError
-from typing import Optional, Type, List, Dict, Union, Any, Tuple, Callable, AsyncIterator
 from time import time
-from aiohttp import web
+from typing import Optional, Type, List, Dict, Union, Any, Tuple, Callable, AsyncIterator
+
+from pydantic import BaseModel, ValidationError
 from aiohttp.client import ClientResponse, ClientSession, ClientError, ClientTimeout
+from aiohttp.web import run_app
+from aiohttp.web_app import Application
 from aiohttp.web_exceptions import HTTPException, HTTPBadRequest, HTTPUnauthorized
-from videbo.auth import BaseJWTData, internal_jwt_encode, external_jwt_encode, JWT_ISS_EXTERNAL, JWT_ISS_INTERNAL
-from . import settings
+from aiohttp.web_fileresponse import FileResponse
+from aiohttp.web_request import Request
+from aiohttp.web_response import Response
+from aiohttp.web_routedef import RouteDef, RouteTableDef
+
+from .auth import BaseJWTData, internal_jwt_encode, external_jwt_encode, JWT_ISS_EXTERNAL, JWT_ISS_INTERNAL
 from .misc import TaskManager, sanitize_filename
 from .video import get_content_type_for_video
 
@@ -19,7 +25,7 @@ from .video import get_content_type_for_video
 web_logger = logging.getLogger('videbo-web')
 
 
-async def session_context(_app: web.Application) -> AsyncIterator:
+async def session_context(_app: Application) -> AsyncIterator:
     """
     Creates the singleton session instance on the first iteration, and closes it on the second.
     This coroutine can be used in the `.cleanup_ctx` list of the aiohttp `Application`.
@@ -29,33 +35,43 @@ async def session_context(_app: web.Application) -> AsyncIterator:
     await HTTPClient.close_all()
 
 
-async def cancel_tasks(_app: web.Application) -> None: TaskManager.cancel_all()
+async def cancel_tasks(_app: Application) -> None: TaskManager.cancel_all()
 
 
-def start_web_server(port: int, routes, *cleanup_contexts: Callable, access_logger: Optional[logging.Logger] = None):
+def start_web_server(routes: RouteTableDef, *cleanup_contexts: Callable, address: str = None, port: int = None,
+                     access_logger: Optional[logging.Logger] = None, verbose: bool = False) -> None:
     """
-    Starts a web server
-    :param port: int
-    :param routes: Any
-    :param cleanup_contexts: Sequence[Callable]
-    :param access_logger: Optional[Logger]
-        If access_logger is None, default aiohttp logger - with less verbosity on production - will be used instead.
-    :return:
+    Starts the aiohttp web server.
+    Adds a context, such that on startup the `HTTPClient.session` is initialized, and on cleanup it is closed.
+    Also ensures that all tasks are cancelled on shutdown.
+
+    Args:
+        routes:
+            The route definition table to serve
+        cleanup_contexts (optional):
+            Callables that will be added to the `aiohttp.web.Application.cleanup_ctx`;
+            should be asynchronous generator functions that take only the app itself as an argument and
+            are structured as "startup code; yield; cleanup code".
+            (see https://docs.aiohttp.org/en/stable/web_advanced.html#cleanup-context)
+        address (optional):
+            Passed as the `host` argument to the `run_app` method.
+        port (optional):
+            Passed as the `port` argument to the `run_app` method.
+        access_logger (optional):
+            Passed as the `access_log` argument to the `run_app` method; if omitted, the aiohttp.access logger is used.
+        verbose (optional):
+            If `False` and no `access_logger` was specified, the default logger's level is raised to ERROR.
     """
-    app = web.Application()
+    app = Application()
     app.add_routes(routes)
     app.cleanup_ctx.append(session_context)
     app.cleanup_ctx.extend(cleanup_contexts)
     app.on_shutdown.append(cancel_tasks)  # executed **before** cleanup
     if access_logger is None:
-        access_logger = logging.getLogger("aiohttp.access")
-        if not settings.general.dev_mode:
-            # reduce verbosity on production servers
+        access_logger = logging.getLogger('aiohttp.access')
+        if not verbose:
             access_logger.setLevel(logging.ERROR)
-    host = "127.0.0.1"
-    if settings.args.listen_address:
-        host = settings.args.listen_address
-    web.run_app(app, host=host, port=port, access_log=access_logger)
+    run_app(app, host=address, port=port, access_log=access_logger)
 
 
 def ensure_json_body(headers: Optional[dict] = None):
@@ -73,7 +89,7 @@ def ensure_json_body(headers: Optional[dict] = None):
         signature = inspect.signature(func)
         param: inspect.Parameter
         model_arg_name = None
-        model_arg_model: Optional[Type[pydantic.BaseModel]] = None
+        model_arg_model: Optional[Type[BaseModel]] = None
         for name, param in signature.parameters.items():
             if issubclass(param.annotation, JSONBaseModel):
                 if model_arg_name:
@@ -85,7 +101,7 @@ def ensure_json_body(headers: Optional[dict] = None):
             raise NoJSONModelFoundError()
 
         @functools.wraps(func)
-        async def wrapper(request: web.Request, *args, **kwargs):
+        async def wrapper(request: Request, *args, **kwargs):
             """Wrapper around the actual function call."""
 
             assert request._client_max_size > 0
@@ -97,7 +113,7 @@ def ensure_json_body(headers: Optional[dict] = None):
                 json = await request.json()
                 data = model_arg_model.parse_obj(json)
 
-            except pydantic.ValidationError as error:
+            except ValidationError as error:
                 web_logger.info('JSON in request does not match model: %s', str(error))
                 raise HTTPBadRequest(headers=headers)
             except JSONDecodeError:
@@ -115,7 +131,7 @@ def ensure_no_reverse_proxy(func):
     """Check that the access does not come from the reverse proxy."""
 
     @functools.wraps(func)
-    async def wrapper(request: web.Request, *args, **kwargs):
+    async def wrapper(request: Request, *args, **kwargs):
         """Wrapper around the actual function call."""
 
         if "X-Forwarded-For" in request.headers:
@@ -139,7 +155,7 @@ def get_x_accel_limit_rate(in_mbit: float) -> int:
 
 
 def file_serve_response(path: Path, x_accel: bool, downloadas: str = None,
-                        x_accel_limit_rate: float = None) -> web.StreamResponse:
+                        x_accel_limit_rate: float = None) -> Union[Response, FileResponse]:
     """
     Constructs a response object to serve a file either "as is" or via NGINX X-Accel capabilities.
 
@@ -162,8 +178,8 @@ def file_serve_response(path: Path, x_accel: bool, downloadas: str = None,
     if x_accel:
         headers.update(get_x_accel_headers(str(path), get_x_accel_limit_rate(x_accel_limit_rate)))
         content_type = get_content_type_for_video(''.join(path.suffixes))
-        return web.Response(headers=headers, content_type=content_type)
-    return web.FileResponse(path, headers=headers)
+        return Response(headers=headers, content_type=content_type)
+    return FileResponse(path, headers=headers)
 
 
 def file_serve_headers(downloadas: str = None) -> Dict[str, str]:
@@ -175,11 +191,11 @@ def file_serve_headers(downloadas: str = None) -> Dict[str, str]:
     return headers
 
 
-class JSONBaseModel(pydantic.BaseModel):
+class JSONBaseModel(BaseModel):
     pass
 
 
-def register_route_with_cors(routes: web.RouteTableDef, allow_methods: Union[str, List[str]], path: str,
+def register_route_with_cors(routes: RouteTableDef, allow_methods: Union[str, List[str]], path: str,
                              allow_headers: Optional[List[str]] = None):
     """Decorator function used to add Cross-Origin Resource Sharing (CORS) header fields to the responses.
 
@@ -201,7 +217,7 @@ def register_route_with_cors(routes: web.RouteTableDef, allow_methods: Union[str
             headers['Access-Control-Allow-Headers'] = ','.join(allow_headers)
 
         @functools.wraps(func)
-        async def wrapper(request: web.Request, *args, **kwargs):
+        async def wrapper(request: Request, *args, **kwargs):
             """Wrapper around the actual function call."""
 
             try:
@@ -212,19 +228,19 @@ def register_route_with_cors(routes: web.RouteTableDef, allow_methods: Union[str
                 error.headers.extend(headers)
                 raise error
 
-        async def return_options(request: web.Request):
-            return web.Response(headers=headers)
+        async def return_options(request: Request):
+            return Response(headers=headers)
 
         for method in allow_methods:
-            routes._items.append(web.RouteDef(method, path, wrapper, {}))
-        routes._items.append(web.RouteDef('OPTIONS', path, return_options, {}))
+            routes._items.append(RouteDef(method, path, wrapper, {}))
+        routes._items.append(RouteDef('OPTIONS', path, return_options, {}))
 
         return wrapper
     return decorator
 
 
-def json_response(data: JSONBaseModel, status=200) -> web.Response:
-    return web.Response(text=data.json(), status=status, content_type='application/json')
+def json_response(data: JSONBaseModel, status=200) -> Response:
+    return Response(text=data.json(), status=status, content_type='application/json')
 
 
 class HTTPClient:
@@ -233,7 +249,7 @@ class HTTPClient:
 
     @classmethod
     def create_client_session(cls):
-        cls.session = ClientSession() # TODO use TCPConnector and use limit_per_host option
+        cls.session = ClientSession()  # TODO use TCPConnector and use limit_per_host option
 
     @classmethod
     async def close_all(cls):
@@ -292,7 +308,7 @@ class HTTPClient:
                 else:
                     some_data = await response.read()
                     return response.status, some_data
-        except (ClientError, UnicodeDecodeError, pydantic.ValidationError, JSONDecodeError, ConnectionError) \
+        except (ClientError, UnicodeDecodeError, ValidationError, JSONDecodeError, ConnectionError) \
                 as error:
             if print_connection_exception:
                 web_logger.exception(f"Error while internal web request ({url}).")
@@ -357,15 +373,6 @@ async def read_data_from_response(response: ClientResponse, max_bytes: int) -> b
             raise ResponseTooManyDataError()
         blocks.append(block)
     return b''.join(blocks)
-
-
-def ensure_url_does_not_end_with_slash(url: str) -> str:
-    while url:
-        if url[-1] == '/':
-            url = url[0:-1]
-        else:
-            return url
-    return url
 
 
 # exceptions
