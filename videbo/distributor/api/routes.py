@@ -6,16 +6,17 @@ from typing import List, Tuple
 from aiohttp.web import Request, RouteTableDef
 from aiohttp.web_exceptions import HTTPNotFound, HTTPOk, HTTPServiceUnavailable, HTTPInternalServerError
 
+from videbo.settings import settings
 from videbo.auth import Role, BaseJWTData, ensure_jwt_data_and_role, JWT_ISS_INTERNAL
+from videbo.misc import MEGA, rel_path
 from videbo.network import NetworkInterfaces
 from videbo.web import json_response, ensure_json_body, file_serve_response
-from videbo.misc import MEGA, rel_path
-from videbo.storage.api.models import RequestFileJWTData, FileType
 from videbo.storage.util import HashedVideoFile
-from videbo.distributor import logger, distributor_settings
+from videbo.storage.api.models import RequestFileJWTData, FileType
 from videbo.distributor.files import file_controller, TooManyWaitingClients, NoSuchFile, NotSafeToDelete
 from .models import DistributorStatus, DistributorCopyFile, DistributorDeleteFiles, DistributorDeleteFilesResponse,\
     DistributorFileList
+from videbo.distributor import logger
 
 
 routes = RouteTableDef()
@@ -29,12 +30,12 @@ async def get_status(_request: Request, _jwt_data: BaseJWTData):
     status.files_total_size = int(file_controller.files_total_size / MEGA)
     status.files_count = len(file_controller.files)
     status.free_space = await file_controller.get_free_space()
-    status.tx_max_rate = distributor_settings.tx_max_rate_mbit
-    NetworkInterfaces.get_instance().update_node_status(status, distributor_settings.server_status_page, logger)
+    status.tx_max_rate = settings.tx_max_rate_mbit
+    NetworkInterfaces.get_instance().update_node_status(status, settings.server_status_page, logger)
     # Specific to distributor nodes:
     status.copy_files_status = file_controller.get_copy_file_status()
     status.waiting_clients = file_controller.waiting
-    status.bound_to_storage_node_base_url = distributor_settings.bound_to_storage_base_url
+    status.bound_to_storage_node_base_url = settings.bound_to_storage_base_url
     return json_response(status)
 
 
@@ -96,11 +97,11 @@ async def request_file(request: Request, jwt_data: RequestFileJWTData):
         logger.info(f"Too many waiting users, file {file_hash}")
         raise HTTPServiceUnavailable()
     video.last_requested = int(time())
-    x_accel = bool(distributor_settings.nginx_x_accel_location)
+    x_accel = bool(settings.nginx_x_accel_location)
     if x_accel:
-        path = Path(distributor_settings.nginx_x_accel_location, rel_path(str(video)))
+        path = Path(settings.nginx_x_accel_location, rel_path(str(video)))
     else:
         path = file_controller.get_path(video)
     dl = request.query.get('downloadas')
-    limit_rate = float(jwt_data.iss != JWT_ISS_INTERNAL and distributor_settings.nginx_x_accel_limit_rate_mbit)
+    limit_rate = float(jwt_data.iss != JWT_ISS_INTERNAL and settings.nginx_x_accel_limit_rate_mbit)
     return file_serve_response(path, x_accel, dl, limit_rate)

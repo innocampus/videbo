@@ -8,18 +8,17 @@ from pathlib import Path
 from copy import deepcopy
 from typing import Optional, Union, Dict, BinaryIO, List, Iterable
 
-from videbo.misc import TaskManager, BytesLimitLRU, gather_in_batches, rel_path, get_free_disk_space
-from videbo.web import ensure_url_does_not_end_with_slash
-from videbo.lms_api import LMSSitesCollection, LMSAPIError
-from videbo.video import VideoInfo, Video, VideoConfig
-from videbo.network import NetworkInterfaces
+from videbo.settings import settings
 from videbo.exceptions import PendingWriteOperationError
-
-from . import storage_logger
-from . import storage_settings
+from videbo.lms_api import LMSSitesCollection, LMSAPIError
+from videbo.misc import TaskManager, BytesLimitLRU, gather_in_batches, rel_path, get_free_disk_space
+from videbo.network import NetworkInterfaces
+from videbo.video import VideoInfo, Video, VideoConfig
 from .distribution import DistributionController, FileNodes
 from .exceptions import HashedFileInvalidExtensionError, CouldNotCreateTempDir
 from .api.models import FileType, StorageStatus
+from . import storage_logger
+
 
 FILE_EXT_WHITELIST = ('.mp4', '.webm')
 JPG_EXT = '.jpg'  # for thumbnails
@@ -91,7 +90,7 @@ class FileStorage:
         self._cached_files: _StoredFilesDict = {}  # map hashes to files
         self._cached_files_total_size: int = 0  # in bytes
         self.num_current_uploads: int = 0
-        self.thumb_memory_cache = BytesLimitLRU(storage_settings.thumb_cache_max_mb * 1024 * 1024)
+        self.thumb_memory_cache = BytesLimitLRU(settings.thumb_cache_max_mb * 1024 * 1024)
         self.distribution_controller: DistributionController = DistributionController()
 
         create_dir_if_not_exists(self.temp_dir, 0o755)
@@ -103,9 +102,10 @@ class FileStorage:
     @classmethod
     def get_instance(cls) -> 'FileStorage':
         if cls._instance is None:
-            cls._instance = FileStorage(storage_settings.files_path)
+            cls._instance = FileStorage(settings.files_path)
             cls._instance._load_file_list()
-            cls._instance._register_dist_nodes()
+            for url in settings.static_dist_node_base_urls:
+                cls._instance.distribution_controller.add_new_dist_node(url)
             cls._instance.distribution_controller.start_periodic_reset_task()
         return cls._instance
 
@@ -129,14 +129,6 @@ class FileStorage:
         except Exception as e:
             storage_logger.exception(f"{str(e)} in load_file_list")
         storage_logger.info(f"Found {len(self._cached_files)} videos in storage")
-
-    def _register_dist_nodes(self) -> None:
-        urls = storage_settings.static_dist_node_base_urls.split(',')
-        for url in urls:
-            url = url.strip()
-            if len(url) == 0:
-                continue
-            self.distribution_controller.add_new_dist_node(ensure_url_does_not_end_with_slash(url))
 
     def _add_video_to_cache(self, file_hash: str, file_extension: str, file_path: Path) -> StoredHashedVideoFile:
         file = StoredHashedVideoFile(file_hash, file_extension)
@@ -241,9 +233,9 @@ class FileStorage:
     async def generate_thumbs(self, file: HashedVideoFile, video: VideoInfo) -> int:
         """Generates thumbnail suggestions."""
         video_length = video.get_length()
-        thumb_height = storage_settings.thumb_height
-        thumb_count = storage_settings.thumb_suggestion_count
-        video_check_user = storage_settings.check_user
+        thumb_height = settings.thumb_height
+        thumb_count = settings.thumb_suggestion_count
+        video_check_user = settings.check_user
         # Generate thumbnails concurrently
         tasks = []
         for thumb_nr in range(thumb_count):
@@ -252,7 +244,7 @@ class FileStorage:
             temp_out_file = None
             if video_check_user is not None:
                 temp_out_file = Path(self.temp_out_dir, file.hash + "_" + str(thumb_nr) + JPG_EXT)
-            tasks.append(Video(video_config=VideoConfig(storage_settings)).save_thumbnail(
+            tasks.append(Video(video_config=VideoConfig()).save_thumbnail(
                 video.video_file, thumb_path, offset, thumb_height, temp_output_file=temp_out_file))
         await asyncio.gather(*tasks)
         return thumb_count
@@ -426,9 +418,9 @@ class FileStorage:
         # Same attributes for storage and distributor nodes:
         status.files_total_size = self.get_files_total_size_mb()
         status.files_count = self.get_files_count()
-        status.free_space = await get_free_disk_space(str(storage_settings.files_path))
-        status.tx_max_rate = storage_settings.tx_max_rate_mbit
-        NetworkInterfaces.get_instance().update_node_status(status, storage_settings.server_status_page, storage_logger)
+        status.free_space = await get_free_disk_space(str(settings.files_path))
+        status.tx_max_rate = settings.tx_max_rate_mbit
+        NetworkInterfaces.get_instance().update_node_status(status, settings.server_status_page, storage_logger)
         # Specific to storage node:
         status.distributor_nodes = self.distribution_controller.get_dist_node_base_urls()
         status.num_current_uploads = self.num_current_uploads

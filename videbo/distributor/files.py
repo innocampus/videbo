@@ -7,13 +7,14 @@ from typing import Optional, Dict, Set, List
 
 from aiohttp import ClientTimeout
 
+from videbo.settings import settings
 from videbo.auth import internal_jwt_encode
 from videbo.misc import MEGA, get_free_disk_space, TaskManager, rel_path
 from videbo.web import HTTPClient
 from videbo.storage.util import HashedVideoFile
 from videbo.storage.api.models import RequestFileJWTData, FileType
 from videbo.distributor.api.models import DistributorCopyFileStatus
-from . import logger, distributor_settings
+from . import logger
 
 
 class CopyFileStatus:
@@ -126,7 +127,7 @@ class DistributorFileController:
     async def get_free_space(self) -> int:
         """Returns free space in MB excluding the space that should be empty."""
         free = await get_free_disk_space(str(self.base_path))
-        return max(free - distributor_settings.leave_free_space_mb, 0)
+        return max(free - settings.leave_free_space_mb, 0)
 
     def copy_file(self, file: HashedVideoFile, from_url: str, expected_file_size: int) \
             -> DistributorHashedVideoFile:
@@ -244,7 +245,7 @@ class DistributorFileController:
         dist_file = self.files.get(file_hash)
         if dist_file is None:
             raise NoSuchFile()
-        cutoff_time = time() - (distributor_settings.last_request_safety_hours * 3600)
+        cutoff_time = time() - (settings.last_request_safety_hours * 3600)
         if safe and dist_file.last_requested > cutoff_time:
             raise NotSafeToDelete()
         del self.files[file_hash]

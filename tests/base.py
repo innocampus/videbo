@@ -1,11 +1,6 @@
-import os
 import sys
 import asyncio
 import unittest.mock
-from pathlib import Path
-
-from .utils import AsyncMockHelper
-from videbo import settings
 
 
 # Python 3.8 and greater has support for TestCases with `async` test methods
@@ -15,6 +10,36 @@ from videbo import settings
 # https://docs.python.org/3/library/unittest.html#unittest.IsolatedAsyncioTestCase
 # https://docs.python.org/3/library/unittest.mock.html#unittest.mock.AsyncMock
 NATIVE_ASYNC_TESTS = sys.version_info >= (3, 8)
+
+
+class AsyncMock(unittest.mock.MagicMock):
+    """
+    Workaround for patching `async` functions in Python < 3.8.
+
+    Used for patching; passed as argument for the `new_callable` parameter.
+    Provides a simple way to do assertions on the mocked object like e.g.:
+        `mocked_async_func.assert_awaited_with(...)`
+
+    Note that from Python 3.8 onwards, there is the native `AsyncMock` class that does all this better.
+    """
+    async def __call__(self, *args, **kwargs):
+        return super().__call__(*args, **kwargs)
+
+    def assert_awaited_once(self):
+        return super().assert_called_once()
+
+    def assert_awaited_once_with(self, *args, **kwargs):
+        return super().assert_called_once_with(*args, **kwargs)
+
+    def assert_awaited_with(self, *args, **kwargs):
+        return super().assert_called_with(*args, **kwargs)
+
+    def assert_not_awaited(self):
+        return super().assert_not_called()
+
+    @property
+    def await_args(self):
+        return super().call_args
 
 
 # To have IDEs recognize subclasses of our `BaseTestCase` as inheriting from `unittest.TestCase`, we make sure it
@@ -27,29 +52,10 @@ class _TestCase:
 if NATIVE_ASYNC_TESTS:
     _TestCase = getattr(unittest, 'IsolatedAsyncioTestCase')
     AsyncMock = getattr(unittest.mock, 'AsyncMock')
-else:
-    AsyncMock = AsyncMockHelper
 
 
 class BaseTestCase(_TestCase, unittest.TestCase):
-    CONFIG_FILE_NAME = 'config.ini'
-
-    @classmethod
-    def setUpClass(cls) -> None:
-        """
-        To provide access to to basic configuration during testing.
-        """
-        if not settings.config.sections():
-            load_basic_config_from(cls.CONFIG_FILE_NAME)
-
-
-def load_basic_config_from(config_file_name: str) -> None:
-    config_file = Path(os.path.join(settings.topdir, config_file_name))
-    if not config_file.is_file():
-        print(f"Config file does not exist: {config_file}")
-        sys.exit(3)
-    settings.config.read(config_file)
-    settings.load()
+    pass
 
 
 def async_test(future):

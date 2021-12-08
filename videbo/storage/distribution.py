@@ -2,12 +2,13 @@ import asyncio
 from timeit import default_timer as timer
 from typing import Optional, Set, Tuple, List, Dict, Iterable, Callable, TYPE_CHECKING
 
+from videbo.settings import settings
 from videbo.misc import MEGA, TaskManager, Periodic
 from videbo.web import HTTPClient, HTTPResponseError
 from videbo.distributor.api.models import (DistributorCopyFile, DistributorDeleteFiles, DistributorDeleteFilesResponse,
                                            DistributorStatus, DistributorFileList)
-from videbo.storage import storage_settings, storage_logger as log
 from .exceptions import DistStatusUnknown, DistAlreadyEnabled, DistAlreadyDisabled, UnknownDistURL
+from videbo.storage import storage_logger as log
 if TYPE_CHECKING:
     from videbo.storage.util import StoredHashedVideoFile
 
@@ -19,7 +20,6 @@ class DownloadScheduler:
     Additionally, the `in` operator can be used on an instance to determine if a file is already scheduled,
     and the built-in `len(...)` function can be used get the number of files currently scheduled.
     """
-
     class NothingScheduled(Exception):
         pass
 
@@ -171,8 +171,8 @@ class DistributionNodeInfo:
         """Copy a video from one node to another. If `from_node` is None, copy from the storage node."""
         if file in self.loading or file in self.awaiting_download:
             return
-        from_url = from_node.base_url if from_node else storage_settings.public_base_url
-        if len(self.loading) < storage_settings.max_parallel_copying_tasks:
+        from_url = from_node.base_url if from_node else settings.public_base_url
+        if len(self.loading) < settings.max_parallel_copying_tasks:
             TaskManager.fire_and_forget_task(asyncio.create_task(self._copy_file_task(file, from_url)))
         else:
             self.awaiting_download.schedule(file, from_url)
@@ -202,7 +202,7 @@ class DistributionNodeInfo:
             # and set the file's FileNodes `.copying` attribute to `False`.
             self.loading.discard(file)
             file.nodes.copying = False
-            if len(self.loading) >= storage_settings.max_parallel_copying_tasks:
+            if len(self.loading) >= settings.max_parallel_copying_tasks:
                 return
             # Check if other files are scheduled for download and if they are, fire off the next copying task.
             try:
@@ -268,12 +268,12 @@ class DistributionNodeInfo:
         if not self.is_good:
             log.info(f"Distributor {self.base_url} is not in a good state. Skip freeing space.")
             return
-        assert 0 <= storage_settings.dist_free_space_target_ratio <= 1
-        if self.free_space_ratio >= storage_settings.dist_free_space_target_ratio:
+        assert 0 <= settings.dist_free_space_target_ratio <= 1
+        if self.free_space_ratio >= settings.dist_free_space_target_ratio:
             log.debug(f"{self.status.free_space} MB ({round(self.free_space_ratio * 100, 1)} %) "
                       f"of free space available on {self.base_url}")
             return
-        target_gain = (storage_settings.dist_free_space_target_ratio * self.total_space - self.status.free_space) * MEGA
+        target_gain = (settings.dist_free_space_target_ratio * self.total_space - self.status.free_space) * MEGA
         to_remove, space_gain = [], 0
         sorted_videos = sorted(self.stored_videos, reverse=True)
         while space_gain < target_gain:
@@ -368,7 +368,7 @@ class DistributionController:
             start = timer()
             self._reset()
             log.info(f"Periodic reset task finished (took {(timer() - start):.2f}s)")
-        Periodic(task)(interval_seconds=storage_settings.reset_views_every_hours * 3600)
+        Periodic(task)(interval_seconds=settings.reset_views_every_hours * 3600)
 
     def count_file_access(self, file: 'StoredHashedVideoFile', rid: str) -> None:
         """Increment the video views counter if this is the first time the user viewed the video."""

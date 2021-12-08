@@ -1,6 +1,6 @@
+import logging
 import asyncio
 import os
-import logging
 import re
 from collections import OrderedDict
 from pathlib import Path
@@ -210,3 +210,12 @@ async def gather_in_batches(batch_size: int, *aws, return_exceptions: bool = Fal
     for idx in range(0, len(aws), batch_size):
         results += await asyncio.gather(*aws[idx:idx + batch_size], return_exceptions=return_exceptions)
     return results
+
+
+def ensure_url_does_not_end_with_slash(url: str) -> str:
+    while url:
+        if url[-1] == '/':
+            url = url[0:-1]
+        else:
+            return url
+    return url

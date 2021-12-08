@@ -1,18 +1,16 @@
-from typing import Optional, List
-from argparse import Namespace
+import json
 from urllib.parse import urlencode
 from distutils.util import strtobool
-import json
+from typing import Optional, List
 
+from videbo.web import HTTPClient
 from videbo.storage.api.models import (StorageFilesList, StorageFileInfo, DeleteFilesList, DistributorNodeInfo,
                                        StorageStatus)
-from videbo.web import HTTPClient
 
 
 def get_storage_url(path: str) -> str:
-    from videbo import settings
-    port = settings.get_config('storage', 'listen_port')
-    return f'http://localhost:{port}{path}'
+    from videbo.settings import settings
+    return f'http://localhost:{settings.listen_port}{path}'
 
 
 async def get_status():
@@ -25,7 +23,7 @@ async def get_status():
         print_response(http_code)
 
 
-async def find_orphaned_files(args: Namespace) -> None:
+async def find_orphaned_files(delete: bool) -> None:
     """
     Awaits results from the filtered files request and depending on arguments passed,
     either deletes or simply lists all orphaned files currently in storage,
@@ -42,7 +40,7 @@ async def find_orphaned_files(args: Namespace) -> None:
         return
     total_size = round(sum(file.file_size for file in files) / 1024 / 1024, 1)
     print(f"Found {num_files} orphaned files with a total size of {total_size} MB.")
-    if args.delete:
+    if delete:
         confirm = input("Are you sure, you want to delete them from storage? (yes/no) ")
         if not strtobool(confirm):
             print("Aborted.")

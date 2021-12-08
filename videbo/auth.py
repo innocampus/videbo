@@ -1,14 +1,15 @@
+import logging
 import functools
 import inspect
-import pydantic
-import jwt
-import logging
-from aiohttp import web
-from aiohttp.web_exceptions import HTTPUnauthorized
 from time import time
 from typing import Dict, Type, Optional, Union
 
-from videbo import settings
+import jwt
+from pydantic import BaseModel, ValidationError
+from aiohttp.web_request import Request
+from aiohttp.web_exceptions import HTTPUnauthorized
+
+from videbo.settings import settings
 
 
 logger = logging.getLogger('videbo-auth')
@@ -36,7 +37,7 @@ class Role:
         return level
 
 
-def extract_jwt_from_request(request: web.Request) -> str:
+def extract_jwt_from_request(request: Request) -> str:
     """Get the JSON Web Token from the Authorization header or GET field named jwt."""
     try:
         # First try to find the token in the header.
@@ -57,7 +58,7 @@ def extract_jwt_from_request(request: web.Request) -> str:
 
 def internal_jwt_decode(encoded: str) -> Dict:
     """Decode JSON Web token using the internal secret."""
-    return jwt.decode(encoded, settings.general.internal_api_secret, algorithms=JWT_ALGORITHM, issuer=JWT_ISS_INTERNAL)
+    return jwt.decode(encoded, settings.internal_api_secret, algorithms=JWT_ALGORITHM, issuer=JWT_ISS_INTERNAL)
 
 
 def internal_jwt_encode(data: Union[Dict, 'BaseJWTData'], expiry: int = 300) -> str:
@@ -73,12 +74,12 @@ def internal_jwt_encode(data: Union[Dict, 'BaseJWTData'], expiry: int = 300) -> 
     headers = {
         'kid': JWT_ISS_INTERNAL
     }
-    return jwt.encode(data, settings.general.internal_api_secret, algorithm=JWT_ALGORITHM, headers=headers)
+    return jwt.encode(data, settings.internal_api_secret, algorithm=JWT_ALGORITHM, headers=headers)
 
 
 def external_jwt_decode(encoded: str) -> Dict:
     """Decode JSON Web token using the external/lms secret."""
-    return jwt.decode(encoded, settings.lms.api_secret, algorithms=JWT_ALGORITHM, issuer=JWT_ISS_EXTERNAL)
+    return jwt.decode(encoded, settings.external_api_secret, algorithms=JWT_ALGORITHM, issuer=JWT_ISS_EXTERNAL)
 
 
 def external_jwt_encode(data: Union[Dict, 'BaseJWTData'], expiry: int = 300) -> str:
@@ -94,10 +95,10 @@ def external_jwt_encode(data: Union[Dict, 'BaseJWTData'], expiry: int = 300) -> 
     headers = {
         'kid': JWT_ISS_EXTERNAL
     }
-    return jwt.encode(data, settings.lms.api_secret, algorithm=JWT_ALGORITHM, headers=headers)
+    return jwt.encode(data, settings.external_api_secret, algorithm=JWT_ALGORITHM, headers=headers)
 
 
-def check_jwt_auth_save_data(request: web.Request, min_role_level: int, model: Type['BaseJWTData']) -> bool:
+def check_jwt_auth_save_data(request: Request, min_role_level: int, model: Type['BaseJWTData']) -> bool:
     """Check user's authentication by looking at the JWT and the given role and save the JWT data in request.
 
     It also considers if the jwt was generated internally or externally."""
@@ -146,7 +147,7 @@ def match_jwt_with_model(data: Dict, model: Type['BaseJWTData']):
     """Try to match the jwt data with a model."""
     try:
         return model.parse_obj(data)
-    except pydantic.ValidationError as error:
+    except ValidationError as error:
         raise JWTDoesNotMatchModelError(error)
 
 
@@ -177,7 +178,7 @@ def ensure_jwt_data_and_role(min_role_level: int, headers: Optional[dict] = None
             raise NoJWTModelFoundError()
 
         @functools.wraps(func)
-        async def wrapper(request: web.Request, *args, **kwargs):
+        async def wrapper(request: Request, *args, **kwargs):
             """Wrapper around the actual function call."""
 
             if not check_jwt_auth_save_data(request, min_role_level, jwt_data_model_arg_model):
@@ -190,7 +191,7 @@ def ensure_jwt_data_and_role(min_role_level: int, headers: Optional[dict] = None
     return decorator
 
 
-class BaseJWTData(pydantic.BaseModel):
+class BaseJWTData(BaseModel):
     """Base data fields that have to be stored in the JWT."""
     # standard fields defined by RFC 7519 that we require for all tokens
     exp: int # expiration time claim
@@ -210,7 +211,7 @@ class NoJWTFoundError(Exception):
 
 
 class JWTDoesNotMatchModelError(Exception):
-    def __init__(self, error: pydantic.ValidationError):
+    def __init__(self, error: ValidationError):
         self.pydantic_error = error
         super().__init__()
 
