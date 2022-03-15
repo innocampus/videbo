@@ -105,7 +105,7 @@ class Periodic:
         """Starts the execution loop (see above) with the provided options."""
         self._task = asyncio.get_event_loop().create_task(
             self.loop(interval_seconds, limit, call_immediately),
-            # name=self.task_name  # 3.8 required
+            name=self.task_name
         )
         TaskManager.fire_and_forget_task(self._task)
 

@@ -1,2 +1,2 @@
 -r full.txt
-coverage
+coverage==6.3.2
