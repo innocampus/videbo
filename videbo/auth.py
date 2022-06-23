@@ -58,7 +58,7 @@ def extract_jwt_from_request(request: Request) -> str:
 
 def internal_jwt_decode(encoded: str) -> Dict:
     """Decode JSON Web token using the internal secret."""
-    return jwt.decode(encoded, settings.internal_api_secret, algorithms=JWT_ALGORITHM, issuer=JWT_ISS_INTERNAL)
+    return jwt.decode(encoded, settings.internal_api_secret, algorithms=[JWT_ALGORITHM], issuer=JWT_ISS_INTERNAL)
 
 
 def internal_jwt_encode(data: Union[Dict, 'BaseJWTData'], expiry: int = 300) -> str:
@@ -79,7 +79,7 @@ def internal_jwt_encode(data: Union[Dict, 'BaseJWTData'], expiry: int = 300) -> 
 
 def external_jwt_decode(encoded: str) -> Dict:
     """Decode JSON Web token using the external/lms secret."""
-    return jwt.decode(encoded, settings.external_api_secret, algorithms=JWT_ALGORITHM, issuer=JWT_ISS_EXTERNAL)
+    return jwt.decode(encoded, settings.external_api_secret, algorithms=[JWT_ALGORITHM], issuer=JWT_ISS_EXTERNAL)
 
 
 def external_jwt_encode(data: Union[Dict, 'BaseJWTData'], expiry: int = 300) -> str:

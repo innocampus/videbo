@@ -1,7 +1,7 @@
-from typing import Tuple, List
+from typing import List
 
 from videbo.web import JSONBaseModel
-from videbo.models import NodeStatus
+from videbo.models import NodeStatus, FileID
 
 
 class DistributorCopyFileStatus(JSONBaseModel):
@@ -24,14 +24,14 @@ class DistributorCopyFile(JSONBaseModel):
 
 
 class DistributorDeleteFiles(JSONBaseModel):
-    files: List[Tuple[str, str]]  # (hash, file extension)
+    files: List[FileID]  # (hash, file extension)
     safe: bool  # if True, recently requested files will not be deleted
 
 
 class DistributorDeleteFilesResponse(JSONBaseModel):
-    files_skipped: List[Tuple[str, str]]  # (hash, file extension)
-    free_space: int  # in MB
+    files_skipped: List[FileID]  # (hash, file extension)
+    free_space: float  # in MB
 
 
 class DistributorFileList(JSONBaseModel):
-    files: List[Tuple[str, str]]  # (hash, file extension)
+    files: List[FileID]  # (hash, file extension)

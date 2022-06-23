@@ -63,6 +63,7 @@ async def get_filtered_files(**kwargs) -> Optional[List[StorageFileInfo]]:
     status, ret = await HTTPClient.internal_request_admin('GET', url, None, StorageFilesList)
     if status == 200:
         return ret.files
+    return None
 
 
 def list_files(*files: StorageFileInfo) -> None:

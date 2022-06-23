@@ -38,20 +38,28 @@ class DistributorHashedVideoFile(HashedVideoFile):
 
 
 class DistributorFileController:
+    _instance: Optional['DistributorFileController'] = None
+
     MAX_WAITING_CLIENTS = 60
 
-    def __init__(self):
+    def __init__(self, path: Path):
         # file hash -> Event if the node is still downloading the file right now (event is fired when load completed)
         self.files: Dict[str, DistributorHashedVideoFile] = {}
         self.files_total_size: int = 0  # in bytes
         self.files_being_copied: Set[DistributorHashedVideoFile] = set()
-        self.base_path: Optional[Path] = None
+        self.base_path: Path = path
         self.waiting: int = 0  # number of clients waiting for a file being downloaded
 
-    def load_file_list(self, base_path: Path):
+    @classmethod
+    def get_instance(cls) -> 'DistributorFileController':
+        if cls._instance is None:
+            cls._instance = DistributorFileController(settings.files_path)
+            cls._instance._load_file_list()
+        return cls._instance
+
+    def _load_file_list(self):
         """Initialize object and load all existing file names."""
-        self.base_path = base_path
-        for obj in base_path.glob('**/*'):
+        for obj in self.base_path.glob('**/*'):
             if obj.is_file():
                 file_split = obj.name.split('.')
                 file_hash = file_split[0]
@@ -124,10 +132,10 @@ class DistributorFileController:
                 self.waiting -= 1
         return dist_file
 
-    async def get_free_space(self) -> int:
+    async def get_free_space(self) -> float:
         """Returns free space in MB excluding the space that should be empty."""
         free = await get_free_disk_space(str(self.base_path))
-        return max(free - settings.leave_free_space_mb, 0)
+        return max(free - settings.leave_free_space_mb, 0.)
 
     def copy_file(self, file: HashedVideoFile, from_url: str, expected_file_size: int) \
             -> DistributorHashedVideoFile:
@@ -260,11 +268,8 @@ class DistributorFileController:
             DistributorCopyFileStatus(
                 hash=file.hash, file_ext=file.file_extension, loaded=file.copy_status.loaded_bytes,
                 file_size=file.file_size, duration=now - file.copy_status.started
-            ) for file in self.files_being_copied
+            ) for file in self.files_being_copied if file.copy_status
         ]
-
-
-file_controller = DistributorFileController()
 
 
 class CopyFileError(Exception):

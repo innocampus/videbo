@@ -3,7 +3,7 @@ import asyncio
 import urllib.parse
 from distutils.util import strtobool
 from pathlib import Path
-from typing import List, Tuple, Union
+from typing import List, Optional, Tuple, Union
 
 from aiohttp.web_request import Request
 from aiohttp.web_response import Response, json_response
@@ -20,7 +20,7 @@ from videbo import storage_settings as settings
 from videbo.auth import ensure_jwt_data_and_role, external_jwt_encode, Role, JWT_ISS_INTERNAL, BaseJWTData
 from videbo.exceptions import InvalidMimeTypeError, InvalidVideoError, FFProbeError
 from videbo.misc import MEGA, rel_path
-from videbo.network import NetworkInterfaces
+from videbo.network import NetworkInterface, NetworkInterfaces
 from videbo.video import VideoInfo, VideoValidator, VideoConfig
 from videbo.web import (ensure_json_body, ensure_no_reverse_proxy, register_route_with_cors,
                         json_response as model_json_response, file_serve_response, file_serve_headers)
@@ -300,12 +300,11 @@ async def request_file(request: Request, jwt_data: RequestFileJWTData) -> Union[
     # If a video file is requested we already know the file should exist.
     if jwt_data.type != FileType.VIDEO:
         await verify_file_exists(path)
-    x_accel = bool(settings.nginx_x_accel_location)
-    if x_accel:
+    if settings.nginx_x_accel_location:
         path = Path(settings.nginx_x_accel_location, rel_path(str(video)))
     dl = request.query.get('downloadas')
     limit_rate = float(jwt_data.iss != JWT_ISS_INTERNAL and settings.nginx_x_accel_limit_rate_mbit)
-    return file_serve_response(path, x_accel, dl, limit_rate)
+    return file_serve_response(path, bool(settings.nginx_x_accel_location), dl, limit_rate)
 
 
 async def video_check_redirect(request: Request, file: StoredHashedVideoFile) -> None:
@@ -379,11 +378,10 @@ def video_redirect_to_node(request: Request, node: DistributionNodeInfo, file: S
 
 def get_own_tx_load() -> float:
     network = NetworkInterfaces.get_instance()
-    interfaces = network.get_interface_names()
-    if len(interfaces) == 0:
-        return 0
-    iface = network.get_interface(interfaces[0])
-    return (iface.tx_throughput * 8 / 1_000_000) / settings.tx_max_rate_mbit
+    tx_current_rate_mb = network.get_tx_current_rate()
+    if tx_current_rate_mb is None:
+        return 0.
+    return tx_current_rate_mb / settings.tx_max_rate_mbit
 
 
 async def verify_file_exists(path: Path) -> None:
@@ -410,7 +408,7 @@ async def handle_thumbnail_request(jwt_data: RequestFileJWTData) -> Response:
         access_logger.info(f"serve temp thumbnail {jwt_data.thumb_id} for video with hash {video}")
         path = file_storage.get_thumb_path_in_temp(video, jwt_data.thumb_id)
 
-    bytes_data = file_storage.thumb_memory_cache.get(path)
+    bytes_data: Optional[bytes] = file_storage.thumb_memory_cache.get(path)
     if bytes_data is None:
         def read_entire_file_and_close_it() -> bytes:
             with open(path, 'rb') as f:
@@ -420,6 +418,7 @@ async def handle_thumbnail_request(jwt_data: RequestFileJWTData) -> Response:
         except FileNotFoundError:
             storage_logger.warn(f"file does not exist: {path}")
             raise HTTPNotFound()
+        assert isinstance(bytes_data, bytes)
 
         # Setting cache maximum size to 0 effectively disables keeping the data:
         if settings.thumb_cache_max_mb > 0:
@@ -492,9 +491,10 @@ async def get_files_list(request: Request, _jwt_data: BaseJWTData) -> Response:
     files = []
     storage = FileStorage.get_instance()
     if request.query:
-        orphaned = request.query.get('orphaned')
-        if orphaned:
-            orphaned = bool(strtobool(orphaned.lower()))
+        orphaned: Optional[bool] = None
+        orphaned_arg = request.query.get('orphaned')
+        if orphaned_arg:
+            orphaned = bool(strtobool(orphaned_arg.lower()))
         files_dict = await storage.filtered_files(orphaned=orphaned)
     else:
         files_dict = storage.all_files()

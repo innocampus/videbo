@@ -3,7 +3,6 @@ import hashlib
 import os
 import tempfile
 import time
-from _sha256 import SHA256Type
 from pathlib import Path
 from copy import deepcopy
 from typing import Optional, Union, Dict, BinaryIO, List, Iterable
@@ -250,7 +249,7 @@ class FileStorage:
         return thumb_count
 
     @classmethod
-    def get_hash_gen(cls) -> SHA256Type:
+    def get_hash_gen(cls):
         """Get hashing method that is used for all files in the video."""
         return hashlib.sha256()
 

@@ -11,7 +11,7 @@ def start() -> None:
     from videbo import distributor_settings as settings
     from videbo.web import start_web_server
     from videbo.network import NetworkInterfaces
-    from .files import file_controller
+    from .files import DistributorFileController
     from .api.routes import routes
 
     if settings.dev_mode:
@@ -19,7 +19,7 @@ def start() -> None:
 
     # Ensure dir exists and load all files in it if there are any.
     settings.files_path.mkdir(parents=True, exist_ok=True)
-    file_controller.load_file_list(settings.files_path)
+    DistributorFileController.get_instance()  # init instance
 
     async def network_context(_app: Application) -> AsyncIterator[None]:
         NetworkInterfaces.get_instance().start_fetching(settings.server_status_page, logger)

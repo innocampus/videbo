@@ -6,7 +6,7 @@ from videbo import storage_settings as settings
 from videbo.misc import MEGA, TaskManager, Periodic
 from videbo.web import HTTPClient, HTTPResponseError
 from videbo.distributor.api.models import (DistributorCopyFile, DistributorDeleteFiles, DistributorDeleteFilesResponse,
-                                           DistributorStatus, DistributorFileList)
+                                           DistributorStatus, DistributorFileList, FileID)
 from .exceptions import DistStatusUnknown, DistAlreadyEnabled, DistAlreadyDisabled, UnknownDistURL
 from videbo.storage import storage_logger as log
 if TYPE_CHECKING:
@@ -83,6 +83,18 @@ class DistributionNodeInfo:
         return self.status.tx_current_rate / self.status.tx_max_rate
 
     @property
+    def free_space(self) -> float:
+        if self.status is None:
+            raise DistStatusUnknown
+        return self.status.free_space
+
+    @free_space.setter
+    def free_space(self, megabytes: float) -> None:
+        if self.status is None:
+            raise DistStatusUnknown
+        self.status.free_space = megabytes
+
+    @property
     def total_space(self) -> float:
         if self.status is None:
             raise DistStatusUnknown
@@ -101,6 +113,8 @@ class DistributionNodeInfo:
     async def watcher(self) -> None:
         url = self.base_url + '/api/distributor/status'
         print_exception = True
+        code: int
+        ret: DistributorStatus
         while True:
             try:
                 code, ret = await HTTPClient.internal_request_node('GET', url, expected_return_type=DistributorStatus,
@@ -116,7 +130,7 @@ class DistributionNodeInfo:
                     self.status = ret
                     if not self.is_good:
                         log.info(f"<Distribution watcher {self.base_url}> connected. "
-                                 f"Free space currently: {self.status.free_space} MB")
+                                 f"Free space currently: {self.free_space} MB")
                         await self.set_node_state(True)
                 elif self.is_good:
                     log.error(f"<Distribution watcher {self.base_url}> http status {code}")
@@ -143,7 +157,7 @@ class DistributionNodeInfo:
         """Fetch a list of all files that the node currently has."""
         from videbo.storage.util import FileStorage
         storage = FileStorage.get_instance()
-        remove_unknown_files: List[Tuple[str, str]] = []
+        remove_unknown_files: List[FileID] = []
         url = self.base_url + '/api/distributor/files'
         ret: DistributorFileList
         try:
@@ -211,8 +225,7 @@ class DistributionNodeInfo:
                 return
             TaskManager.fire_and_forget_task(asyncio.create_task(self._copy_file_task(next_file, next_from_url)))
 
-    async def _remove_files(self, rem_files: List[Tuple[str, str]], safe: bool = True
-                            ) -> Optional[DistributorDeleteFilesResponse]:
+    async def _remove_files(self, rem_files: List[FileID], safe: bool = True) -> DistributorDeleteFilesResponse:
         url = f'{self.base_url}/api/distributor/delete'
         data = DistributorDeleteFiles(files=rem_files, safe=safe)
         number = len(rem_files)
@@ -226,13 +239,12 @@ class DistributionNodeInfo:
         except Exception as e:
             log.exception(f"{e} removing {number} file(s) from {self.base_url}")
             raise e
+        if code == 200:
+            log.info(f"Removed {number} file(s) from {self.base_url}")
+            self.free_space = ret.free_space
         else:
-            if code == 200:
-                log.info(f"Removed {number} file(s) from {self.base_url}")
-                self.status.free_space = ret.free_space
-            else:
-                log.error(f"Error removing {number} file(s) from {self.base_url}, http status {code}")
-            return ret
+            log.error(f"Error removing {number} file(s) from {self.base_url}, http status {code}")
+        return ret
 
     async def remove_videos(self, files: Iterable['StoredHashedVideoFile'], safe: bool = True) -> None:
         hashes_extensions, to_discard = [], {}
@@ -270,10 +282,10 @@ class DistributionNodeInfo:
             return
         assert 0 <= settings.dist_free_space_target_ratio <= 1
         if self.free_space_ratio >= settings.dist_free_space_target_ratio:
-            log.debug(f"{self.status.free_space} MB ({round(self.free_space_ratio * 100, 1)} %) "
+            log.debug(f"{int(self.free_space)} MB ({round(self.free_space_ratio * 100, 1)} %) "
                       f"of free space available on {self.base_url}")
             return
-        target_gain = (settings.dist_free_space_target_ratio * self.total_space - self.status.free_space) * MEGA
+        target_gain = (settings.dist_free_space_target_ratio * self.total_space - self.free_space) * MEGA
         to_remove, space_gain = [], 0
         sorted_videos = sorted(self.stored_videos, reverse=True)
         while space_gain < target_gain:
@@ -361,6 +373,7 @@ class DistributionController:
         for node in nodes:
             if matches(node):
                 return node
+        return None
 
     def start_periodic_reset_task(self) -> None:
         async def task():
@@ -398,7 +411,7 @@ class DistributionController:
         mb_size = file.file_size / MEGA  # to MB
 
         def _is_viable_target_node(node: DistributionNodeInfo) -> bool:
-            return node.can_serve and node not in file.nodes.nodes and node.status.free_space > mb_size
+            return node.can_serve and node not in file.nodes.nodes and node.free_space > mb_size
         to_node = self._find_node(_is_viable_target_node)
         if to_node is None:
             # There is no node the file can be copied to.
@@ -452,5 +465,6 @@ class DistributionController:
         for node in self._dist_nodes:
             if (only_good and not node.is_good) or (only_enabled and not node.is_enabled):
                 continue
+            assert isinstance(node.status, DistributorStatus)
             output_dict[node.base_url] = node.status
         return output_dict

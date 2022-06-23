@@ -269,8 +269,12 @@ class NetworkInterfaces:
             self._fetch_task = asyncio.create_task(fetcher())
             TaskManager.fire_and_forget_task(self._fetch_task)
 
-    def get_interface(self, interface: str) -> Optional[NetworkInterface]:
-        return self._interfaces.get(interface)
+    def get_first_interface(self) -> Optional[NetworkInterface]:
+        interface_iter = iter(self._interfaces.values())
+        try:
+            return next(interface_iter)
+        except StopIteration:
+            return None
 
     def _set_interface_attr(self, interface: str, attr: str, value: Union[int, float]):
         """Sets only if interface exists"""
@@ -281,22 +285,28 @@ class NetworkInterfaces:
         """Returns the value if interface and attribute exist, else None"""
         if interface in self._interfaces:
             return getattr(self._interfaces[interface], attr, None)
+        return None
 
-    def update_node_status(self, status_obj: NodeStatus, server_status_page: str, logger: Logger) -> None:
+    def get_tx_current_rate(self, interface_name: str = None) -> Optional[float]:
+        interface = self.get_first_interface() if interface_name is None else self._interfaces.get(interface_name)
+        if interface is None:
+            return None
+        return interface.tx_throughput * 8 / 1_000_000
+
+    def update_node_status(self, status_obj: NodeStatus, server_status_page: str = None, logger: Logger = None) -> None:
         """Updates a given `NodeStatus` (subclass) instance with network interface information"""
-        interfaces = self.get_interface_names()
         if server_status_page:
             status_obj.current_connections = self.get_server_status()
-        if len(interfaces) > 0:
-            # Just take the first network interface.
-            interface = self.get_interface(interfaces[0])
-            status_obj.tx_current_rate = int(interface.tx_throughput * 8 / 1_000_000)
-            status_obj.rx_current_rate = int(interface.rx_throughput * 8 / 1_000_000)
-            status_obj.tx_total = int(interface.tx_bytes / MEGA)
-            status_obj.rx_total = int(interface.rx_bytes / MEGA)
+        interface = self.get_first_interface()
+        if interface is None:
+            status_obj.tx_current_rate = 0.
+            status_obj.rx_current_rate = 0.
+            status_obj.tx_total = 0.
+            status_obj.rx_total = 0.
+            if logger:
+                logger.error("No network interface found!")
         else:
-            status_obj.tx_current_rate = 0
-            status_obj.rx_current_rate = 0
-            status_obj.tx_total = 0
-            status_obj.rx_total = 0
-            logger.error("No network interface found!")
+            status_obj.tx_current_rate = round(interface.tx_throughput * 8 / 1_000_000, 2)
+            status_obj.rx_current_rate = round(interface.rx_throughput * 8 / 1_000_000, 2)
+            status_obj.tx_total = round(interface.tx_bytes / MEGA, 2)
+            status_obj.rx_total = round(interface.rx_bytes / MEGA, 2)

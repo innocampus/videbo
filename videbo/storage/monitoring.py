@@ -1,3 +1,4 @@
+from pathlib import Path
 from typing import Container, Dict, Tuple, Set, Callable, Optional, Type
 
 from pydantic.main import BaseModel
@@ -30,6 +31,7 @@ class Monitoring:
 
     @staticmethod
     def delete_text_file() -> None:
+        assert isinstance(settings.prom_text_file, Path)
         settings.prom_text_file.unlink()
         storage_logger.info(f"Deleted monitoring text file {settings.prom_text_file}")
 

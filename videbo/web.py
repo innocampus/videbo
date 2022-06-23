@@ -5,7 +5,7 @@ import urllib.parse
 from pathlib import Path
 from json import JSONDecodeError
 from time import time
-from typing import Optional, Type, List, Dict, Union, Any, Tuple, Callable, AsyncIterator
+from typing import Any, AsyncIterator, Awaitable, Callable, Dict, List, Optional, Tuple, Type, TypeVar, Union
 
 from pydantic import BaseModel, ValidationError
 from aiohttp.client import ClientResponse, ClientSession, ClientError, ClientTimeout
@@ -23,6 +23,10 @@ from .video import get_content_type_for_video
 
 
 web_logger = logging.getLogger('videbo-web')
+
+AwaitFuncT = Callable[..., Awaitable[Any]]
+AwaitDecorT = Callable[[AwaitFuncT], AwaitFuncT]
+AsyncFunction = TypeVar('AsyncFunction', bound=AwaitFuncT)
 
 
 async def session_context(_app: Application) -> AsyncIterator:
@@ -74,57 +78,61 @@ def start_web_server(routes: RouteTableDef, *cleanup_contexts: Callable, address
     run_app(app, host=address, port=port, access_log=access_logger)
 
 
-def ensure_json_body(headers: Optional[dict] = None):
-    """Decorator function used to ensure that there is a json body in the request and that this json
+def ensure_json_body(_func: AwaitFuncT = None, *, headers: Optional[dict] = None) -> Union[AwaitFuncT, AwaitDecorT]:
+    """
+    Decorator function used to ensure that there is a json body in the request and that this json
     corresponds to the model given as a type annotation in func.
 
-    Use JSONBaseModel as base class for your models.
+    Use `JSONBaseModel` as base class for your models.
 
-    On an error, headers can be sent along the response.
+    Args:
+        _func:
+            Control parameter; allows using the decorator with or without arguments.
+            If this decorator is used with any arguments, this will always be the decorated function itself.
+        headers (optional):
+            Headers to include when sending error responses.
     """
-    def decorator(func):
+    def decorator(function: AwaitFuncT) -> AwaitFuncT:
         """internal decorator function"""
-
         # Look for the model given in a type annotation.
-        signature = inspect.signature(func)
+        signature = inspect.signature(function)
         param: inspect.Parameter
-        model_arg_name = None
-        model_arg_model: Optional[Type[BaseModel]] = None
+        model_arg_name: Optional[str] = None
+        model_arg_model: Type[BaseModel] = BaseModel
         for name, param in signature.parameters.items():
             if issubclass(param.annotation, JSONBaseModel):
                 if model_arg_name:
                     raise TooManyJSONModelsError()
                 model_arg_name = name
                 model_arg_model = param.annotation
-
         if model_arg_name is None:
             raise NoJSONModelFoundError()
 
-        @functools.wraps(func)
-        async def wrapper(request: Request, *args, **kwargs):
+        @functools.wraps(function)
+        async def wrapper(request: Request, *args, **kwargs) -> Any:
             """Wrapper around the actual function call."""
-
             assert request._client_max_size > 0
+            assert isinstance(model_arg_name, str)
             if request.content_type != 'application/json':
                 web_logger.info('Wrong content type, json expected, got %s', request.content_type)
                 raise HTTPBadRequest(headers=headers)
-
             try:
                 json = await request.json()
                 data = model_arg_model.parse_obj(json)
-
             except ValidationError as error:
                 web_logger.info('JSON in request does not match model: %s', str(error))
                 raise HTTPBadRequest(headers=headers)
             except JSONDecodeError:
                 web_logger.info('Invalid JSON in request')
                 raise HTTPBadRequest(headers=headers)
-
             kwargs[model_arg_name] = data
-            return await func(request, *args, **kwargs)
-
+            return await function(request, *args, **kwargs)
         return wrapper
-    return decorator
+
+    if _func is None:
+        return decorator
+    else:
+        return decorator(_func)
 
 
 def ensure_no_reverse_proxy(func):
@@ -148,7 +156,7 @@ def get_x_accel_headers(redirect_uri: str, limit_rate_bytes: int = None) -> Dict
     return headers
 
 
-def get_x_accel_limit_rate(in_mbit: float) -> int:
+def get_x_accel_limit_rate(in_mbit: Optional[float]) -> int:
     if in_mbit is None:
         return 0
     return int(in_mbit * 2**20 / 8)
@@ -347,7 +355,7 @@ class HTTPClient:
         else:
             iss = JWT_ISS_INTERNAL
         current_time = time()
-        jwt, expiration = cls._cached_jwt.get((role, iss), (None, None))
+        jwt, expiration = cls._cached_jwt.get((role, iss), ('', 0))
         if jwt and current_time < expiration:
             return jwt
 

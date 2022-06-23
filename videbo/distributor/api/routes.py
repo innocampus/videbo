@@ -13,7 +13,7 @@ from videbo.network import NetworkInterfaces
 from videbo.web import json_response, ensure_json_body, file_serve_response
 from videbo.storage.util import HashedVideoFile
 from videbo.storage.api.models import RequestFileJWTData, FileType
-from videbo.distributor.files import file_controller, TooManyWaitingClients, NoSuchFile, NotSafeToDelete
+from videbo.distributor.files import DistributorFileController, TooManyWaitingClients, NoSuchFile, NotSafeToDelete
 from .models import DistributorStatus, DistributorCopyFile, DistributorDeleteFiles, DistributorDeleteFilesResponse,\
     DistributorFileList
 from videbo.distributor import logger
@@ -25,6 +25,7 @@ routes = RouteTableDef()
 @routes.get(r'/api/distributor/status')
 @ensure_jwt_data_and_role(Role.node)
 async def get_status(_request: Request, _jwt_data: BaseJWTData):
+    file_controller = DistributorFileController.get_instance()
     status = DistributorStatus.construct()
     # Same attributes for storage and distributor nodes:
     status.files_total_size = int(file_controller.files_total_size / MEGA)
@@ -43,7 +44,7 @@ async def get_status(_request: Request, _jwt_data: BaseJWTData):
 @ensure_jwt_data_and_role(Role.node)
 async def get_all_files(_request: Request, _jwt_data: BaseJWTData):
     all_files: List[Tuple[str, str]] = []
-    for file in file_controller.files.values():
+    for file in DistributorFileController.get_instance().files.values():
         all_files.append((file.hash, file.file_extension))
 
     return json_response(DistributorFileList(files=all_files))
@@ -53,6 +54,7 @@ async def get_all_files(_request: Request, _jwt_data: BaseJWTData):
 @ensure_jwt_data_and_role(Role.node)
 @ensure_json_body()
 async def copy_file(request: Request, _jwt_data: BaseJWTData, data: DistributorCopyFile):
+    file_controller = DistributorFileController.get_instance()
     file = HashedVideoFile(request.match_info['hash'], request.match_info['file_ext'])
     new_file = file_controller.copy_file(file, data.from_base_url, data.file_size)
     if new_file.copy_status:
@@ -67,6 +69,7 @@ async def copy_file(request: Request, _jwt_data: BaseJWTData, data: DistributorC
 @ensure_jwt_data_and_role(Role.node)
 @ensure_json_body()
 async def delete_files(_request: Request, _jwt_data: BaseJWTData, data: DistributorDeleteFiles):
+    file_controller = DistributorFileController.get_instance()
     files_skipped: List[Tuple[str, str]] = []
     for file_hash, file_ext in data.files:
         try:
@@ -81,6 +84,7 @@ async def delete_files(_request: Request, _jwt_data: BaseJWTData, data: Distribu
 @routes.get('/file')
 @ensure_jwt_data_and_role(Role.client)
 async def request_file(request: Request, jwt_data: RequestFileJWTData):
+    file_controller = DistributorFileController.get_instance()
     if jwt_data.type != FileType.VIDEO:
         logger.info(f"Invalid request type: {jwt_data.type}")
         raise HTTPNotFound()
@@ -97,11 +101,10 @@ async def request_file(request: Request, jwt_data: RequestFileJWTData):
         logger.info(f"Too many waiting users, file {file_hash}")
         raise HTTPServiceUnavailable()
     video.last_requested = int(time())
-    x_accel = bool(settings.nginx_x_accel_location)
-    if x_accel:
+    if settings.nginx_x_accel_location:
         path = Path(settings.nginx_x_accel_location, rel_path(str(video)))
     else:
         path = file_controller.get_path(video)
     dl = request.query.get('downloadas')
     limit_rate = float(jwt_data.iss != JWT_ISS_INTERNAL and settings.nginx_x_accel_limit_rate_mbit)
-    return file_serve_response(path, x_accel, dl, limit_rate)
+    return file_serve_response(path, bool(settings.nginx_x_accel_location), dl, limit_rate)
