@@ -4,7 +4,7 @@ import shutil
 from pathlib import Path
 from typing import Dict, List, Optional
 
-from videbo.settings import settings
+from videbo import storage_settings as settings
 from videbo.exceptions import (FileCmdError, FFMpegError, FFProbeError, InvalidMimeTypeError, InvalidVideoError,
                                UnknownProgramError)
 
@@ -42,9 +42,9 @@ class VideoInfo:
         self.video_file: Path = video_file
         self.valid_video = False
         self._video_config = video_config
-        self.mime_type = None
+        self.mime_type: str = ''
         self.streams: List[Dict] = []
-        self.format: Optional[Dict] = None
+        self.format: dict = {}
 
     async def fetch_mime_type(self) -> None:
         """Call file and fetch mime type."""

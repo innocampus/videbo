@@ -2,7 +2,7 @@ import asyncio
 from timeit import default_timer as timer
 from typing import Optional, Set, Tuple, List, Dict, Iterable, Callable, TYPE_CHECKING
 
-from videbo.settings import settings
+from videbo import storage_settings as settings
 from videbo.misc import MEGA, TaskManager, Periodic
 from videbo.web import HTTPClient, HTTPResponseError
 from videbo.distributor.api.models import (DistributorCopyFile, DistributorDeleteFiles, DistributorDeleteFilesResponse,

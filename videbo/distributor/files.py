@@ -7,7 +7,7 @@ from typing import Optional, Dict, Set, List
 
 from aiohttp import ClientTimeout
 
-from videbo.settings import settings
+from videbo import distributor_settings as settings
 from videbo.auth import internal_jwt_encode
 from videbo.misc import MEGA, get_free_disk_space, TaskManager, rel_path
 from videbo.web import HTTPClient

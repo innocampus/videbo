@@ -1,8 +1,8 @@
 from typing import List, Optional, Type, Tuple, Any
 
-from .settings import settings
-from .misc import ensure_url_does_not_end_with_slash
-from .web import HTTPClient, JSONBaseModel, HTTPResponseError
+from videbo import storage_settings as settings
+from videbo.misc import ensure_url_does_not_end_with_slash
+from videbo.web import HTTPClient, JSONBaseModel, HTTPResponseError
 
 
 class LMSSitesCollection:

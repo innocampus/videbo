@@ -6,7 +6,7 @@ from typing import List, Tuple
 from aiohttp.web import Request, RouteTableDef
 from aiohttp.web_exceptions import HTTPNotFound, HTTPOk, HTTPServiceUnavailable, HTTPInternalServerError
 
-from videbo.settings import settings
+from videbo import distributor_settings as settings
 from videbo.auth import Role, BaseJWTData, ensure_jwt_data_and_role, JWT_ISS_INTERNAL
 from videbo.misc import MEGA, rel_path
 from videbo.network import NetworkInterfaces

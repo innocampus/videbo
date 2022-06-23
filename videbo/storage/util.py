@@ -8,7 +8,7 @@ from pathlib import Path
 from copy import deepcopy
 from typing import Optional, Union, Dict, BinaryIO, List, Iterable
 
-from videbo.settings import settings
+from videbo import storage_settings as settings
 from videbo.exceptions import PendingWriteOperationError
 from videbo.lms_api import LMSSitesCollection, LMSAPIError
 from videbo.misc import TaskManager, BytesLimitLRU, gather_in_batches, rel_path, get_free_disk_space

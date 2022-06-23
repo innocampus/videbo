@@ -7,6 +7,11 @@ from typing import Dict, List, Any
 from .base_settings import DEFAULT_CONFIG_FILE_PATHS, CONFIG_FILE_PATHS_PARAM
 from .cli.args import setup_cli_args, run
 
+import videbo
+from videbo.storage import start as start_storage
+from videbo.storage.settings import StorageSettings
+from videbo.distributor import start as start_distributor
+from videbo.distributor.settings import DistributorSettings
 
 # CLI parameters:
 APP = 'app'
@@ -52,22 +57,18 @@ def path_list(string: str) -> List[Path]:
 
 
 def main() -> None:
-    from . import settings
     logging.basicConfig(level=logging.INFO)
     cli_kwargs = parse_cli()
     app = cli_kwargs.pop(APP)
     if app == STORAGE:
-        from videbo.storage import StorageSettings, start
-        setattr(settings, 'settings', StorageSettings(**cli_kwargs))
-        start()
+        setattr(videbo, 'storage_settings', StorageSettings(**cli_kwargs))
+        start_storage()
     elif app == DISTRIBUTOR:
-        from videbo.distributor import DistributorSettings, start
-        setattr(settings, 'settings', DistributorSettings(**cli_kwargs))
-        start()
+        setattr(videbo, 'distributor_settings', DistributorSettings(**cli_kwargs))
+        start_distributor()
     elif app == CLI:
-        from videbo.storage import StorageSettings
         init_kwargs = {key: cli_kwargs[key] for key in _VALID_SETTINGS_KWARGS if key in cli_kwargs.keys()}
-        setattr(settings, 'settings', StorageSettings(**init_kwargs))
+        setattr(videbo, 'storage_settings', StorageSettings(**init_kwargs))
         run(**cli_kwargs)
     else:
         print("Application must be storage or distributor")

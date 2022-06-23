@@ -10,22 +10,17 @@ from hashlib import md5
 from aiohttp import web, FormData
 from aiohttp.test_utils import AioHTTPTestCase
 
-from videbo import settings
 from videbo.misc import rel_path
-from videbo.storage import StorageSettings, storage_logger
+from videbo.storage import storage_logger
 
-# Due to issues with the order of imports in certain modules, we need to initialize the settings object
-# and set it in the central settings module, before importing all the required classes/functions to run these tests.
-setattr(settings, 'settings', StorageSettings(**{
-    'static_dist_node_base_urls': ''  # prevent adding distributor nodes (and sending status requests to them)
-}))
-
-from videbo.settings import settings
+from videbo import storage_settings as settings
 from videbo.storage.api.models import FileType, UploadFileJWTData, SaveFileJWTData, DeleteFileJWTData
 from videbo.storage.api.routes import routes
 from videbo.auth import external_jwt_encode, external_jwt_decode
 from videbo.web import session_context
 
+
+settings.static_dist_node_base_urls = []  # prevent adding distributor nodes (and sending status requests to them)
 
 MEGA = 1024 * 1024
 AUTHORIZATION, BEARER_PREFIX = 'Authorization', 'Bearer '
@@ -66,7 +61,7 @@ class Base(AioHTTPTestCase):
             'rid': '1',
             'role': 'client',
             'exp': 0,
-            'iss': 0
+            'iss': '0'
         }
         return {AUTHORIZATION: BEARER_PREFIX + external_jwt_encode(jwt_dict)}
 
@@ -83,14 +78,14 @@ class RoutesIntegrationTestCaseFail(Base):
         self.assertEqual(401, resp.status)
 
         # With invalid content-type:
-        jwt_data = UploadFileJWTData(is_allowed_to_upload_file=False, role='client', exp=0, iss=0)
+        jwt_data = UploadFileJWTData(is_allowed_to_upload_file=False, role='client', exp=0, iss='0')
         headers[AUTHORIZATION] = BEARER_PREFIX + external_jwt_encode(jwt_data)
         headers[CONTENT_TYPE] = 'something invalid'
         resp = await self.client.request(method, url, data=payload, headers=headers)
         self.assertEqual(406, resp.status)
 
         # Without upload permission:
-        jwt_data = UploadFileJWTData(is_allowed_to_upload_file=False, role='client', exp=0, iss=0)
+        jwt_data = UploadFileJWTData(is_allowed_to_upload_file=False, role='client', exp=0, iss='0')
         headers[AUTHORIZATION] = BEARER_PREFIX + external_jwt_encode(jwt_data)
         headers[CONTENT_TYPE] = 'multipart/form-data'
         resp = await self.client.request(method, url, data=payload, headers=headers)
@@ -98,7 +93,7 @@ class RoutesIntegrationTestCaseFail(Base):
 
         # No field named `video` in payload:
         del headers[CONTENT_TYPE]
-        jwt_data = UploadFileJWTData(is_allowed_to_upload_file=True, role='client', exp=0, iss=0)
+        jwt_data = UploadFileJWTData(is_allowed_to_upload_file=True, role='client', exp=0, iss='0')
         headers[AUTHORIZATION] = BEARER_PREFIX + external_jwt_encode(jwt_data)
         with open(settings.test_video_file_path, 'rb') as f:
             # We pass an actual file in the payload to have a well-formed multipart constructed automatically
@@ -132,19 +127,19 @@ class RoutesIntegrationTestCaseFail(Base):
         self.assertEqual(401, resp.status)
 
         # With not enough privileges:
-        jwt_data = SaveFileJWTData(is_allowed_to_save_file=True, role='client', exp=0, iss=0)
+        jwt_data = SaveFileJWTData(is_allowed_to_save_file=True, role='client', exp=0, iss='0')
         headers[AUTHORIZATION] = BEARER_PREFIX + external_jwt_encode(jwt_data)
         resp = await self.client.request(method, url, headers=headers)
         self.assertEqual(401, resp.status)
 
         # Without save permission:
-        jwt_data = SaveFileJWTData(is_allowed_to_save_file=False, role='lms', exp=0, iss=0)
+        jwt_data = SaveFileJWTData(is_allowed_to_save_file=False, role='lms', exp=0, iss='0')
         headers[AUTHORIZATION] = BEARER_PREFIX + external_jwt_encode(jwt_data)
         resp = await self.client.request(method, url, headers=headers)
         self.assertEqual(403, resp.status)
 
         # No such file:
-        jwt_data = SaveFileJWTData(is_allowed_to_save_file=True, role='lms', exp=0, iss=0)
+        jwt_data = SaveFileJWTData(is_allowed_to_save_file=True, role='lms', exp=0, iss='0')
         headers[AUTHORIZATION] = BEARER_PREFIX + external_jwt_encode(jwt_data)
         resp = await self.client.request(method, url, headers=headers)
         resp_data = await resp.json()
@@ -159,13 +154,13 @@ class RoutesIntegrationTestCaseFail(Base):
         self.assertEqual(401, resp.status)
 
         # With not enough privileges:
-        jwt_data = DeleteFileJWTData(is_allowed_to_delete_file=True, role='client', exp=0, iss=0)
+        jwt_data = DeleteFileJWTData(is_allowed_to_delete_file=True, role='client', exp=0, iss='0')
         headers[AUTHORIZATION] = BEARER_PREFIX + external_jwt_encode(jwt_data)
         resp = await self.client.request(method, url, headers=headers)
         self.assertEqual(401, resp.status)
 
         # Without delete permission:
-        jwt_data = DeleteFileJWTData(is_allowed_to_delete_file=False, role='lms', exp=0, iss=0)
+        jwt_data = DeleteFileJWTData(is_allowed_to_delete_file=False, role='lms', exp=0, iss='0')
         headers[AUTHORIZATION] = BEARER_PREFIX + external_jwt_encode(jwt_data)
         resp = await self.client.request(method, url, headers=headers)
         self.assertEqual(403, resp.status)
@@ -187,7 +182,7 @@ class RoutesIntegrationTestCaseCorrect(Base):
 
         # Upload:
         method, url = 'POST', '/api/upload/file'
-        jwt_data = UploadFileJWTData(is_allowed_to_upload_file=True, role='client', exp=0, iss=0)
+        jwt_data = UploadFileJWTData(is_allowed_to_upload_file=True, role='client', exp=0, iss='0')
         headers = {AUTHORIZATION: BEARER_PREFIX + external_jwt_encode(jwt_data)}
         settings.max_file_size_mb = self.test_vid_size_mb + 1
         with open(settings.test_video_file_path, 'rb') as f:
@@ -208,7 +203,7 @@ class RoutesIntegrationTestCaseCorrect(Base):
 
         # Save:
         method, url = 'GET', '/api/save/file/' + hashed_video_file_name
-        jwt_data = SaveFileJWTData(is_allowed_to_save_file=True, role='lms', exp=0, iss=0)
+        jwt_data = SaveFileJWTData(is_allowed_to_save_file=True, role='lms', exp=0, iss='0')
         headers = {AUTHORIZATION: BEARER_PREFIX + external_jwt_encode(jwt_data)}
         resp = await self.client.request(method, url, headers=headers)
         self.assertEqual(200, resp.status)
@@ -243,7 +238,7 @@ class RoutesIntegrationTestCaseCorrect(Base):
 
         # Delete:
         method, url = 'DELETE', '/api/file/' + hashed_video_file_name
-        jwt_data = DeleteFileJWTData(is_allowed_to_delete_file=True, role='lms', exp=0, iss=0)
+        jwt_data = DeleteFileJWTData(is_allowed_to_delete_file=True, role='lms', exp=0, iss='0')
         headers = {AUTHORIZATION: BEARER_PREFIX + external_jwt_encode(jwt_data)}
         resp = await self.client.request(method, url, headers=headers)
         self.assertEqual(200, resp.status)

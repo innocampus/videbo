@@ -8,7 +8,7 @@ from time import time
 from inspect import isawaitable
 from typing import Set, List, Any, Optional, Callable, Awaitable, Hashable, Iterable, Tuple
 
-from .exceptions import NoRunningTask
+from videbo.exceptions import NoRunningTask
 
 
 logger = logging.getLogger('videbo-misc')

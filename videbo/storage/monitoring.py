@@ -6,7 +6,7 @@ from prometheus_client.metrics import Gauge
 from prometheus_client.exposition import write_to_textfile
 from prometheus_client.process_collector import ProcessCollector
 
-from videbo.settings import settings
+from videbo import storage_settings as settings
 from videbo.misc import Periodic
 from videbo.models import NodeStatus
 from videbo.distributor.api.models import DistributorStatus

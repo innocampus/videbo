@@ -3,14 +3,14 @@ from urllib.parse import urlencode
 from distutils.util import strtobool
 from typing import Optional, List
 
+from videbo import storage_settings
 from videbo.web import HTTPClient
 from videbo.storage.api.models import (StorageFilesList, StorageFileInfo, DeleteFilesList, DistributorNodeInfo,
                                        StorageStatus)
 
 
 def get_storage_url(path: str) -> str:
-    from videbo.settings import settings
-    return f'http://localhost:{settings.listen_port}{path}'
+    return f'http://{storage_settings.listen_address}:{storage_settings.listen_port}{path}'
 
 
 async def get_status():

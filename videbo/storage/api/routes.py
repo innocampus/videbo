@@ -16,7 +16,7 @@ from aiohttp.web_exceptions import (HTTPBadRequest, HTTPForbidden, HTTPNotFound,
                                     HTTPGone)  # 4xx
 from aiohttp.web_exceptions import HTTPInternalServerError, HTTPServiceUnavailable  # 5xx
 
-from videbo.settings import settings
+from videbo import storage_settings as settings
 from videbo.auth import ensure_jwt_data_and_role, external_jwt_encode, Role, JWT_ISS_INTERNAL, BaseJWTData
 from videbo.exceptions import InvalidMimeTypeError, InvalidVideoError, FFProbeError
 from videbo.misc import MEGA, rel_path

@@ -9,7 +9,7 @@ from pydantic import BaseModel, ValidationError
 from aiohttp.web_request import Request
 from aiohttp.web_exceptions import HTTPUnauthorized
 
-from videbo.settings import settings
+from videbo import storage_settings as settings
 
 
 logger = logging.getLogger('videbo-auth')
