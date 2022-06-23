@@ -3,7 +3,7 @@ import sys
 from configparser import ConfigParser
 from pathlib import Path
 from distutils.util import strtobool
-from typing import Dict, Tuple, List, Set, Callable, Union, Any, ClassVar
+from typing import Any, Callable, ClassVar, Dict, List, Optional, Set, Tuple, Union
 
 from pydantic import BaseSettings, validator
 from pydantic.env_settings import SettingsSourceCallable
@@ -63,8 +63,8 @@ class CommonSettings(AbstractBaseSettings):
     lms_base_urls: List[str] = []
     dev_mode: bool = False
     tx_max_rate_mbit: float = 20.0
-    server_status_page: str = None
-    nginx_x_accel_location: str = None
+    server_status_page: Optional[str] = None
+    nginx_x_accel_location: Optional[str] = None
     nginx_x_accel_limit_rate_mbit: float = 0.0
 
     @validator('*', pre=True)
@@ -121,7 +121,7 @@ def load_ini_config(path: Path, settings: CommonSettings) -> Dict[str, Any]:
         sys.exit(3)
     parser = ConfigParser()
     parser.read(path)
-    config = dict(parser[settings.get_section()])
+    config: Dict[str, Any] = dict(parser[settings.get_section()])
     # Perform type conversion for each value.
     for name, value in config.items():
         assert isinstance(value, str)

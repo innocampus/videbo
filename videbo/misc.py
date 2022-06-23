@@ -8,6 +8,8 @@ from time import time
 from inspect import isawaitable
 from typing import Set, List, Any, Optional, Callable, Awaitable, Hashable, Iterable, Tuple
 
+from .exceptions import NoRunningTask
+
 
 logger = logging.getLogger('videbo-misc')
 MEGA = 1024 * 1024
@@ -111,8 +113,11 @@ class Periodic:
 
     async def stop(self) -> bool:
         """Stops the execution loop and calls all provided callback functions."""
+        if self._task is None:
+            raise NoRunningTask
         await self._run_callbacks(self.pre_stop_callbacks)
         out = self._task.cancel()
+        self._task = None
         await self._run_callbacks(self.post_stop_callbacks)
         return out
 

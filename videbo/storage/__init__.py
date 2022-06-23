@@ -22,7 +22,7 @@ class StorageSettings(CommonSettings):
     container_formats_allowed: Set[str] = {'mp4', 'webm'}
     video_codecs_allowed: Set[str] = {'h264', 'vp8'}
     audio_codecs_allowed: Set[str] = {'aac', 'vorbis'}
-    check_user: str = None
+    check_user: Optional[str] = None
     binary_file: str = 'file'
     binary_ffmpeg: str = 'ffmpeg'
     binary_ffprobe: str = 'ffprobe'

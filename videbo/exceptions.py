@@ -37,3 +37,7 @@ class PendingWriteOperationError(Exception):
 
 class CouldNotCreateDir(Exception):
     pass
+
+
+class NoRunningTask(Exception):
+    pass
