@@ -8,13 +8,13 @@ from copy import deepcopy
 from typing import Optional, Union, Dict, BinaryIO, List, Iterable
 
 from videbo import storage_settings as settings
-from videbo.exceptions import PendingWriteOperationError
+from videbo.exceptions import PendingWriteOperationError, CouldNotCreateDir
 from videbo.lms_api import LMSSitesCollection, LMSAPIError
 from videbo.misc import TaskManager, BytesLimitLRU, gather_in_batches, rel_path, get_free_disk_space
 from videbo.network import NetworkInterfaces
 from videbo.video import VideoInfo, Video, VideoConfig
 from .distribution import DistributionController, FileNodes
-from .exceptions import HashedFileInvalidExtensionError, CouldNotCreateTempDir
+from .exceptions import HashedFileInvalidExtensionError
 from .api.models import FileType, StorageStatus
 from . import storage_logger
 
@@ -25,30 +25,30 @@ VALID_EXTENSIONS = frozenset(FILE_EXT_WHITELIST + (JPG_EXT,))
 
 
 class HashedVideoFile:
-    __slots__ = "hash", "file_extension"
+    __slots__ = 'hash', 'file_extension'
 
-    def __init__(self, file_hash: str, file_extension: str):
+    def __init__(self, file_hash: str, file_extension: str) -> None:
         self.hash = file_hash
         self.file_extension = file_extension
 
         # Extension has to start with a dot.
-        if file_extension[0] != ".":
+        if file_extension[0] != '.':
             raise HashedFileInvalidExtensionError(file_extension)
 
-    def __str__(self):
+    def __str__(self) -> str:
         return self.hash + self.file_extension
 
 
 class StoredHashedVideoFile(HashedVideoFile):
-    __slots__ = "file_size", "views", "nodes"
+    __slots__ = 'file_size', 'views', 'nodes'
 
-    def __init__(self, file_hash: str, file_extension: str):
+    def __init__(self, file_hash: str, file_extension: str) -> None:
         super().__init__(file_hash, file_extension)
         self.file_size: int = -1  # in bytes
         self.views: int = 0
         self.nodes: FileNodes = FileNodes()
 
-    def __lt__(self, other: "StoredHashedVideoFile"):
+    def __lt__(self, other: 'StoredHashedVideoFile') -> bool:
         """Compare videos by their view counters."""
         return self.views < other.views
 
@@ -65,7 +65,7 @@ def create_dir_if_not_exists(path: Union[Path, str], mode: int = 0o777, explicit
     if explicit_chmod:
         path.chmod(mode)
     if not path.is_dir():
-        raise CouldNotCreateTempDir(path)
+        raise CouldNotCreateDir(str(path))
     storage_logger.info(f"Created {path}")
 
 
@@ -151,7 +151,7 @@ class FileStorage:
     def all_files(self) -> _StoredFilesDict:
         return deepcopy(self._cached_files)
 
-    async def filtered_files(self, orphaned: bool = None, extensions: Iterable[str] = VALID_EXTENSIONS,
+    async def filtered_files(self, orphaned: Optional[bool] = None, extensions: Iterable[str] = VALID_EXTENSIONS,
                              types: Iterable[str] = FileType.values()) -> _StoredFilesDict:
         """
         Returns a dictionary of stored files (keys being the files' hashes) that match the filter criteria.
@@ -194,7 +194,7 @@ class FileStorage:
             filtered[file_hash] = file
         return filtered
 
-    async def _file_hashes_orphaned_dict(self, hashed_files_dict: _StoredFilesDict = None) -> Dict[str, bool]:
+    async def _file_hashes_orphaned_dict(self, hashed_files_dict: Optional[_StoredFilesDict] = None) -> Dict[str, bool]:
         """
         Checks the orphan status for stored files.
         A file is defined to be orphaned, iff not a single LMS knows about its existence.
@@ -249,7 +249,7 @@ class FileStorage:
         return thumb_count
 
     @classmethod
-    def get_hash_gen(cls):
+    def get_hash_gen(cls):  # type: ignore
         """Get hashing method that is used for all files in the video."""
         return hashlib.sha256()
 
@@ -364,7 +364,7 @@ class FileStorage:
         """
         return await gather_in_batches(20, *(self.check_lms_and_remove_file(self._cached_files[h]) for h in hashes))
 
-    async def check_lms_and_remove_file(self, file: StoredHashedVideoFile, origin: str = None) -> bool:
+    async def check_lms_and_remove_file(self, file: StoredHashedVideoFile, origin: Optional[str] = None) -> bool:
         """
         If lms_has_file(...) returns False, indicating that the no site (except the origin, if passed) knows the file,
         the file is removed.
@@ -403,7 +403,7 @@ class FileStorage:
 
         return count
 
-    async def _garbage_collect_cron(self):
+    async def _garbage_collect_cron(self) -> None:
         """Endless loop that cleans up data periodically."""
         while True:
             files_deleted = await asyncio.get_event_loop().run_in_executor(None, self.garbage_collect_temp_dir)
@@ -432,7 +432,7 @@ class TempFile:
     """
 
     def __init__(self, file: BinaryIO, path: Path, storage: FileStorage):
-        self.hash = FileStorage.get_hash_gen()
+        self.hash = FileStorage.get_hash_gen()  # type: ignore[no-untyped-call]
         self.file = file
         self.path: Path = path
         self.storage = storage
@@ -453,7 +453,7 @@ class TempFile:
         self.hash.update(data)
         self.file.write(data)
 
-    async def close(self):
+    async def close(self) -> None:
         await asyncio.get_event_loop().run_in_executor(None, self.file.close)
 
     async def persist(self, file_ext: str) -> HashedVideoFile:
@@ -518,7 +518,7 @@ async def _video_delete_task(file_hash: str, file_ext: str, origin: Optional[str
     await file_storage.check_lms_and_remove_file(file, origin=origin)
 
 
-async def lms_has_file(file: StoredHashedVideoFile, origin: str = None) -> bool:
+async def lms_has_file(file: StoredHashedVideoFile, origin: Optional[str] = None) -> bool:
     """
     Checks LMS Sites for the existence of a stored file on one of them.
     Assuming all LMS sites of interest are checked and this returns False, the file is referred to as *orphaned*.

@@ -1,43 +1,84 @@
-class FileCmdError(Exception):
-    def __init__(self, timeout):
-        self.timeout = timeout
+from typing import Optional
+
+from pydantic import ValidationError
 
 
-class FFMpegError(Exception):
-    def __init__(self, timeout, stderr=None):
-        self.timeout = timeout
-        self.stderr = stderr
+class VideboBaseException(Exception):
+    pass
 
 
-class FFProbeError(Exception):
-    def __init__(self, timeout, stderr=None):
-        self.timeout = timeout
-        self.stderr = stderr
+class SubprocessError(VideboBaseException):
+    def __init__(self, timeout: bool = False, stderr: Optional[str] = None) -> None:
+        self.timeout: bool = timeout
+        self.stderr: Optional[str] = stderr
+        super().__init__()
 
 
-class InvalidMimeTypeError(Exception):
+class FileCmdError(SubprocessError):
+    pass
+
+
+class FFMpegError(SubprocessError):
+    pass
+
+
+class FFProbeError(SubprocessError):
+    pass
+
+
+class VideoError(VideboBaseException):
+    pass
+
+
+class InvalidMimeTypeError(VideoError):
     def __init__(self, mimetype: str):
         self.mime_type = mimetype
+        super().__init__()
 
 
-class InvalidVideoError(Exception):
-    def __init__(self, container: str = "", video_codec: str = "", audio_codec: str = ""):
+class InvalidVideoError(VideoError):
+    def __init__(self, container: str = '', video_codec: str = '', audio_codec: str = '') -> None:
         self.container = container
         self.video_codec = video_codec
         self.audio_codec = audio_codec
+        super().__init__()
 
 
-class UnknownProgramError(Exception):
+class FilesystemError(VideboBaseException):
     pass
 
 
-class PendingWriteOperationError(Exception):
+class PendingWriteOperationError(FilesystemError):
     pass
 
 
-class CouldNotCreateDir(Exception):
+class CouldNotCreateDir(FilesystemError):
     pass
 
 
-class NoRunningTask(Exception):
+class RoutingError(VideboBaseException):
+    pass
+
+
+class InvalidRouteSignature(RoutingError):
+    pass
+
+
+class HTTPResponseError(RoutingError):
+    pass
+
+
+class AuthError(VideboBaseException):
+    pass
+
+
+class InvalidRoleIssued(AuthError):
+    pass
+
+
+class NoJWTFound(AuthError):
+    pass
+
+
+class NoRunningTask(VideboBaseException):
     pass

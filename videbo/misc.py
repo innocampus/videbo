@@ -1,12 +1,12 @@
 import logging
-import asyncio
 import os
 import re
+from asyncio import CancelledError, Task, gather, get_event_loop, get_running_loop, sleep
 from collections import OrderedDict
+from inspect import isawaitable
 from pathlib import Path
 from time import time
-from inspect import isawaitable
-from typing import Set, List, Any, Optional, Callable, Awaitable, Hashable, Iterable, Tuple
+from typing import Any, Awaitable, Callable, Hashable, Iterable, List, Optional, Set, Tuple
 
 from videbo.exceptions import NoRunningTask
 
@@ -14,10 +14,12 @@ from videbo.exceptions import NoRunningTask
 logger = logging.getLogger('videbo-misc')
 MEGA = 1024 * 1024
 
+StopCallbackT = Callable[[], Any]
+
 
 async def get_free_disk_space(path: str) -> float:
     """Get free disk space in the given path. Returns MB."""
-    st = await asyncio.get_running_loop().run_in_executor(None, os.statvfs, path)
+    st = await get_running_loop().run_in_executor(None, os.statvfs, path)
     free_bytes = st.f_bavail * st.f_frsize
     return free_bytes / MEGA
 
@@ -39,25 +41,25 @@ def rel_path(filename: str) -> Path:
 
 
 class TaskManager:
-    _tasks: Set[asyncio.Task] = set()
+    _tasks: Set[Task[Any]] = set()
 
     @classmethod
-    def cancel_all(cls):
+    def cancel_all(cls) -> None:
         logger.info(f"TaskManager: cancel all remaining {len(cls._tasks)} tasks")
         for task in cls._tasks:
             task.cancel()
 
     @classmethod
-    def fire_and_forget_task(cls, task: asyncio.Task) -> None:
+    def fire_and_forget_task(cls, task: Task[Any]) -> None:
         """Checks if there was an exception in the task when the task ends."""
-        def task_done(_future: Any):
+        def task_done(_future: Any) -> None:
             try:
                 # This throws an exception if there was any in the task.
                 task.result()
-            except asyncio.CancelledError:
+            except CancelledError:
                 pass
-            except:
-                logger.exception("Error occurred in an fire-and-forget task.")
+            except Exception as e:
+                logger.exception(f"{e.__class__.__name__} occurred in an fire-and-forget task.")
             finally:
                 cls._tasks.remove(task)
 
@@ -67,7 +69,7 @@ class TaskManager:
 
 class Periodic:
     """Provides a simple utility for launching (and stopping) the periodic execution of asynchronous tasks."""
-    def __init__(self, _async_func: Callable[..., Awaitable], *args, **kwargs) -> None:
+    def __init__(self, _async_func: Callable[..., Awaitable[Any]], *args: Any, **kwargs: Any) -> None:
         """
         To initialize, simply provide the async function object and the positional and/or keyword arguments with which
         it should be called every time.
@@ -76,11 +78,11 @@ class Periodic:
         self.args = args
         self.kwargs = kwargs
         self.task_name: str = f'periodic-{self.async_func.__name__}'  # for convenience
-        self._task: Optional[asyncio.Task] = None  # initialized upon starting periodic execution
-        self.pre_stop_callbacks: List[Callable] = []
-        self.post_stop_callbacks: List[Callable] = []
+        self._task: Optional[Task[Any]] = None  # initialized upon starting periodic execution
+        self.pre_stop_callbacks: List[StopCallbackT] = []
+        self.post_stop_callbacks: List[StopCallbackT] = []
 
-    async def loop(self, interval_seconds: float, limit: int = None, call_immediately: bool = False) -> None:
+    async def loop(self, interval_seconds: float, limit: Optional[int] = None, call_immediately: bool = False) -> None:
         """
         The main execution loop that can be repeated indefinitely or a limited number of times.
         Normally, this function should not be called from the outside directly.
@@ -97,15 +99,15 @@ class Periodic:
         exec_time = interval_seconds if call_immediately else 0
         i = 0
         while limit is None or i < limit:
-            await asyncio.sleep(interval_seconds - exec_time)
+            await sleep(interval_seconds - exec_time)
             started = time()
             await self.async_func(*self.args, **self.kwargs)
             i += 1
             exec_time = time() - started
 
-    def __call__(self, interval_seconds: float, limit: int = None, call_immediately: bool = False) -> None:
+    def __call__(self, interval_seconds: float, limit: Optional[int] = None, call_immediately: bool = False) -> None:
         """Starts the execution loop (see above) with the provided options."""
-        self._task = asyncio.get_event_loop().create_task(
+        self._task = get_event_loop().create_task(
             self.loop(interval_seconds, limit, call_immediately),
             name=self.task_name
         )
@@ -122,7 +124,7 @@ class Periodic:
         return out
 
     @staticmethod
-    async def _run_callbacks(callbacks: List[Callable]) -> None:
+    async def _run_callbacks(callbacks: List[StopCallbackT]) -> None:
         """Taking into account if the callback functions require the `await` syntax, they are executed in order."""
         for func in callbacks:
             out = func()
@@ -134,7 +136,7 @@ class SizeError(Exception):
     pass
 
 
-class BytesLimitLRU(OrderedDict):
+class BytesLimitLRU(OrderedDict[Hashable, bytes]):
     """
     Limit object memory size, evicting the least recently accessed key when the specified maximum is exceeded.
     Only `bytes` type values are accepted. Their size is calculated by passing them into the builtin `len()` function.
@@ -210,10 +212,10 @@ class BytesLimitLRU(OrderedDict):
     def space_left(self) -> int: return self.max_bytes - self._total_bytes
 
 
-async def gather_in_batches(batch_size: int, *aws, return_exceptions: bool = False) -> list:
+async def gather_in_batches(batch_size: int, *aws: Awaitable[Any], return_exceptions: bool = False) -> List[Any]:
     results = []
     for idx in range(0, len(aws), batch_size):
-        results += await asyncio.gather(*aws[idx:idx + batch_size], return_exceptions=return_exceptions)
+        results += await gather(*aws[idx:idx + batch_size], return_exceptions=return_exceptions)
     return results
 
 

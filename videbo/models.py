@@ -1,9 +1,20 @@
-from typing import Optional, Tuple
+from typing import Optional
 
-from videbo.web import JSONBaseModel
+from pydantic import BaseModel
 
 
-FileID = Tuple[str, str]  # (hash, file extension)
+class JSONBaseModel(BaseModel):
+    pass
+
+
+class BaseJWTData(BaseModel):
+    """Base data fields that have to be stored in the JWT."""
+    # standard fields defined by RFC 7519 that we require for all tokens
+    exp: int  # expiration time claim
+    iss: str  # issuer claim
+
+    # role must always be present
+    role: str
 
 
 class NodeStatus(JSONBaseModel):

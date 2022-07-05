@@ -1,14 +1,17 @@
 import asyncio
 from time import time
 from pathlib import Path
-from typing import List, Tuple
+from typing import List, Tuple, Union
 
 from aiohttp.web import Request, RouteTableDef
 from aiohttp.web_exceptions import HTTPNotFound, HTTPOk, HTTPServiceUnavailable, HTTPInternalServerError
+from aiohttp.web_response import Response
+from aiohttp.web_fileresponse import FileResponse
 
 from videbo import distributor_settings as settings
-from videbo.auth import Role, BaseJWTData, ensure_jwt_data_and_role, JWT_ISS_INTERNAL
+from videbo.auth import Role, ensure_jwt_data_and_role, JWT_ISS_INTERNAL
 from videbo.misc import MEGA, rel_path
+from videbo.models import BaseJWTData
 from videbo.network import NetworkInterfaces
 from videbo.web import json_response, ensure_json_body, file_serve_response
 from videbo.storage.util import HashedVideoFile
@@ -22,9 +25,9 @@ from videbo.distributor import logger
 routes = RouteTableDef()
 
 
-@routes.get(r'/api/distributor/status')
+@routes.get(r'/api/distributor/status')  # type: ignore[arg-type]
 @ensure_jwt_data_and_role(Role.node)
-async def get_status(_request: Request, _jwt_data: BaseJWTData):
+async def get_status(_request: Request, _jwt_data: BaseJWTData) -> Response:
     file_controller = DistributorFileController.get_instance()
     status = DistributorStatus.construct()
     # Same attributes for storage and distributor nodes:
@@ -40,9 +43,9 @@ async def get_status(_request: Request, _jwt_data: BaseJWTData):
     return json_response(status)
 
 
-@routes.get(r'/api/distributor/files')
+@routes.get(r'/api/distributor/files')  # type: ignore[arg-type]
 @ensure_jwt_data_and_role(Role.node)
-async def get_all_files(_request: Request, _jwt_data: BaseJWTData):
+async def get_all_files(_request: Request, _jwt_data: BaseJWTData) -> Response:
     all_files: List[Tuple[str, str]] = []
     for file in DistributorFileController.get_instance().files.values():
         all_files.append((file.hash, file.file_extension))
@@ -50,10 +53,10 @@ async def get_all_files(_request: Request, _jwt_data: BaseJWTData):
     return json_response(DistributorFileList(files=all_files))
 
 
-@routes.post(r'/api/distributor/copy/{hash:[0-9a-f]{64}}{file_ext:\.[0-9a-z]{1,10}}')
+@routes.post(r'/api/distributor/copy/{hash:[0-9a-f]{64}}{file_ext:\.[0-9a-z]{1,10}}')  # type: ignore[arg-type]
 @ensure_jwt_data_and_role(Role.node)
-@ensure_json_body()
-async def copy_file(request: Request, _jwt_data: BaseJWTData, data: DistributorCopyFile):
+@ensure_json_body
+async def copy_file(request: Request, _jwt_data: BaseJWTData, data: DistributorCopyFile) -> None:
     file_controller = DistributorFileController.get_instance()
     file = HashedVideoFile(request.match_info['hash'], request.match_info['file_ext'])
     new_file = file_controller.copy_file(file, data.from_base_url, data.file_size)
@@ -65,10 +68,10 @@ async def copy_file(request: Request, _jwt_data: BaseJWTData, data: DistributorC
     raise HTTPOk()
 
 
-@routes.post(r'/api/distributor/delete')
+@routes.post(r'/api/distributor/delete')  # type: ignore[arg-type]
 @ensure_jwt_data_and_role(Role.node)
-@ensure_json_body()
-async def delete_files(_request: Request, _jwt_data: BaseJWTData, data: DistributorDeleteFiles):
+@ensure_json_body
+async def delete_files(_request: Request, _jwt_data: BaseJWTData, data: DistributorDeleteFiles) -> Response:
     file_controller = DistributorFileController.get_instance()
     files_skipped: List[Tuple[str, str]] = []
     for file_hash, file_ext in data.files:
@@ -81,9 +84,9 @@ async def delete_files(_request: Request, _jwt_data: BaseJWTData, data: Distribu
     return json_response(resp)
 
 
-@routes.get('/file')
+@routes.get('/file')  # type: ignore[arg-type]
 @ensure_jwt_data_and_role(Role.client)
-async def request_file(request: Request, jwt_data: RequestFileJWTData):
+async def request_file(request: Request, jwt_data: RequestFileJWTData) -> Union[Response, FileResponse]:
     file_controller = DistributorFileController.get_instance()
     if jwt_data.type != FileType.VIDEO:
         logger.info(f"Invalid request type: {jwt_data.type}")

@@ -1,16 +1,18 @@
 from typing import List, Optional, Type, Tuple, Any
 
 from videbo import storage_settings as settings
+from videbo.exceptions import HTTPResponseError
 from videbo.misc import ensure_url_does_not_end_with_slash
-from videbo.web import HTTPClient, JSONBaseModel, HTTPResponseError
+from videbo.models import JSONBaseModel
+from videbo.web import HTTPClient
 
 
 class LMSSitesCollection:
-    def __init__(self):
+    def __init__(self) -> None:
         self.sites: List[MoodleAPI] = []
 
     @staticmethod
-    def get_all() -> "LMSSitesCollection":
+    def get_all() -> 'LMSSitesCollection':
         collection = LMSSitesCollection()
         for url in settings.lms_base_urls:
             if url:
@@ -19,7 +21,7 @@ class LMSSitesCollection:
 
 
 class MoodleAPI:
-    def __init__(self, base_url: str):
+    def __init__(self, base_url: str) -> None:
         self.base_url = ensure_url_does_not_end_with_slash(base_url)
         self.api_url = self.base_url + "/mod/videoservice/api.php"
 

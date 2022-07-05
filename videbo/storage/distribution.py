@@ -3,10 +3,12 @@ from timeit import default_timer as timer
 from typing import Optional, Set, Tuple, List, Dict, Iterable, Callable, TYPE_CHECKING
 
 from videbo import storage_settings as settings
+from videbo.exceptions import HTTPResponseError, NoRunningTask
 from videbo.misc import MEGA, TaskManager, Periodic
-from videbo.web import HTTPClient, HTTPResponseError
+from videbo.types import FileID
+from videbo.web import HTTPClient
 from videbo.distributor.api.models import (DistributorCopyFile, DistributorDeleteFiles, DistributorDeleteFilesResponse,
-                                           DistributorStatus, DistributorFileList, FileID)
+                                           DistributorStatus, DistributorFileList)
 from .exceptions import DistStatusUnknown, DistAlreadyEnabled, DistAlreadyDisabled, UnknownDistURL
 from videbo.storage import storage_logger as log
 if TYPE_CHECKING:
@@ -61,7 +63,7 @@ class DistributionNodeInfo:
         self.stored_videos: Set['StoredHashedVideoFile'] = set()
         self.loading: Set['StoredHashedVideoFile'] = set()  # Node is currently downloading these files.
         self.awaiting_download = DownloadScheduler()  # Files waiting to be downloaded
-        self.watcher_task: Optional[asyncio.Task] = None
+        self.watcher_task: Optional[asyncio.Task[None]] = None
         self._good: bool = False  # node is reachable
         self._enabled: bool = True
 
@@ -141,7 +143,9 @@ class DistributionNodeInfo:
         self.watcher_task = asyncio.create_task(self.watcher())
         TaskManager.fire_and_forget_task(self.watcher_task)
 
-    def stop_watching(self):
+    def stop_watching(self) -> None:
+        if self.watcher_task is None:
+            raise NoRunningTask
         self.watcher_task.cancel()
         self.watcher_task = None
 
@@ -181,7 +185,7 @@ class DistributionNodeInfo:
             if remove_unknown_files:
                 await self._remove_files(remove_unknown_files)
 
-    def put_video(self, file: 'StoredHashedVideoFile', from_node: 'DistributionNodeInfo' = None) -> None:
+    def put_video(self, file: 'StoredHashedVideoFile', from_node: Optional['DistributionNodeInfo'] = None) -> None:
         """Copy a video from one node to another. If `from_node` is None, copy from the storage node."""
         if file in self.loading or file in self.awaiting_download:
             return
@@ -315,7 +319,7 @@ class FileNodes:
     """Node collection for a video file."""
     __slots__ = 'nodes', 'copying'
 
-    def __init__(self):
+    def __init__(self) -> None:
         self.nodes: Set[DistributionNodeInfo] = set()  # A list of all nodes that have the file or are loading the file.
         self.copying: bool = False  # File is currently being copied to a node.
 
@@ -356,7 +360,7 @@ class FileNodes:
 class DistributionController:
     TRACK_MAX_CLIENTS_ACCESSES = 50000
 
-    def __init__(self):
+    def __init__(self) -> None:
         self._client_accessed: Set[Tuple[str, str]] = set()  # tuple of video hash and user's rid
         self._videos_sorted: List['StoredHashedVideoFile'] = []
         self._dist_nodes: List[DistributionNodeInfo] = []
@@ -367,7 +371,7 @@ class DistributionController:
             video.views = 0
 
     def _find_node(self, matches: Callable[[DistributionNodeInfo], bool],
-                   nodes: Iterable[DistributionNodeInfo] = None) -> Optional[DistributionNodeInfo]:
+                   nodes: Optional[Iterable[DistributionNodeInfo]] = None) -> Optional[DistributionNodeInfo]:
         if nodes is None:
             nodes = self._dist_nodes
         for node in nodes:
@@ -376,7 +380,7 @@ class DistributionController:
         return None
 
     def start_periodic_reset_task(self) -> None:
-        async def task():
+        async def task() -> None:
             await asyncio.gather(*(dist_node.free_up_space() for dist_node in self._dist_nodes))
             start = timer()
             self._reset()

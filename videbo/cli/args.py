@@ -1,6 +1,7 @@
 import sys
-from asyncio import get_event_loop
 from argparse import ArgumentParser
+from asyncio import get_event_loop
+from typing import Any
 
 
 # CLI commands:
@@ -47,7 +48,7 @@ def setup_cli_args(parser: ArgumentParser) -> None:
     )
 
 
-def run(**kwargs) -> None:
+def run(**kwargs: Any) -> None:
     from videbo.web import HTTPClient
     from .storage import (get_status, find_orphaned_files, get_distributor_nodes, enable_distributor_node,
                           disable_distributor_node)

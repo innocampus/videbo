@@ -1,19 +1,11 @@
-from videbo.exceptions import CouldNotCreateDir
+from videbo.exceptions import VideboBaseException
 
 
-class CouldNotCreateTempDir(CouldNotCreateDir):
+class HashedFileInvalidExtensionError(VideboBaseException):
     pass
 
 
-class CouldNotCreateTempOutDir(CouldNotCreateTempDir):
-    pass
-
-
-class HashedFileInvalidExtensionError(Exception):
-    pass
-
-
-class UploadError(Exception):
+class UploadError(VideboBaseException):
     pass
 
 
@@ -25,25 +17,25 @@ class BadFileExtension(UploadError):
     pass
 
 
-class NoValidFileInRequestError(Exception):
+class FileTooBigError(UploadError):
     pass
 
 
-class FileTooBigError(Exception):
+class DistributionError(VideboBaseException):
     pass
 
 
-class DistStatusUnknown(Exception):
+class DistStatusUnknown(DistributionError):
     pass
 
 
-class UnknownDistURL(Exception):
+class UnknownDistURL(DistributionError):
     pass
 
 
-class DistAlreadyDisabled(Exception):
+class DistAlreadyDisabled(DistributionError):
     pass
 
 
-class DistAlreadyEnabled(Exception):
+class DistAlreadyEnabled(DistributionError):
     pass

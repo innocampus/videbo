@@ -1,7 +1,7 @@
 import json
-from urllib.parse import urlencode
 from distutils.util import strtobool
-from typing import Optional, List
+from typing import List, Optional, Union
+from urllib.parse import urlencode
 
 from videbo import storage_settings
 from videbo.web import HTTPClient
@@ -13,7 +13,7 @@ def get_storage_url(path: str) -> str:
     return f'http://{storage_settings.listen_address}:{storage_settings.listen_port}{path}'
 
 
-async def get_status():
+async def get_status() -> None:
     url = get_storage_url('/api/storage/status')
     # We parse the model back and forth to have the dictionary in the correct order:
     http_code, ret = await HTTPClient.internal_request_admin('GET', url, None, StorageStatus)
@@ -51,7 +51,7 @@ async def find_orphaned_files(delete: bool) -> None:
         print("\nIf you want to delete all orphaned files, use the command with the --delete flag.")
 
 
-async def get_filtered_files(**kwargs) -> Optional[List[StorageFileInfo]]:
+async def get_filtered_files(**kwargs: Union[str, int, bool]) -> Optional[List[StorageFileInfo]]:
     """
     Makes a GET request to the storage node's files endpoint to receive a list of stored files.
     Any keyword arguments passed are encoded into the url query string, and may be used to filter the results.
@@ -108,7 +108,7 @@ async def delete_files(*files: StorageFileInfo) -> None:
     print(f"Please check the storage logs for more information.")
 
 
-async def get_distributor_nodes():
+async def get_distributor_nodes() -> None:
     url = get_storage_url('/api/storage/distributor/status')
     http_code, ret = await HTTPClient.internal_request_admin('GET', url)
     if http_code == 200:
@@ -131,7 +131,7 @@ async def enable_distributor_node(base_url: str) -> None:
     await set_distributor_state(base_url, enabled=True)
 
 
-def print_response(http_code: int):
+def print_response(http_code: int) -> None:
     if http_code == 200:
         print("Successful! Please check storage log output.")
     else:

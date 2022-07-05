@@ -14,7 +14,7 @@ async def main():
 	HTTPClient.create_client_session()
 	ni.start_fetching("http://localhost/server-status", logger=log)
 	while True:
-		print(f"is running: {ni.is_running}")
+		print(f"is running: {ni.is_fetching}")
 		print(f"interfaces: {ni.get_interface_names()}")
 		try:
 			print(f"{ni.get_server_type()}: {ni.get_server_status()} connections currently")

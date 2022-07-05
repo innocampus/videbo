@@ -18,19 +18,19 @@ from . import logger
 
 
 class CopyFileStatus:
-    def __init__(self):
+    def __init__(self) -> None:
         self.event: Event = Event()  # When event is fired, we know that the file was downloaded completely.
         self.loaded_bytes: int = 0
         self.started: float = time()
 
-    async def wait_for(self, max_time: float):
+    async def wait_for(self, max_time: float) -> None:
         await wait_for(self.event.wait(), max_time)
 
 
 class DistributorHashedVideoFile(HashedVideoFile):
     __slots__ = 'copy_status', 'file_size', 'last_requested'
 
-    def __init__(self, file_hash: str, file_extension: str):
+    def __init__(self, file_hash: str, file_extension: str) -> None:
         super().__init__(file_hash, file_extension)
         self.copy_status: Optional[CopyFileStatus] = None
         self.file_size: int = -1  # in bytes
@@ -42,7 +42,7 @@ class DistributorFileController:
 
     MAX_WAITING_CLIENTS = 60
 
-    def __init__(self, path: Path):
+    def __init__(self, path: Path) -> None:
         # file hash -> Event if the node is still downloading the file right now (event is fired when load completed)
         self.files: Dict[str, DistributorHashedVideoFile] = {}
         self.files_total_size: int = 0  # in bytes
@@ -57,7 +57,7 @@ class DistributorFileController:
             cls._instance._load_file_list()
         return cls._instance
 
-    def _load_file_list(self):
+    def _load_file_list(self) -> None:
         """Initialize object and load all existing file names."""
         for obj in self.base_path.glob('**/*'):
             if obj.is_file():
@@ -151,7 +151,7 @@ class DistributorFileController:
         self.files[file.hash] = new_file
         self.files_being_copied.add(new_file)
 
-        async def do_copy():
+        async def do_copy() -> None:
             # load file
             temp_path = self.get_path(file, True)
             file_obj = None

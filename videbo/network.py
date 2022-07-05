@@ -1,19 +1,24 @@
 import asyncio
 import re
-from logging import Logger
+from logging import Logger, getLogger
 from time import time
 from typing import Optional, Dict, List, Union
 
+from videbo.exceptions import HTTPResponseError
 from videbo.misc import MEGA, TaskManager
 from videbo.models import NodeStatus
-from videbo.web import HTTPClient, HTTPResponseError
+from videbo.web import HTTPClient
+
+# TODO: Refactor some functions in this module to make it testable and maintainable
+
+log = getLogger(__name__)
 
 
 class PureDataType:
-    def __repr__(self):
+    def __repr__(self) -> str:
         return self.__str__()
 
-    def __str__(self):
+    def __str__(self) -> str:
         # TODO: make it pretty
         return f"{self.__dict__}"
 
@@ -22,7 +27,7 @@ class NetworkInterface(PureDataType):
     """
     Pure data holder for NetworkInterfaces
     """
-    def __init__(self, name: str):
+    def __init__(self, name: str) -> None:
         self.name = name
         self.rx_bytes = 0
         self.rx_throughput: float = 0  # bytes per second
@@ -48,7 +53,7 @@ class StubStatus(PureDataType):
     """
     Pure data holder for server status
     """
-    def __init__(self):
+    def __init__(self) -> None:
         self.reading: int = 0
         self.waiting: int = 0
         self.writing: int = 0
@@ -56,7 +61,7 @@ class StubStatus(PureDataType):
 
 
 class UnknownServerStatusFormatError(Exception):
-    def __init__(self, url: str, server_type: str):
+    def __init__(self, url: str, server_type: str) -> None:
         super().__init__(f"data received from {url} could not fulfill expected server type ({server_type})")
 
 
@@ -91,33 +96,29 @@ class NetworkInterfaces:
 
     _html_pattern = re.compile(r"\s*<(!DOCTYPE|html).*>.*")
 
-    def __init__(self, interval: int = 10):
+    def __init__(self, interval: int = 10) -> None:
         self.interval = interval
         self._last_time_network_proc: float = 0.0
         self._do_fetch = False
-        self._fetch_task: Optional[asyncio.Task] = None
+        self._fetch_task: Optional[asyncio.Task[None]] = None
         self._server_status: Optional[StubStatus] = None
 
     @staticmethod
-    def get_instance() -> "NetworkInterfaces":
+    def get_instance() -> 'NetworkInterfaces':
         if NetworkInterfaces._instance is None:
             NetworkInterfaces._instance = NetworkInterfaces()
         return NetworkInterfaces._instance
 
     @property
-    def is_fetching(self):
+    def is_fetching(self) -> bool:
         return self._do_fetch and self._fetch_task is not None
-
-    @property
-    def is_running(self):
-        return self.is_fetching
 
     def get_server_status(self, attribute: str = "writing") -> Optional[int]:
         if self._server_status is None:
             return None
         return getattr(self._server_status, attribute, 0)
 
-    def get_server_type(self):
+    def get_server_type(self) -> str:
         if self._server_status is None:
             raise KeyError("server type was never fetched")
         return getattr(self._server_status, "server_type", "Unknown")
@@ -125,7 +126,7 @@ class NetworkInterfaces:
     def get_interface_names(self) -> List[str]:
         return list(self._interfaces.keys())
 
-    async def _fetch_proc_info(self):
+    async def _fetch_proc_info(self) -> None:
         """Fetching data from /proc/net/dev"""
         with open('/proc/net/dev', 'r') as f:
             cur_time = time()
@@ -144,17 +145,16 @@ class NetworkInterfaces:
                             self._set_interface_attr(name, f"tx_{attr}", int(match.group(f"tx_{attr}")))
                         for cls in ["tx", "rx"]:
                             attr = f"{cls}_bytes"
-                            last_bytes = self.get_interface_attr(name, attr)
+                            last_bytes: int = getattr(self._interfaces[name], attr)
                             cur_bytes = int(match.group(attr))
                             interval = cur_time - self._last_time_network_proc
                             throughput = (cur_bytes - last_bytes) / interval
                             self._set_interface_attr(name, attr, cur_bytes)
                             self._set_interface_attr(name, f"{cls}_throughput", throughput)
                 a = f.readline()
-
         self._last_time_network_proc = cur_time
 
-    async def _fetch_server_status(self, url: str, logger: Optional[Logger]):
+    async def _fetch_server_status(self, url: str, logger: Logger) -> None:
         if not url:
             return
         status: int
@@ -222,7 +222,7 @@ class NetworkInterfaces:
             if logger:
                 logger.warning(f"unexpected response from {url} (return code {status})")
 
-    async def stop_fetching(self):
+    async def stop_fetching(self) -> None:
         """Stops the fetching process"""
         if self._fetch_task is not None:
             try:
@@ -233,12 +233,12 @@ class NetworkInterfaces:
         else:
             self._do_fetch = False
 
-    def start_fetching(self, status_page: Optional[str] = None, logger: Optional[Logger] = None):
+    def start_fetching(self, status_page: Optional[str] = None, logger: Logger = log) -> None:
         """Starts the fetching process"""
         if self._fetch_task is None:
             self._do_fetch = True
 
-            async def fetcher():
+            async def fetcher() -> None:
                 try:
                     # fetch in advance to avoid high throughput values
                     if logger:
@@ -253,12 +253,13 @@ class NetworkInterfaces:
                         except Exception as e:
                             logger.exception(f"{e} in network _fetch_proc_info")
 
-                        try:
-                            await self._fetch_server_status(url=status_page, logger=logger)
-                        except asyncio.CancelledError:
-                            pass
-                        except Exception as e:
-                            logger.exception(f"{e} in network _fetch_server_status")
+                        if status_page:
+                            try:
+                                await self._fetch_server_status(url=status_page, logger=logger)
+                            except asyncio.CancelledError:
+                                pass
+                            except Exception as e:
+                                logger.exception(f"{e} in network _fetch_server_status")
 
                         await asyncio.sleep(self.interval)
                 finally:
@@ -276,24 +277,19 @@ class NetworkInterfaces:
         except StopIteration:
             return None
 
-    def _set_interface_attr(self, interface: str, attr: str, value: Union[int, float]):
+    def _set_interface_attr(self, interface: str, attr: str, value: Union[int, float]) -> None:
         """Sets only if interface exists"""
         if interface in self._interfaces:
             setattr(self._interfaces[interface], attr, value)
 
-    def get_interface_attr(self, interface: str, attr: str) -> Optional[int]:
-        """Returns the value if interface and attribute exist, else None"""
-        if interface in self._interfaces:
-            return getattr(self._interfaces[interface], attr, None)
-        return None
-
-    def get_tx_current_rate(self, interface_name: str = None) -> Optional[float]:
+    def get_tx_current_rate(self, interface_name: Optional[str] = None) -> Optional[float]:
         interface = self.get_first_interface() if interface_name is None else self._interfaces.get(interface_name)
         if interface is None:
             return None
         return interface.tx_throughput * 8 / 1_000_000
 
-    def update_node_status(self, status_obj: NodeStatus, server_status_page: str = None, logger: Logger = None) -> None:
+    def update_node_status(self, status_obj: NodeStatus, server_status_page: Optional[str] = None,
+                           logger: Logger = log) -> None:
         """Updates a given `NodeStatus` (subclass) instance with network interface information"""
         if server_status_page:
             status_obj.current_connections = self.get_server_status()

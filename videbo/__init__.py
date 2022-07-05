@@ -2,5 +2,5 @@ from .storage.settings import StorageSettings
 from .distributor.settings import DistributorSettings
 
 
-distributor_settings: DistributorSettings = DistributorSettings()
-storage_settings: StorageSettings = StorageSettings()
+distributor_settings = DistributorSettings()
+storage_settings = StorageSettings()

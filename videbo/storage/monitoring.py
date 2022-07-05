@@ -1,5 +1,5 @@
 from pathlib import Path
-from typing import Container, Dict, Tuple, Set, Callable, Optional, Type
+from typing import Container, Dict, Tuple, Set, Callable, Optional, Type, Union
 
 from pydantic.main import BaseModel
 from prometheus_client.registry import CollectorRegistry
@@ -9,7 +9,6 @@ from prometheus_client.process_collector import ProcessCollector
 
 from videbo import storage_settings as settings
 from videbo.misc import Periodic
-from videbo.models import NodeStatus
 from videbo.distributor.api.models import DistributorStatus
 from .util import FileStorage
 from .api.models import StorageStatus
@@ -41,7 +40,10 @@ class Monitoring:
 
         self.update_freq_sec: float = settings.prom_update_freq_sec
         self.registry = CollectorRegistry()
-        self.metrics: Dict[str, Tuple[Gauge, Optional[Callable]]] = {}
+        # TODO: Separate "as-is"-metrics from calculated metrics;
+        #       make more attributes protected;
+        #       fix the following typing issue
+        self.metrics: Dict[str, Tuple[Gauge, Optional[Callable]]] = {}  # type: ignore
         self.dist_urls: Set[str] = set()
         self._add_metrics_from_model(StorageStatus, exclude={'distributor_nodes'})
         self._add_metrics_from_model(DistributorStatus, exclude={'bound_to_storage_node_base_url', 'copy_files_status'})
@@ -99,7 +101,8 @@ class Monitoring:
             self._update_metrics(status, 'dist', url)
         write_to_textfile(settings.prom_text_file, self.registry)
 
-    def _update_metrics(self, status_obj: NodeStatus, *labels: str) -> None:
+    # TODO: Separate updating of metrics for storage status and distributor status into different methods
+    def _update_metrics(self, status_obj: Union[StorageStatus, DistributorStatus], *labels: str) -> None:
         for name, (metric, get_value) in self.metrics.items():
             try:
                 val = get_value(status_obj) if get_value else getattr(status_obj, name)

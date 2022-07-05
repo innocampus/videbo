@@ -1,7 +1,7 @@
 from typing import List
 
-from videbo.web import JSONBaseModel
-from videbo.models import NodeStatus, FileID
+from videbo.models import JSONBaseModel, NodeStatus
+from videbo.types import FileID
 
 
 class DistributorCopyFileStatus(JSONBaseModel):

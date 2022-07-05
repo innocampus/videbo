@@ -17,10 +17,11 @@ from aiohttp.web_exceptions import (HTTPBadRequest, HTTPForbidden, HTTPNotFound,
 from aiohttp.web_exceptions import HTTPInternalServerError, HTTPServiceUnavailable  # 5xx
 
 from videbo import storage_settings as settings
-from videbo.auth import ensure_jwt_data_and_role, external_jwt_encode, Role, JWT_ISS_INTERNAL, BaseJWTData
+from videbo.auth import ensure_jwt_data_and_role, external_jwt_encode, Role, JWT_ISS_INTERNAL
 from videbo.exceptions import InvalidMimeTypeError, InvalidVideoError, FFProbeError
 from videbo.misc import MEGA, rel_path
-from videbo.network import NetworkInterface, NetworkInterfaces
+from videbo.models import BaseJWTData
+from videbo.network import NetworkInterfaces
 from videbo.video import VideoInfo, VideoValidator, VideoConfig
 from videbo.web import (ensure_json_body, ensure_no_reverse_proxy, register_route_with_cors,
                         json_response as model_json_response, file_serve_response, file_serve_headers)
@@ -195,14 +196,14 @@ async def read_and_save_temp(file: TempFile, field: BodyPartReader) -> Response:
 
 
 @register_route_with_cors(routes, 'GET', '/api/upload/maxsize')
-async def get_max_size(_: Request):
+async def get_max_size(_: Request) -> Response:
     """Get max file size in mb."""
     return json_response({'max_size': settings.max_file_size_mb})
 
 
 @register_route_with_cors(routes, 'POST', '/api/upload/file', ['Authorization'])
 @ensure_jwt_data_and_role(Role.client)
-async def upload_file(request: Request, jwt_token: UploadFileJWTData):
+async def upload_file(request: Request, jwt_token: UploadFileJWTData) -> Response:
     """User wants to upload a video."""
     if request.content_type != 'multipart/form-data':
         raise HTTPNotAcceptable(headers={'Accept': 'multipart/form-data'})
@@ -229,9 +230,9 @@ async def upload_file(request: Request, jwt_token: UploadFileJWTData):
         storage.num_current_uploads -= 1
 
 
-@routes.get('/api/save/file/{hash:[0-9a-f]{64}}{file_ext:\\.[0-9a-z]{1,10}}')
+@routes.get('/api/save/file/{hash:[0-9a-f]{64}}{file_ext:\\.[0-9a-z]{1,10}}')  # type: ignore[arg-type]
 @ensure_jwt_data_and_role(Role.lms)
-async def save_file(request: Request, jwt_data: SaveFileJWTData):
+async def save_file(request: Request, jwt_data: SaveFileJWTData) -> Response:
     """Confirms that the file should be saved permanently."""
     if not jwt_data.is_allowed_to_save_file:
         storage_logger.info('unauthorized request')
@@ -248,9 +249,9 @@ async def save_file(request: Request, jwt_data: SaveFileJWTData):
     return json_response({'status': 'ok'})
 
 
-@routes.delete('/api/file/{hash:[0-9a-f]{64}}{file_ext:\\.[0-9a-z]{1,10}}')
+@routes.delete('/api/file/{hash:[0-9a-f]{64}}{file_ext:\\.[0-9a-z]{1,10}}')  # type: ignore[arg-type]
 @ensure_jwt_data_and_role(Role.lms)
-async def delete_file(request: Request, jwt_data: DeleteFileJWTData):
+async def delete_file(request: Request, jwt_data: DeleteFileJWTData) -> Response:
     """Delete the file with the hash."""
     if not jwt_data.is_allowed_to_delete_file:
         storage_logger.info("unauthorized request")
@@ -261,7 +262,7 @@ async def delete_file(request: Request, jwt_data: DeleteFileJWTData):
     return json_response({"status": "ok"})  # always succeeds
 
 
-@routes.get('/file')
+@routes.get('/file')  # type: ignore[arg-type]
 @ensure_jwt_data_and_role(Role.client)
 async def request_file(request: Request, jwt_data: RequestFileJWTData) -> Union[Response, FileResponse]:
     """
@@ -366,7 +367,7 @@ async def video_check_redirect(request: Request, file: StoredHashedVideoFile) ->
             return  # Serve file
 
 
-def video_redirect_to_node(request: Request, node: DistributionNodeInfo, file: StoredHashedVideoFile):
+def video_redirect_to_node(request: Request, node: DistributionNodeInfo, file: StoredHashedVideoFile) -> None:
     access_logger.info(f"Redirect user to {node.base_url} for video {file}")
     jwt = request.query['jwt']
     url = f"{node.base_url}/file?jwt={jwt}"
@@ -426,18 +427,18 @@ async def handle_thumbnail_request(jwt_data: RequestFileJWTData) -> Response:
     return Response(body=bytes_data, content_type=CONTENT_TYPES[path.suffix], headers=file_serve_headers())
 
 
-@routes.post(r'/api/storage/distributor/add')
+@routes.post(r'/api/storage/distributor/add')  # type: ignore[arg-type]
 @ensure_jwt_data_and_role(Role.admin)
-@ensure_json_body()
-async def add_dist_node(_request: Request, _jwt_data: BaseJWTData, data: DistributorNodeInfo):
+@ensure_json_body
+async def add_dist_node(_request: Request, _jwt_data: BaseJWTData, data: DistributorNodeInfo) -> None:
     FileStorage.get_instance().distribution_controller.add_new_dist_node(data.base_url)
     raise HTTPOk()
 
 
-@routes.post(r'/api/storage/distributor/remove')
+@routes.post(r'/api/storage/distributor/remove')  # type: ignore[arg-type]
 @ensure_jwt_data_and_role(Role.admin)
-@ensure_json_body()
-async def remove_dist_node(_request: Request, _jwt_data: BaseJWTData, data: DistributorNodeInfo):
+@ensure_json_body
+async def remove_dist_node(_request: Request, _jwt_data: BaseJWTData, data: DistributorNodeInfo) -> None:
     await FileStorage.get_instance().distribution_controller.remove_dist_node(data.base_url)
     raise HTTPOk()
 
@@ -455,36 +456,36 @@ async def set_dist_node_state(base_url: str, enabled: bool) -> None:
     raise HTTPOk()
 
 
-@routes.post(r'/api/storage/distributor/disable')
+@routes.post(r'/api/storage/distributor/disable')  # type: ignore[arg-type]
 @ensure_jwt_data_and_role(Role.admin)
-@ensure_json_body()
-async def disable_dist_node(_request: Request, _jwt_data: BaseJWTData, data: DistributorNodeInfo):
+@ensure_json_body
+async def disable_dist_node(_request: Request, _jwt_data: BaseJWTData, data: DistributorNodeInfo) -> None:
     await set_dist_node_state(data.base_url, enabled=False)
 
 
-@routes.post(r'/api/storage/distributor/enable')
+@routes.post(r'/api/storage/distributor/enable')  # type: ignore[arg-type]
 @ensure_jwt_data_and_role(Role.admin)
-@ensure_json_body()
-async def enable_dist_node(_request: Request, _jwt_data: BaseJWTData, data: DistributorNodeInfo):
+@ensure_json_body
+async def enable_dist_node(_request: Request, _jwt_data: BaseJWTData, data: DistributorNodeInfo) -> None:
     await set_dist_node_state(data.base_url, enabled=True)
 
 
-@routes.get(r'/api/storage/distributor/status')
+@routes.get(r'/api/storage/distributor/status')  # type: ignore[arg-type]
 @ensure_no_reverse_proxy
 @ensure_jwt_data_and_role(Role.admin)
-async def get_all_dist_nodes(_request: Request, _jwt_data: BaseJWTData):
+async def get_all_dist_nodes(_request: Request, _jwt_data: BaseJWTData) -> Response:
     nodes_statuses = FileStorage.get_instance().distribution_controller.get_nodes_status()
     return model_json_response(DistributorStatusDict(nodes=nodes_statuses))
 
 
-@routes.get(r'/api/storage/status')
+@routes.get(r'/api/storage/status')  # type: ignore[arg-type]
 @ensure_jwt_data_and_role(Role.admin)
-async def get_status(_request: Request, _jwt_data: BaseJWTData):
+async def get_status(_request: Request, _jwt_data: BaseJWTData) -> Response:
     storage = FileStorage.get_instance()
     return model_json_response(await storage.get_status())
 
 
-@routes.get(r'/api/storage/files')
+@routes.get(r'/api/storage/files')  # type: ignore[arg-type]
 @ensure_no_reverse_proxy
 @ensure_jwt_data_and_role(Role.admin)
 async def get_files_list(request: Request, _jwt_data: BaseJWTData) -> Response:
@@ -503,10 +504,10 @@ async def get_files_list(request: Request, _jwt_data: BaseJWTData) -> Response:
     return model_json_response(StorageFilesList(files=files))
 
 
-@routes.post('/api/storage/delete')
+@routes.post('/api/storage/delete')  # type: ignore[arg-type]
 @ensure_no_reverse_proxy
 @ensure_jwt_data_and_role(Role.admin)
-@ensure_json_body()
+@ensure_json_body
 async def batch_delete_files(_request: Request, _jwt_data: BaseJWTData, data: DeleteFilesList) -> Response:
     storage = FileStorage.get_instance()
     removed_list = await storage.remove_files(*data.hashes)

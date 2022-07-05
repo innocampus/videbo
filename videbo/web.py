@@ -5,10 +5,10 @@ import urllib.parse
 from pathlib import Path
 from json import JSONDecodeError
 from time import time
-from typing import Any, AsyncIterator, Awaitable, Callable, Dict, List, Optional, Tuple, Type, TypeVar, Union
+from typing import Any, AsyncIterator, Callable, Dict, List, Optional, Tuple, Type, Union, cast, overload
 
-from pydantic import BaseModel, ValidationError
-from aiohttp.client import ClientResponse, ClientSession, ClientError, ClientTimeout
+from aiohttp.client import ClientSession, ClientError, ClientTimeout
+from aiohttp.typedefs import LooseHeaders
 from aiohttp.web import run_app
 from aiohttp.web_app import Application
 from aiohttp.web_exceptions import HTTPException, HTTPBadRequest, HTTPUnauthorized
@@ -16,20 +16,20 @@ from aiohttp.web_fileresponse import FileResponse
 from aiohttp.web_request import Request
 from aiohttp.web_response import Response
 from aiohttp.web_routedef import RouteDef, RouteTableDef
+from pydantic import BaseModel, ValidationError
 
-from .auth import BaseJWTData, internal_jwt_encode, external_jwt_encode, JWT_ISS_EXTERNAL, JWT_ISS_INTERNAL
-from .misc import TaskManager, sanitize_filename
-from .video import get_content_type_for_video
+from videbo.auth import internal_jwt_encode, external_jwt_encode, JWT_ISS_EXTERNAL, JWT_ISS_INTERNAL
+from videbo.exceptions import InvalidRouteSignature, HTTPResponseError
+from videbo.misc import TaskManager, sanitize_filename
+from videbo.models import JSONBaseModel, BaseJWTData
+from videbo.types import CleanupContext, RouteHandler
+from videbo.video import get_content_type_for_extension
 
 
 web_logger = logging.getLogger('videbo-web')
 
-AwaitFuncT = Callable[..., Awaitable[Any]]
-AwaitDecorT = Callable[[AwaitFuncT], AwaitFuncT]
-AsyncFunction = TypeVar('AsyncFunction', bound=AwaitFuncT)
 
-
-async def session_context(_app: Application) -> AsyncIterator:
+async def session_context(_app: Application) -> AsyncIterator[None]:
     """
     Creates the singleton session instance on the first iteration, and closes it on the second.
     This coroutine can be used in the `.cleanup_ctx` list of the aiohttp `Application`.
@@ -42,8 +42,9 @@ async def session_context(_app: Application) -> AsyncIterator:
 async def cancel_tasks(_app: Application) -> None: TaskManager.cancel_all()
 
 
-def start_web_server(routes: RouteTableDef, *cleanup_contexts: Callable, address: str = None, port: int = None,
-                     access_logger: Optional[logging.Logger] = None, verbose: bool = False) -> None:
+def start_web_server(routes: RouteTableDef, *cleanup_contexts: CleanupContext, address: Optional[str] = None,
+                     port: Optional[int] = None, access_logger: Optional[logging.Logger] = None,
+                     verbose: bool = False) -> None:
     """
     Starts the aiohttp web server.
     Adds a context, such that on startup the `HTTPClient.session` is initialized, and on cleanup it is closed.
@@ -78,7 +79,16 @@ def start_web_server(routes: RouteTableDef, *cleanup_contexts: Callable, address
     run_app(app, host=address, port=port, access_log=access_logger)
 
 
-def ensure_json_body(_func: AwaitFuncT = None, *, headers: Optional[dict] = None) -> Union[AwaitFuncT, AwaitDecorT]:
+@overload
+def ensure_json_body(_func: RouteHandler) -> RouteHandler: ...
+
+
+@overload
+def ensure_json_body(*, headers: Optional[LooseHeaders] = None) -> Callable[[RouteHandler], RouteHandler]: ...
+
+
+def ensure_json_body(_func: Optional[RouteHandler] = None, *,
+                     headers: Optional[LooseHeaders] = None) -> Union[RouteHandler, Callable[[RouteHandler], RouteHandler]]:
     """
     Decorator function used to ensure that there is a json body in the request and that this json
     corresponds to the model given as a type annotation in func.
@@ -92,7 +102,8 @@ def ensure_json_body(_func: AwaitFuncT = None, *, headers: Optional[dict] = None
         headers (optional):
             Headers to include when sending error responses.
     """
-    def decorator(function: AwaitFuncT) -> AwaitFuncT:
+    # TODO: Refactor together with `auth.ensure_jwt_data_and_role`
+    def decorator(function: RouteHandler) -> RouteHandler:
         """internal decorator function"""
         # Look for the model given in a type annotation.
         signature = inspect.signature(function)
@@ -102,14 +113,16 @@ def ensure_json_body(_func: AwaitFuncT = None, *, headers: Optional[dict] = None
         for name, param in signature.parameters.items():
             if issubclass(param.annotation, JSONBaseModel):
                 if model_arg_name:
-                    raise TooManyJSONModelsError()
+                    raise InvalidRouteSignature(f"More than one parameter of the type `{JSONBaseModel.__name__}` "
+                                                f"present in function `{function.__name__}`.")
                 model_arg_name = name
                 model_arg_model = param.annotation
         if model_arg_name is None:
-            raise NoJSONModelFoundError()
+            raise InvalidRouteSignature(f"No parameter of the type `{JSONBaseModel.__name__}` present in function "
+                                        f"`{function.__name__}`.")
 
         @functools.wraps(function)
-        async def wrapper(request: Request, *args, **kwargs) -> Any:
+        async def wrapper(request: Request, *args: Any, **kwargs: Any) -> Any:
             """Wrapper around the actual function call."""
             assert request._client_max_size > 0
             assert isinstance(model_arg_name, str)
@@ -127,7 +140,7 @@ def ensure_json_body(_func: AwaitFuncT = None, *, headers: Optional[dict] = None
                 raise HTTPBadRequest(headers=headers)
             kwargs[model_arg_name] = data
             return await function(request, *args, **kwargs)
-        return wrapper
+        return cast(RouteHandler, wrapper)
 
     if _func is None:
         return decorator
@@ -135,21 +148,21 @@ def ensure_json_body(_func: AwaitFuncT = None, *, headers: Optional[dict] = None
         return decorator(_func)
 
 
-def ensure_no_reverse_proxy(func):
+def ensure_no_reverse_proxy(func: RouteHandler) -> RouteHandler:
     """Check that the access does not come from the reverse proxy."""
 
     @functools.wraps(func)
-    async def wrapper(request: Request, *args, **kwargs):
+    async def wrapper(request: Request, *args: Any, **kwargs: Any) -> Any:
         """Wrapper around the actual function call."""
 
         if "X-Forwarded-For" in request.headers:
             raise HTTPUnauthorized()
         return await func(request, *args, **kwargs)
 
-    return wrapper
+    return cast(RouteHandler, wrapper)
 
 
-def get_x_accel_headers(redirect_uri: str, limit_rate_bytes: int = None) -> Dict[str, str]:
+def get_x_accel_headers(redirect_uri: str, limit_rate_bytes: Optional[int] = None) -> Dict[str, str]:
     headers = {'X-Accel-Redirect': redirect_uri}
     if limit_rate_bytes:
         headers['X-Accel-Limit-Rate'] = str(limit_rate_bytes)
@@ -162,8 +175,8 @@ def get_x_accel_limit_rate(in_mbit: Optional[float]) -> int:
     return int(in_mbit * 2**20 / 8)
 
 
-def file_serve_response(path: Path, x_accel: bool, downloadas: str = None,
-                        x_accel_limit_rate: float = None) -> Union[Response, FileResponse]:
+def file_serve_response(path: Path, x_accel: bool, downloadas: Optional[str] = None,
+                        x_accel_limit_rate: Optional[float] = None) -> Union[Response, FileResponse]:
     """
     Constructs a response object to serve a file either "as is" or via NGINX X-Accel capabilities.
 
@@ -185,12 +198,12 @@ def file_serve_response(path: Path, x_accel: bool, downloadas: str = None,
     headers = file_serve_headers(downloadas)
     if x_accel:
         headers.update(get_x_accel_headers(str(path), get_x_accel_limit_rate(x_accel_limit_rate)))
-        content_type = get_content_type_for_video(''.join(path.suffixes))
+        content_type = get_content_type_for_extension(''.join(path.suffixes))
         return Response(headers=headers, content_type=content_type)
     return FileResponse(path, headers=headers)
 
 
-def file_serve_headers(downloadas: str = None) -> Dict[str, str]:
+def file_serve_headers(downloadas: Optional[str] = None) -> Dict[str, str]:
     headers = {
         'Cache-Control': 'private, max-age=50400'
     }
@@ -199,12 +212,8 @@ def file_serve_headers(downloadas: str = None) -> Dict[str, str]:
     return headers
 
 
-class JSONBaseModel(BaseModel):
-    pass
-
-
 def register_route_with_cors(routes: RouteTableDef, allow_methods: Union[str, List[str]], path: str,
-                             allow_headers: Optional[List[str]] = None):
+                             allow_headers: Optional[List[str]] = None) -> Callable[[RouteHandler], RouteHandler]:
     """Decorator function used to add Cross-Origin Resource Sharing (CORS) header fields to the responses.
 
     It also registers a route for the path with the OPTIONS method.
@@ -212,42 +221,39 @@ def register_route_with_cors(routes: RouteTableDef, allow_methods: Union[str, Li
     if isinstance(allow_methods, str):
         allow_methods = [allow_methods]
 
-    def decorator(func):
+    def decorator(function: RouteHandler) -> RouteHandler:
         """internal decorator function"""
-
         headers = {
             'Access-Control-Allow-Origin': '*',
             'Access-Control-Allow-Methods': ','.join(allow_methods),
             'Access-Control-Max-Age': '3600',
         }
-
         if allow_headers:
             headers['Access-Control-Allow-Headers'] = ','.join(allow_headers)
 
-        @functools.wraps(func)
-        async def wrapper(request: Request, *args, **kwargs):
+        @functools.wraps(function)
+        async def wrapper(request: Request, *args: Any, **kwargs: Any) -> Any:
             """Wrapper around the actual function call."""
-
             try:
-                response = await func(request, *args, **kwargs)
+                response = await function(request, *args, **kwargs)
                 response.headers.extend(headers)
                 return response
             except HTTPException as error:
                 error.headers.extend(headers)
                 raise error
 
-        async def return_options(request: Request):
+        async def return_options(request: Request) -> Response:
             return Response(headers=headers)
 
         for method in allow_methods:
             routes._items.append(RouteDef(method, path, wrapper, {}))
         routes._items.append(RouteDef('OPTIONS', path, return_options, {}))
 
-        return wrapper
+        return cast(RouteHandler, wrapper)
     return decorator
 
 
-def json_response(data: JSONBaseModel, status=200) -> Response:
+def json_response(data: JSONBaseModel, status: int = 200) -> Response:
     return Response(text=data.json(), status=status, content_type='application/json')
 
 
@@ -256,11 +262,11 @@ class HTTPClient:
     _cached_jwt: Dict[Tuple[str, str], Tuple[str, float]] = {}  # (role, int|ext) -> (jwt, expiration date)
 
     @classmethod
-    def create_client_session(cls):
+    def create_client_session(cls) -> None:
         cls.session = ClientSession()  # TODO use TCPConnector and use limit_per_host option
 
     @classmethod
-    async def close_all(cls):
+    async def close_all(cls) -> None:
         await cls.session.close()
 
     @classmethod
@@ -366,35 +372,3 @@ class HTTPClient:
             jwt = internal_jwt_encode(jwt_data, 4 * 3600)
         cls._cached_jwt[(role, iss)] = (jwt, current_time + 3 * 3600)  # don't cache until the expiration time is reached
         return jwt
-
-
-async def read_data_from_response(response: ClientResponse, max_bytes: int) -> bytes:
-    """Read up to max_bytes of data in memory. Be carefull with max_bytes."""
-    read_bytes = 0
-    blocks = []
-    while True:
-        block = await response.content.readany()
-        if not block:
-            break
-        read_bytes += len(block)
-        if read_bytes > max_bytes:
-            raise ResponseTooManyDataError()
-        blocks.append(block)
-    return b''.join(blocks)
-
-
-# exceptions
-class NoJSONModelFoundError(Exception):
-    pass
-
-
-class TooManyJSONModelsError(Exception):
-    pass
-
-
-class ResponseTooManyDataError(Exception):
-    pass
-
-
-class HTTPResponseError(Exception):
-    pass

@@ -913,7 +913,7 @@ class FunctionsTestCase(BaseTestCase):
         mock_path.is_dir.return_value = False
         with patch(TESTED_MODULE_PATH + '.Path') as mock_path_class:
             mock_path_class.return_value = mock_path
-            with self.assertRaises(util.CouldNotCreateTempDir):
+            with self.assertRaises(util.CouldNotCreateDir):
                 util.create_dir_if_not_exists(mock_path)
 
     def test_is_allowed_file_ending(self):

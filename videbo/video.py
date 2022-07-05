@@ -2,30 +2,32 @@ import asyncio
 import json
 import shutil
 from pathlib import Path
-from typing import Dict, List, Optional
+from typing import Any, Dict, List, Optional
 
 from videbo import storage_settings as settings
-from videbo.exceptions import (FileCmdError, FFMpegError, FFProbeError, InvalidMimeTypeError, InvalidVideoError,
-                               UnknownProgramError)
+from videbo.exceptions import FileCmdError, FFMpegError, FFProbeError, InvalidMimeTypeError, InvalidVideoError
+
+
+FILE, FFPROBE = 'file', 'ffprobe'
 
 
 class VideoConfig:
-    def __init__(self, user: str = None, binary_file: str = None, binary_ffmpeg: str = None,
-                 binary_ffprobe: str = None):
+    def __init__(self, user: Optional[str] = None, binary_file: Optional[str] = None,
+                 binary_ffmpeg: Optional[str] = None, binary_ffprobe: Optional[str] = None):
         self.user = user or settings.check_user
         self.binary_ffmpeg = binary_ffmpeg or settings.binary_ffmpeg
         self.binary_ffprobe = binary_ffprobe or settings.binary_ffprobe
         self.binary_file = binary_file or settings.binary_file
 
-    async def create_sudo_subprocess(self, args: List[str], binary: str = None,
+    async def create_sudo_subprocess(self, args: List[str], binary: str,
                                      stdout: int = asyncio.subprocess.DEVNULL,
                                      stderr: int = asyncio.subprocess.DEVNULL) -> asyncio.subprocess.Process:
-        if binary == "file":
+        if binary == FILE:
             program = self.binary_file
-        elif binary == "ffprobe":
+        elif binary == FFPROBE:
             program = self.binary_ffprobe
         else:
-            raise UnknownProgramError()
+            raise ValueError(f"Unrecognized program `{binary}`; valid choices are `{FILE}` and `{FFPROBE}`")
 
         # Run as different user
         if self.user:
@@ -43,28 +45,28 @@ class VideoInfo:
         self.valid_video = False
         self._video_config = video_config
         self.mime_type: str = ''
-        self.streams: List[Dict] = []
-        self.format: dict = {}
+        self.streams: List[Dict[str, Any]] = []
+        self.format: Dict[str, Any] = {}
 
     async def fetch_mime_type(self) -> None:
         """Call file and fetch mime type."""
 
         args = ["-b", "-i", str(self.video_file)]
         # Run file command
-        proc = await self._video_config.create_sudo_subprocess(args=args, binary="file", stdout=asyncio.subprocess.PIPE)
+        proc = await self._video_config.create_sudo_subprocess(args=args, binary=FILE, stdout=asyncio.subprocess.PIPE)
         try:
             stdout, stderr = await asyncio.wait_for(proc.communicate(), 10)
             self.mime_type = stdout.decode().strip().split(';')[0]  # strip linebreaks, extract first part
         except asyncio.TimeoutError:
             proc.kill()
-            raise FileCmdError(True)
+            raise FileCmdError(timeout=True)
 
     async def fetch_info(self) -> None:
         """Call ffprobe and fetch information."""
 
         args = ["-show_format", "-show_streams", "-print_format", "json", str(self.video_file)]
         # Run ffprobe
-        proc = await self._video_config.create_sudo_subprocess(args=args, binary="ffprobe",
+        proc = await self._video_config.create_sudo_subprocess(args=args, binary=FFPROBE,
                                                                stdout=asyncio.subprocess.PIPE,
                                                                stderr=asyncio.subprocess.PIPE)
         err = None
@@ -76,16 +78,15 @@ class VideoInfo:
             self.format = data["format"]
         except asyncio.TimeoutError:
             proc.kill()
-            raise FFProbeError(True, stderr=err)
+            raise FFProbeError(timeout=True, stderr=err)
         except KeyError:
-            raise FFProbeError(False, stderr=err)
+            raise FFProbeError(timeout=False, stderr=err)
 
-    def get_one_stream_type(self, codec_type: str) -> Optional[Dict]:
+    def get_one_stream_type(self, codec_type: str) -> Optional[Dict[str, Any]]:
         """Get one stream in video of a certain type (video, audio)"""
         for stream in self.streams:
             if stream["codec_type"] == codec_type:
                 return stream
-
         return None
 
     def get_length(self) -> float:
@@ -117,7 +118,6 @@ class VideoInfo:
             return ".mp4"
         if "webm" in formats:
             return ".webm"
-
         raise InvalidVideoError()
 
 
@@ -185,7 +185,7 @@ class Video:
         try:
             await asyncio.wait_for(proc.wait(), 10)
             if proc.returncode != 0:
-                raise FFMpegError(False)
+                raise FFMpegError()
 
             if output_file != thumbnail_out:
                 # Copy temp file to target
@@ -193,7 +193,7 @@ class Video:
 
         except asyncio.TimeoutError:
             proc.kill()
-            raise FFMpegError(True)
+            raise FFMpegError(timeout=True)
 
         finally:
             if output_file != thumbnail_out:
@@ -220,8 +220,9 @@ class Video:
             shutil.copyfile(str(source_file), str(target_file))
 
 
-def get_content_type_for_video(file_ext: str):
-    if file_ext == ".mp4":
-        return "video/mp4"
-    if file_ext == ".webm":
-        return "video/webm"
+def get_content_type_for_extension(file_ext: str) -> str:
+    if file_ext == '.mp4':
+        return 'video/mp4'
+    if file_ext == '.webm':
+        return 'video/webm'
+    raise ValueError(f"Unrecognized file extension `{file_ext}`")

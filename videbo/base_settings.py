@@ -9,7 +9,7 @@ from pydantic import BaseSettings, validator
 from pydantic.env_settings import SettingsSourceCallable
 from pydantic.fields import ModelField, SHAPE_LIST, SHAPE_SET
 
-from .misc import ensure_url_does_not_end_with_slash as normalize_url
+from videbo.misc import ensure_url_does_not_end_with_slash as normalize_url
 
 
 log = logging.getLogger(__name__)
@@ -29,7 +29,7 @@ class AbstractBaseSettings(BaseSettings):
     _section: ClassVar[str] = ''
     _config_file_paths: ClassVar[List[Path]] = DEFAULT_CONFIG_FILE_PATHS
 
-    def __init__(self, *args, **kwargs):
+    def __init__(self, *args: Any, **kwargs: Any) -> None:
         self._config_file_paths.extend(kwargs.pop(CONFIG_FILE_PATHS_PARAM, []))
         super().__init__(*args, **kwargs)
 
@@ -49,7 +49,7 @@ class AbstractBaseSettings(BaseSettings):
                 init_settings: SettingsSourceCallable,
                 env_settings: SettingsSourceCallable,
                 file_secret_settings: SettingsSourceCallable
-        ) -> Tuple[Callable, ...]:
+        ) -> Tuple[Callable[['CommonSettings'], Dict[str, Any]], ...]:
             return init_settings, env_settings, ini_config_settings_source
 
 
@@ -77,7 +77,7 @@ class CommonSettings(AbstractBaseSettings):
         return v
 
     @validator('*')
-    def discard_empty_str_elements(cls, v: Any, field: ModelField) -> Union[List[str], Set[str]]:
+    def discard_empty_str_elements(cls, v: str, field: ModelField) -> Union[str, List[str], Set[str]]:
         if field.type_ is str:
             if isinstance(v, list):
                 return [element for element in v if element != '']
