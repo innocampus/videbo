@@ -1,6 +1,5 @@
 import logging
 import functools
-import inspect
 import urllib.parse
 from pathlib import Path
 from json import JSONDecodeError
@@ -16,11 +15,11 @@ from aiohttp.web_fileresponse import FileResponse
 from aiohttp.web_request import Request
 from aiohttp.web_response import Response
 from aiohttp.web_routedef import RouteDef, RouteTableDef
-from pydantic import BaseModel, ValidationError
+from pydantic import ValidationError
 
 from videbo.auth import internal_jwt_encode, external_jwt_encode, JWT_ISS_EXTERNAL, JWT_ISS_INTERNAL
-from videbo.exceptions import InvalidRouteSignature, HTTPResponseError
-from videbo.misc import TaskManager, sanitize_filename
+from videbo.exceptions import HTTPResponseError
+from videbo.misc import TaskManager, sanitize_filename, get_route_model_param
 from videbo.models import JSONBaseModel, BaseJWTData
 from videbo.types import CleanupContext, RouteHandler
 from videbo.video import get_content_type_for_extension
@@ -102,43 +101,27 @@ def ensure_json_body(_func: Optional[RouteHandler] = None, *,
         headers (optional):
             Headers to include when sending error responses.
     """
-    # TODO: Refactor together with `auth.ensure_jwt_data_and_role`
     def decorator(function: RouteHandler) -> RouteHandler:
         """internal decorator function"""
-        # Look for the model given in a type annotation.
-        signature = inspect.signature(function)
-        param: inspect.Parameter
-        model_arg_name: Optional[str] = None
-        model_arg_model: Type[BaseModel] = BaseModel
-        for name, param in signature.parameters.items():
-            if issubclass(param.annotation, JSONBaseModel):
-                if model_arg_name:
-                    raise InvalidRouteSignature(f"More than one parameter of the type `{JSONBaseModel.__name__}` "
-                                                f"present in function `{function.__name__}`.")
-                model_arg_name = name
-                model_arg_model = param.annotation
-        if model_arg_name is None:
-            raise InvalidRouteSignature(f"No parameter of the type `{JSONBaseModel.__name__}` present in function "
-                                        f"`{function.__name__}`.")
+        param_name, param_class = get_route_model_param(function, JSONBaseModel)
 
         @functools.wraps(function)
         async def wrapper(request: Request, *args: Any, **kwargs: Any) -> Any:
             """Wrapper around the actual function call."""
             assert request._client_max_size > 0
-            assert isinstance(model_arg_name, str)
             if request.content_type != 'application/json':
                 web_logger.info('Wrong content type, json expected, got %s', request.content_type)
                 raise HTTPBadRequest(headers=headers)
             try:
                 json = await request.json()
-                data = model_arg_model.parse_obj(json)
+                data = param_class.parse_obj(json)
             except ValidationError as error:
                 web_logger.info('JSON in request does not match model: %s', str(error))
                 raise HTTPBadRequest(headers=headers)
             except JSONDecodeError:
                 web_logger.info('Invalid JSON in request')
                 raise HTTPBadRequest(headers=headers)
-            kwargs[model_arg_name] = data
+            kwargs[param_name] = data
             return await function(request, *args, **kwargs)
         return cast(RouteHandler, wrapper)
 

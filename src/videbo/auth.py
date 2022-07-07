@@ -1,6 +1,5 @@
 import logging
 import functools
-import inspect
 from enum import IntEnum
 from time import time
 from typing import Any, Callable, Dict, Mapping, Optional, Type, Union, cast
@@ -9,10 +8,11 @@ import jwt
 from aiohttp.typedefs import LooseHeaders
 from aiohttp.web_request import Request
 from aiohttp.web_exceptions import HTTPUnauthorized
-from pydantic import BaseModel, ValidationError
+from pydantic import ValidationError
 
 from videbo import storage_settings as settings
-from videbo.exceptions import InvalidRouteSignature, InvalidRoleIssued, NoJWTFound
+from videbo.exceptions import InvalidRoleIssued, NoJWTFound
+from videbo.misc import get_route_model_param
 from videbo.models import BaseJWTData
 from videbo.types import RouteHandler
 
@@ -159,32 +159,16 @@ def ensure_jwt_data_and_role(min_role_level: int,
 
     On an error, headers can be sent along the response.
     """
-    # TODO: Refactor together with `web.ensure_json_body`
     def decorator(function: RouteHandler) -> RouteHandler:
         """internal decorator function"""
-        # Look for the JWT data model given in a type annotation.
-        signature = inspect.signature(function)
-        param: inspect.Parameter
-        jwt_data_model_arg_name: Optional[str] = None
-        jwt_data_model_arg_model: Type[BaseModel] = BaseModel
-        for name, param in signature.parameters.items():
-            if issubclass(param.annotation, BaseJWTData):
-                if jwt_data_model_arg_name:
-                    raise InvalidRouteSignature(f"More than one parameter of the type `{BaseJWTData.__name__}` "
-                                                f"present in function `{function.__name__}`.")
-                jwt_data_model_arg_name = name
-                jwt_data_model_arg_model = param.annotation
-        if jwt_data_model_arg_name is None:
-            raise InvalidRouteSignature(f"No parameter of the type `{BaseJWTData.__name__}` present in function "
-                                        f"`{function.__name__}`.")
+        param_name, param_class = get_route_model_param(function, BaseJWTData)
 
         @functools.wraps(function)
         async def wrapper(request: Request, *args: Any, **kwargs: Any) -> Any:
             """Wrapper around the actual function call."""
-            assert issubclass(jwt_data_model_arg_model, BaseJWTData) and isinstance(jwt_data_model_arg_name, str)
-            if not check_jwt_auth_save_data(request, min_role_level, jwt_data_model_arg_model):
+            if not check_jwt_auth_save_data(request, min_role_level, param_class):
                 raise HTTPUnauthorized(headers=headers)
-            kwargs[jwt_data_model_arg_name] = request['jwt_data']
+            kwargs[param_name] = request['jwt_data']
             return await function(request, *args, **kwargs)
 
         return cast(RouteHandler, wrapper)

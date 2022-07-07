@@ -1,7 +1,5 @@
 from typing import Optional
 
-from pydantic import ValidationError
-
 
 class VideboBaseException(Exception):
     pass

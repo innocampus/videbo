@@ -3,41 +3,22 @@ import os
 import re
 from asyncio import CancelledError, Task, gather, get_event_loop, get_running_loop, sleep
 from collections import OrderedDict
-from inspect import isawaitable
+from inspect import Parameter, isawaitable, isclass, signature
 from pathlib import Path
 from time import time
-from typing import Any, Awaitable, Callable, Hashable, Iterable, List, Optional, Set, Tuple
+from typing import Any, Awaitable, Callable, Hashable, Iterable, List, Optional, Set, Tuple, Type, TypeVar
 
-from videbo.exceptions import NoRunningTask
+from pydantic import BaseModel
+
+from videbo.exceptions import NoRunningTask, InvalidRouteSignature
+from videbo.types import RouteHandler
 
 
 logger = logging.getLogger('videbo-misc')
 MEGA = 1024 * 1024
 
 StopCallbackT = Callable[[], Any]
-
-
-async def get_free_disk_space(path: str) -> float:
-    """Get free disk space in the given path. Returns MB."""
-    st = await get_running_loop().run_in_executor(None, os.statvfs, path)
-    free_bytes = st.f_bavail * st.f_frsize
-    return free_bytes / MEGA
-
-
-def sanitize_filename(filename: str) -> str:
-    filename = re.sub(r"[^\w \d\-_~,;\[\]().]", "", filename, 0, re.ASCII)  # \w should only match ASCII letters
-    filename = re.sub(r"[.]{2,}", ".", filename)
-    return filename
-
-
-def rel_path(filename: str) -> Path:
-    """
-    Returns a relative path from a file's name.
-    The path starts with a directory named with the first two characters of the filename followed by the file itself.
-    """
-    if len(Path(filename).parts) != 1:
-        raise ValueError(f"'{filename}' is not a valid filename")
-    return Path(filename[:2], filename)
+M = TypeVar('M', bound=BaseModel)
 
 
 class TaskManager:
@@ -226,3 +207,46 @@ def ensure_url_does_not_end_with_slash(url: str) -> str:
         else:
             return url
     return url
+
+
+async def get_free_disk_space(path: str) -> float:
+    """Get free disk space in the given path. Returns MB."""
+    st = await get_running_loop().run_in_executor(None, os.statvfs, path)
+    free_bytes = st.f_bavail * st.f_frsize
+    return free_bytes / MEGA
+
+
+def sanitize_filename(filename: str) -> str:
+    filename = re.sub(r"[^\w \d\-_~,;\[\]().]", "", filename, 0, re.ASCII)  # \w should only match ASCII letters
+    filename = re.sub(r"[.]{2,}", ".", filename)
+    return filename
+
+
+def rel_path(filename: str) -> Path:
+    """
+    Returns a relative path from a file's name.
+    The path starts with a directory named with the first two characters of the filename followed by the file itself.
+    """
+    if len(Path(filename).parts) != 1:
+        raise ValueError(f"'{filename}' is not a valid filename")
+    return Path(filename[:2], filename)
+
+
+def get_parameters_of_type(function: Callable[..., Any], cls: type) -> List[Parameter]:
+    output = []
+    param: Parameter
+    for name, param in signature(function).parameters.items():
+        if isclass(param.annotation) and issubclass(param.annotation, cls):
+            output.append(param)
+    return output
+
+
+def get_route_model_param(route_handler: RouteHandler, model: Type[M]) -> Tuple[str, Type[M]]:
+    params = get_parameters_of_type(route_handler, model)
+    if len(params) == 0:
+        raise InvalidRouteSignature(f"No parameter of the type `{model.__name__}` present in function "
+                                    f"`{route_handler.__name__}`.")
+    if len(params) > 1:
+        raise InvalidRouteSignature(f"More than one parameter of the type `{model.__name__}` present in function "
+                                    f"`{route_handler.__name__}`.")
+    return params[0].name, params[0].annotation
