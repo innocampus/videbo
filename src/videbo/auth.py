@@ -7,7 +7,7 @@ from typing import Any, Callable, Dict, Mapping, Optional, Type, Union, cast
 import jwt
 from aiohttp.typedefs import LooseHeaders
 from aiohttp.web_request import Request
-from aiohttp.web_exceptions import HTTPUnauthorized
+from aiohttp.web_exceptions import HTTPUnauthorized, HTTPForbidden
 from pydantic import ValidationError
 
 from videbo import storage_settings as settings
@@ -150,14 +150,21 @@ def check_jwt_auth_save_data(request: Request, min_role_level: int, model: Type[
     return False
 
 
-def ensure_jwt_data_and_role(min_role_level: int,
-                             headers: Optional[LooseHeaders] = None) -> Callable[[RouteHandler], RouteHandler]:
-    """Decorator function used to ensure that there is a valid JWT.
+def ensure_auth(min_level: int, headers: Optional[LooseHeaders] = None) -> Callable[[RouteHandler], RouteHandler]:
+    """
+    Decorator for route handler functions ensuring only authorized access to the decorated route.
 
-    It checks that the request has the role needed for the action and tries to match the jwt data with the model
-    given as a type annotation in func.
+    It checks that the request has a valid JWT, that the issuer has the role needed for the action.
+    It does this by trying to match the JWT data with the JWT model in the type annotation of the decorated function.
 
-    On an error, headers can be sent along the response.
+    It also checks that access to admin routes does not come from a reverse proxy, if the settings forbid this.
+
+    Args:
+        min_level: The minimum access level required for the decorated route.
+        headers (optional): If an error, these additional headers can be sent along with the response.
+
+    Returns:
+        The internal decorator that wraps the actual route handler function.
     """
     def decorator(function: RouteHandler) -> RouteHandler:
         """internal decorator function"""
@@ -166,8 +173,10 @@ def ensure_jwt_data_and_role(min_role_level: int,
         @functools.wraps(function)
         async def wrapper(request: Request, *args: Any, **kwargs: Any) -> Any:
             """Wrapper around the actual function call."""
-            if not check_jwt_auth_save_data(request, min_role_level, param_class):
+            if not check_jwt_auth_save_data(request, min_level, param_class):
                 raise HTTPUnauthorized(headers=headers)
+            if min_level >= Role.admin and settings.forbid_admin_via_proxy and 'X-Forwarded-For' in request.headers:
+                raise HTTPForbidden(headers=headers)
             kwargs[param_name] = request['jwt_data']
             return await function(request, *args, **kwargs)
 

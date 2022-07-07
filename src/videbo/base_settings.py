@@ -60,6 +60,7 @@ class CommonSettings(AbstractBaseSettings):
     files_path: Path = Path('/tmp/videbo')
     internal_api_secret: str = ''
     external_api_secret: str = ''
+    forbid_admin_via_proxy: bool = True
     lms_base_urls: List[str] = []
     dev_mode: bool = False
     tx_max_rate_mbit: float = 20.0

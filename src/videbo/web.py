@@ -10,7 +10,7 @@ from aiohttp.client import ClientSession, ClientError, ClientTimeout
 from aiohttp.typedefs import LooseHeaders
 from aiohttp.web import run_app
 from aiohttp.web_app import Application
-from aiohttp.web_exceptions import HTTPException, HTTPBadRequest, HTTPUnauthorized
+from aiohttp.web_exceptions import HTTPException, HTTPBadRequest
 from aiohttp.web_fileresponse import FileResponse
 from aiohttp.web_request import Request
 from aiohttp.web_response import Response
@@ -129,20 +129,6 @@ def ensure_json_body(_func: Optional[RouteHandler] = None, *,
         return decorator
     else:
         return decorator(_func)
-
-
-def ensure_no_reverse_proxy(func: RouteHandler) -> RouteHandler:
-    """Check that the access does not come from the reverse proxy."""
-
-    @functools.wraps(func)
-    async def wrapper(request: Request, *args: Any, **kwargs: Any) -> Any:
-        """Wrapper around the actual function call."""
-
-        if "X-Forwarded-For" in request.headers:
-            raise HTTPUnauthorized()
-        return await func(request, *args, **kwargs)
-
-    return cast(RouteHandler, wrapper)
 
 
 def get_x_accel_headers(redirect_uri: str, limit_rate_bytes: Optional[int] = None) -> Dict[str, str]:

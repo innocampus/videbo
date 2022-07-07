@@ -9,7 +9,7 @@ from aiohttp.web_response import Response
 from aiohttp.web_fileresponse import FileResponse
 
 from videbo import distributor_settings as settings
-from videbo.auth import Role, ensure_jwt_data_and_role, JWT_ISS_INTERNAL
+from videbo.auth import Role, ensure_auth, JWT_ISS_INTERNAL
 from videbo.misc import MEGA, rel_path
 from videbo.models import BaseJWTData
 from videbo.network import NetworkInterfaces
@@ -26,7 +26,7 @@ routes = RouteTableDef()
 
 
 @routes.get(r'/api/distributor/status')  # type: ignore[arg-type]
-@ensure_jwt_data_and_role(Role.node)
+@ensure_auth(Role.node)
 async def get_status(_request: Request, _jwt_data: BaseJWTData) -> Response:
     file_controller = DistributorFileController.get_instance()
     status = DistributorStatus.construct()
@@ -44,7 +44,7 @@ async def get_status(_request: Request, _jwt_data: BaseJWTData) -> Response:
 
 
 @routes.get(r'/api/distributor/files')  # type: ignore[arg-type]
-@ensure_jwt_data_and_role(Role.node)
+@ensure_auth(Role.node)
 async def get_all_files(_request: Request, _jwt_data: BaseJWTData) -> Response:
     all_files: List[Tuple[str, str]] = []
     for file in DistributorFileController.get_instance().files.values():
@@ -54,7 +54,7 @@ async def get_all_files(_request: Request, _jwt_data: BaseJWTData) -> Response:
 
 
 @routes.post(r'/api/distributor/copy/{hash:[0-9a-f]{64}}{file_ext:\.[0-9a-z]{1,10}}')  # type: ignore[arg-type]
-@ensure_jwt_data_and_role(Role.node)
+@ensure_auth(Role.node)
 @ensure_json_body
 async def copy_file(request: Request, _jwt_data: BaseJWTData, data: DistributorCopyFile) -> None:
     file_controller = DistributorFileController.get_instance()
@@ -69,7 +69,7 @@ async def copy_file(request: Request, _jwt_data: BaseJWTData, data: DistributorC
 
 
 @routes.post(r'/api/distributor/delete')  # type: ignore[arg-type]
-@ensure_jwt_data_and_role(Role.node)
+@ensure_auth(Role.node)
 @ensure_json_body
 async def delete_files(_request: Request, _jwt_data: BaseJWTData, data: DistributorDeleteFiles) -> Response:
     file_controller = DistributorFileController.get_instance()
@@ -85,7 +85,7 @@ async def delete_files(_request: Request, _jwt_data: BaseJWTData, data: Distribu
 
 
 @routes.get('/file')  # type: ignore[arg-type]
-@ensure_jwt_data_and_role(Role.client)
+@ensure_auth(Role.client)
 async def request_file(request: Request, jwt_data: RequestFileJWTData) -> Union[Response, FileResponse]:
     file_controller = DistributorFileController.get_instance()
     if jwt_data.type != FileType.VIDEO:
