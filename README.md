@@ -1,15 +1,20 @@
 # Videbo
 
-## Installing
+**Video hosting server for learning management systems**
+
+## Installing as developer
 
 1. Create a `config.ini` as needed. You can use `config.example.ini` as reference.
 2. Setup your virtual environment:
     ```shell
     $ python -m venv .venv
     $ . venv/bin/activate
-    (.venv) $ pip install -r requirements/full.txt
     ```
-    If you don't need monitoring capabilities, install from `requirements/common.txt` instead.
+3. Install full project and testing dependencies:
+    ```shell
+    (.venv) $ pip install -e .
+    (.venv) $ pip install -r requirements/dev.txt
+    ```
 
 ## Running
 

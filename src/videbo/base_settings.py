@@ -15,7 +15,7 @@ from videbo.misc import ensure_url_does_not_end_with_slash as normalize_url
 log = logging.getLogger(__name__)
 
 _THIS_DIR = Path(__file__).parent
-PROJECT_DIR = _THIS_DIR.parent
+PROJECT_DIR = _THIS_DIR.parent.parent
 DEFAULT_CONFIG_FILE_NAME = 'config.ini'
 DEFAULT_CONFIG_FILE_PATHS = [
     Path('/etc/videbo', DEFAULT_CONFIG_FILE_NAME),

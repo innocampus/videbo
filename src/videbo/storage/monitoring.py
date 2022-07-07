@@ -87,6 +87,7 @@ class Monitoring:
         metrics dictionary accordingly. Uses node type and base url labels to distinguish storage and distributors.
         After updating the dictionaries, the metrics are written to the text file for the Prometheus node exporter.
         """
+        assert isinstance(settings.prom_text_file, Path)
         storage = FileStorage.get_instance()
         storage_status = await storage.get_status()
         dist_status_dict = storage.distribution_controller.get_nodes_status(only_good=True, only_enabled=True)
@@ -99,7 +100,7 @@ class Monitoring:
         self._update_metrics(storage_status, 'storage', settings.public_base_url)
         for url, status in dist_status_dict.items():
             self._update_metrics(status, 'dist', url)
-        write_to_textfile(settings.prom_text_file, self.registry)
+        write_to_textfile(str(settings.prom_text_file), self.registry)
 
     # TODO: Separate updating of metrics for storage status and distributor status into different methods
     def _update_metrics(self, status_obj: Union[StorageStatus, DistributorStatus], *labels: str) -> None:
