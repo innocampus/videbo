@@ -1,13 +1,30 @@
-/screen.rc
+# Configuration file:
 /config.ini
-/ffmpeg
-__pycache__
-*.pyc
-venv
-.venv
-.tmp
-.idea
-dev_generate_requests.py
-Pipfile
-Pipfile.lock
+
+# Python virtual environment:
+/.venv/
+/venv/
+
+# IDE settings:
+/.idea/
+/.vscode/
+
+# Distribution / build files:
+*.egg-info/
+/dist/
+/docs/build/
+
+# Python cache / compiled files:
+__pycache__/
+*.py[cod]
+
+# Testing:
 .coverage
+
+# mypy:
+.mypy_cache/
+
+# Miscellaneous:
+/.tmp/
+/screen.rc
+/ffmpeg
