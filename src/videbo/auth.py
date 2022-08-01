@@ -16,6 +16,13 @@ from videbo.models import TokenIssuer, Role, BaseJWTData
 from videbo.types import RouteHandler
 
 
+__all__ = [
+    'decode_jwt',
+    'encode_jwt',
+    'ensure_auth'
+]
+
+
 logger = logging.getLogger('videbo-auth')
 
 JWT_ALG = 'HS256'

@@ -4,6 +4,16 @@ from videbo.models import JSONBaseModel, NodeStatus
 from videbo.types import FileID
 
 
+__all__ = [
+    'DistributorCopyFileStatus',
+    'DistributorStatus',
+    'DistributorCopyFile',
+    'DistributorDeleteFiles',
+    'DistributorDeleteFilesResponse',
+    'DistributorFileList'
+]
+
+
 class DistributorCopyFileStatus(JSONBaseModel):
     hash: str
     file_ext: str

@@ -17,8 +17,7 @@ from videbo.web import json_response, ensure_json_body, file_serve_response
 from videbo.storage.util import HashedVideoFile
 from videbo.storage.api.models import RequestFileJWTData, FileType
 from videbo.distributor.files import DistributorFileController, TooManyWaitingClients, NoSuchFile, NotSafeToDelete
-from .models import DistributorStatus, DistributorCopyFile, DistributorDeleteFiles, DistributorDeleteFilesResponse,\
-    DistributorFileList
+from .models import *
 from videbo.distributor import logger
 
 

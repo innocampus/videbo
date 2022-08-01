@@ -30,9 +30,7 @@ from videbo.storage.util import (FileStorage, JPG_EXT, HashedVideoFile, StoredHa
 from videbo.storage.exceptions import (FileTooBigError, FormFieldMissing, BadFileExtension, UnknownDistURL,
                                        DistAlreadyDisabled, DistAlreadyEnabled)
 from videbo.storage.distribution import DistributionNodeInfo
-from .models import (UploadFileJWTData, SaveFileJWTData, DeleteFileJWTData, RequestFileJWTData, FileType,
-                     StorageFileInfo, StorageFilesList, DeleteFilesList, DistributorNodeInfo, DistributorStatusDict,
-                     FileUploadedResponseJWT)
+from .models import *
 from videbo.storage import storage_logger
 
 
