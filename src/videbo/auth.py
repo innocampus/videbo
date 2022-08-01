@@ -1,16 +1,16 @@
 import logging
 import functools
 from time import time
-from typing import Any, Callable, Dict, Mapping, Optional, Tuple, Type, cast
+from typing import Any, Callable, Mapping, Optional, Tuple, Type, cast
 
 import jwt
 from aiohttp.typedefs import LooseHeaders
 from aiohttp.web_request import Request
-from aiohttp.web_exceptions import HTTPUnauthorized, HTTPForbidden
+from aiohttp.web_exceptions import HTTPBadRequest, HTTPUnauthorized, HTTPForbidden
 from pydantic import ValidationError
 
 from videbo import storage_settings as settings
-from videbo.exceptions import InvalidRoleIssued, InvalidIssuerClaim, NoJWTFound
+from videbo.exceptions import InvalidAuthData, NoJWTFound, NotAuthorized
 from videbo.misc import get_route_model_param
 from videbo.models import Role, BaseJWTData
 from videbo.types import RouteHandler
@@ -24,21 +24,58 @@ JWT_ISS_INTERNAL = 'int'
 
 
 def extract_jwt_from_request(request: Request) -> str:
-    """Get the JSON Web Token from the Authorization header or GET field named jwt."""
+    """
+    Finds the JSON Web Token in a request and returns it.
+
+    If the "Authorization" header is found, assuming the value starts with "Bearer ", the following string is returned;
+    otherwise the request query is assumed to contain a "jwt" field, the value of which is returned.
+
+    Args:
+        request: The `aiohttp` request object supposedly containing the JWT.
+
+    Returns:
+        The JWT string
+
+    Raises:
+        `NoJWTFound` if the assumptions mentioned above are not satisfied.
+    """
     try:
         # First try to find the token in the header.
-        prefix = 'Bearer '
         header_auth: str = request.headers.getone('Authorization')
+    except KeyError:
+        # If it is not in the header, try to find the token in the GET field jwt.
+        query: Mapping[str, str] = request.query
+        if 'jwt' in query:
+            return query['jwt']
+    else:
+        prefix = 'Bearer '
         if header_auth.startswith(prefix):
             return header_auth[len(prefix):]
-        raise NoJWTFound()
-    except KeyError:
-        pass
-    # Then try to find the token in the GET field jwt.
-    query: Mapping[str, str] = request.query
-    if 'jwt' in query:
-        return query['jwt']
+    logger.info("No JWT found in request.")
     raise NoJWTFound()
+
+
+def jwt_kid_internal(token: str) -> bool:
+    """
+    Checks the key ID header of a JSON Web Token and determines if the token should be encoded as internal.
+
+    Args:
+        token: The JWT string to check
+
+    Returns:
+        `True` if the value of the "kid" header corresponds to `JWT_ISS_INTERNAL`.
+        `False` if the value of the "kid" header corresponds to `JWT_ISS_EXTERNAL`.
+
+    Raises:
+        `InvalidAuthData` if the "kid" header is missing or its value is anything other than the two valid options.
+    """
+    try:
+        kid: str = jwt.get_unverified_header(token)['kid']  # type: ignore[no-untyped-call]
+    except KeyError:
+        raise InvalidAuthData("JWT missing key ID header")
+    if kid not in (JWT_ISS_EXTERNAL, JWT_ISS_INTERNAL):
+        raise InvalidAuthData(f"{kid} is not a valid key ID")
+    return kid == JWT_ISS_INTERNAL
 
 
 def _get_jwt_params(*, internal: bool) -> Tuple[str, str]:
@@ -49,22 +86,26 @@ def _get_jwt_params(*, internal: bool) -> Tuple[str, str]:
         return settings.external_api_secret, JWT_ISS_EXTERNAL
 
 
-def decode_jwt(encoded: str, *, internal: bool = False) -> Dict[str, Any]:
+def decode_jwt(encoded: str, *, model: Type[BaseJWTData] = BaseJWTData, internal: bool = False) -> BaseJWTData:
     """
-    Decodes a JWT string returning the data as a dictionary.
+    Decodes a JWT string returning the data in the form of the desired model.
 
     Args:
         encoded:
             The JWT string
+        model (optional):
+            The model the JWT data must correspond to. Defaults to `BaseJWTData`.
         internal (optional):
             If `True` the token is assumed to be encoded with the internal secret and issuer claim, probably coming
             from another node or the admin CLI; otherwise it is assumed to come from an external party (e.g. the LMS).
+            `False` by default.
 
     Returns:
-        Dictionary containing the data that was encoded in the JWT.
+        Model object containing the data that was encoded in the JWT.
     """
     secret, issuer = _get_jwt_params(internal=internal)
-    return jwt.decode(encoded, secret, algorithms=[JWT_ALGORITHM], issuer=issuer)
+    decoded = jwt.decode(encoded, secret, algorithms=[JWT_ALGORITHM], issuer=issuer)
+    return model.parse_obj(decoded)
 
 
 def encode_jwt(data: BaseJWTData, *, expiry: int = 300, internal: bool = False) -> str:
@@ -91,59 +132,47 @@ def encode_jwt(data: BaseJWTData, *, expiry: int = 300, internal: bool = False) 
     return jwt.encode(validated.dict(exclude_unset=True), secret, algorithm=JWT_ALGORITHM, headers={'kid': issuer})
 
 
+# TODO: Implement this as a model validator.
 def check_issuer_claim(data: BaseJWTData) -> None:
+    """Validates the issuer claim in a JWT data object."""
     if data.iss == JWT_ISS_EXTERNAL and data.role > Role.lms:
-        raise InvalidRoleIssued("External tokens can only be issued for a role up to LMS")
+        raise InvalidAuthData("External tokens can only be issued for a role up to LMS")
     if data.iss not in (JWT_ISS_EXTERNAL, JWT_ISS_INTERNAL):
-        raise InvalidIssuerClaim(f"{data.iss} is not a valid issuer claim")
+        raise InvalidAuthData(f"{data.iss} is not a valid issuer claim")
 
 
-def check_jwt_auth_save_data(request: Request, min_role_level: int, model: Type[BaseJWTData]) -> bool:
-    """Check user's authentication by looking at the JWT and the given role and save the JWT data in request.
+def check_and_save_jwt_data(request: Request, min_level: int, model: Type[BaseJWTData]) -> None:
+    """
+    Find the JSON Web Token in a request and validates it before saving the decoded data back into the request.
 
-    It also considers if the jwt was generated internally or externally."""
+    Args:
+        request: The `aiohttp` request object to check and save to
+        min_level: The minimum access level (see `Role`) the requesting party needs for the specified request.
+        model: The JWT model class to use for decoding and parsing the JWT string.
+
+    Raises:
+        `NoJWTFound` if no JWT could be found in the request.
+        `InvalidAuthData` if the key ID header in the JWT was missing or invalid or the data object parsing failed.
+        `NotAuthorized` if the role encoded in the JWT is lower than `min_role_level`.
+    """
+    token = extract_jwt_from_request(request)
+    internal = min_level >= Role.node or jwt_kid_internal(token)
     try:
-        token = extract_jwt_from_request(request)
-
-        if min_role_level >= Role.node:
-            # the issuer must be internal anyway
-            decoded = decode_jwt(token, internal=True)
-        else:
-            # check the header for the kid field
-            kid = jwt.get_unverified_header(token)['kid']  # type: ignore[no-untyped-call]
-            if kid == JWT_ISS_EXTERNAL:
-                decoded = decode_jwt(token)
-            elif kid == JWT_ISS_INTERNAL:
-                decoded = decode_jwt(token, internal=True)
-            else:
-                return False
-
-        # TODO: This should cause a Bad Request 400
-        try:
-            data = model.parse_obj(decoded)
-        except ValidationError as error:
-            logger.info(f"JWT data does not correspond to expected data: {error}")
-            return False
-
-        request['jwt_data'] = data
-        check_issuer_claim(data)
-        return data.role >= min_role_level
-
-    except KeyError:
-        pass
-    except NoJWTFound:
-        logger.info("No JWT found in request.")
+        data = decode_jwt(token, model=model, internal=internal)
     except jwt.InvalidTokenError as error:
-        msg = f"Invalid JWT error: {error} ({request.url}), min role level {min_role_level}"
-        if min_role_level >= Role.lms:
+        msg = f"Invalid JWT error: {error} ({request.url}); min. access level: {Role(min_level).name}"
+        if min_level >= Role.lms:
             logger.info(msg)
         else:
             logger.debug(msg)
-    # TODO: Invalid issuer should cause 400
-    except (InvalidRoleIssued, InvalidIssuerClaim):
-        logger.info("JWT has a role that the issuer is not allowed to take on")
-
-    return False
+        raise error
+    except ValidationError as error:
+        logger.info(f"JWT data does not correspond to expected data: {error}")
+        raise InvalidAuthData()
+    check_issuer_claim(data)
+    if data.role < min_level:
+        raise NotAuthorized()
+    request['jwt_data'] = data
 
 
 def ensure_auth(min_level: int, headers: Optional[LooseHeaders] = None) -> Callable[[RouteHandler], RouteHandler]:
@@ -162,6 +191,8 @@ def ensure_auth(min_level: int, headers: Optional[LooseHeaders] = None) -> Calla
     Returns:
         The internal decorator that wraps the actual route handler function.
     """
+    min_level = Role(min_level)  # immediately throws a `ValueError` if `min_level` is not a valid `Role` value
+
     def decorator(function: RouteHandler) -> RouteHandler:
         """internal decorator function"""
         param_name, param_class = get_route_model_param(function, BaseJWTData)
@@ -169,8 +200,12 @@ def ensure_auth(min_level: int, headers: Optional[LooseHeaders] = None) -> Calla
         @functools.wraps(function)
         async def wrapper(request: Request, *args: Any, **kwargs: Any) -> Any:
             """Wrapper around the actual function call."""
-            if not check_jwt_auth_save_data(request, min_level, param_class):
+            try:
+                check_and_save_jwt_data(request, min_level, param_class)
+            except (jwt.InvalidTokenError, NotAuthorized):
                 raise HTTPUnauthorized(headers=headers)
+            except InvalidAuthData:
+                raise HTTPBadRequest(headers=headers)
             if min_level >= Role.admin and settings.forbid_admin_via_proxy and 'X-Forwarded-For' in request.headers:
                 raise HTTPForbidden(headers=headers)
             kwargs[param_name] = request['jwt_data']

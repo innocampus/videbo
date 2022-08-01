@@ -70,15 +70,15 @@ class AuthError(VideboBaseException):
     pass
 
 
-class InvalidRoleIssued(AuthError):
+class InvalidAuthData(AuthError):
     pass
 
 
-class InvalidIssuerClaim(AuthError):
+class NoJWTFound(InvalidAuthData):
     pass
 
 
-class NoJWTFound(AuthError):
+class NotAuthorized(AuthError):
     pass
 
 
