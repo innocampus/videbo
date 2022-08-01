@@ -74,6 +74,10 @@ class InvalidRoleIssued(AuthError):
     pass
 
 
+class InvalidIssuerClaim(AuthError):
+    pass
+
+
 class NoJWTFound(AuthError):
     pass
 

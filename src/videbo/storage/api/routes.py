@@ -3,7 +3,7 @@ import asyncio
 import urllib.parse
 from distutils.util import strtobool
 from pathlib import Path
-from typing import List, Optional, Tuple, Union
+from typing import Iterator, Optional, Tuple, Union
 
 from aiohttp.web_request import Request
 from aiohttp.web_response import Response, json_response
@@ -17,10 +17,10 @@ from aiohttp.web_exceptions import (HTTPBadRequest, HTTPForbidden, HTTPNotFound,
 from aiohttp.web_exceptions import HTTPInternalServerError, HTTPServiceUnavailable  # 5xx
 
 from videbo import storage_settings as settings
-from videbo.auth import ensure_auth, external_jwt_encode, Role, JWT_ISS_INTERNAL
+from videbo.auth import ensure_auth, encode_jwt, JWT_ISS_INTERNAL
 from videbo.exceptions import InvalidMimeTypeError, InvalidVideoError, FFProbeError
 from videbo.misc import MEGA, rel_path
-from videbo.models import BaseJWTData
+from videbo.models import Role, BaseJWTData
 from videbo.network import NetworkInterfaces
 from videbo.video import VideoInfo, VideoValidator, VideoConfig
 from videbo.web import (ensure_json_body, register_route_with_cors, json_response as model_json_response,
@@ -31,7 +31,8 @@ from videbo.storage.exceptions import (FileTooBigError, FormFieldMissing, BadFil
                                        DistAlreadyDisabled, DistAlreadyEnabled)
 from videbo.storage.distribution import DistributionNodeInfo
 from .models import (UploadFileJWTData, SaveFileJWTData, DeleteFileJWTData, RequestFileJWTData, FileType,
-                     StorageFileInfo, StorageFilesList, DeleteFilesList, DistributorNodeInfo, DistributorStatusDict)
+                     StorageFileInfo, StorageFilesList, DeleteFilesList, DistributorNodeInfo, DistributorStatusDict,
+                     FileUploadedResponseJWT)
 from videbo.storage import storage_logger
 
 
@@ -44,32 +45,27 @@ CONTENT_TYPES = {JPG_EXT: 'image/jpeg'}
 
 
 def generate_video_url(video: HashedVideoFile, temp: bool) -> str:
-    data = {
-        "role": "client",
-        "type": 'video_temp' if temp else 'video',
-        "hash": video.hash,
-        "file_ext": video.file_extension,
-        "rid": "",
-    }
-    jwt_data = external_jwt_encode(data, EXTERNAL_JWT_LIFE_TIME)
-    return f"{settings.public_base_url}/file?jwt={jwt_data}"
+    jwt_data = RequestFileJWTData.construct(
+        role=Role.client,
+        type=FileType.VIDEO_TEMP if temp else FileType.VIDEO,
+        hash=video.hash,
+        file_ext=video.file_extension,
+        rid='',
+    )
+    return f"{settings.public_base_url}/file?jwt={encode_jwt(jwt_data, expiry=EXTERNAL_JWT_LIFE_TIME)}"
 
 
-def generate_thumb_urls(video: HashedVideoFile, temp: bool, thumb_count: int) -> List[str]:
-    urls = []
+def generate_thumb_urls(video: HashedVideoFile, temp: bool, thumb_count: int) -> Iterator[str]:
     for thumb_id in range(thumb_count):
-        data = {
-            "role": "client",
-            "type": "thumbnail_temp" if temp else "thumbnail",
-            "hash": video.hash,
-            "thumb_id": thumb_id,
-            "file_ext": video.file_extension,
-            "rid": "",
-        }
-        jwt_data = external_jwt_encode(data, EXTERNAL_JWT_LIFE_TIME)
-        urls.append(f"{settings.public_base_url}/file?jwt={jwt_data}")
-
-    return urls
+        jwt_data = RequestFileJWTData.construct(
+            role=Role.client,
+            type=FileType.THUMBNAIL_TEMP if temp else FileType.THUMBNAIL,
+            hash=video.hash,
+            thumb_id=thumb_id,
+            file_ext=video.file_extension,
+            rid='',
+        )
+        yield f"{settings.public_base_url}/file?jwt={encode_jwt(jwt_data, expiry=EXTERNAL_JWT_LIFE_TIME)}"
 
 
 async def read_data(file: TempFile, field: BodyPartReader, chunk_size: int = CHUNK_SIZE_DEFAULT) -> None:
@@ -180,17 +176,13 @@ async def read_and_save_temp(file: TempFile, field: BodyPartReader) -> Response:
     except BadFileExtension:
         await file.delete()
         return invalid_format_response()
-    jwt_data = {
-        'hash': stored_file.hash,
-        'file_ext': stored_file.file_extension,
-        'thumbnails_available': thumb_count,
-        'duration': duration,
-    }
+    jwt_data = FileUploadedResponseJWT.construct(hash=stored_file.hash, file_ext=stored_file.file_extension,
+                                                 thumbnails_available=thumb_count, duration=duration)
     resp = {
         'result': 'ok',
-        'jwt': external_jwt_encode(jwt_data, EXTERNAL_JWT_LIFE_TIME),
-        'url': generate_video_url(stored_file, True),
-        'thumbnails': generate_thumb_urls(stored_file, True, thumb_count),
+        'jwt': encode_jwt(jwt_data, expiry=EXTERNAL_JWT_LIFE_TIME),
+        'url': generate_video_url(stored_file, temp=True),
+        'thumbnails': list(generate_thumb_urls(stored_file, temp=True, thumb_count=thumb_count)),
     }
     return json_response(resp)
 
@@ -276,9 +268,6 @@ async def request_file(request: Request, jwt_data: RequestFileJWTData) -> Union[
     Thus, this function only returns a file serving response itself, if none of the above mentioned conditions are met.
     If so configured, X-Accel capabilities will be used in that case.
     """
-    if not FileType.is_valid(jwt_data.type.value):
-        storage_logger.info(f"unknown request type: {jwt_data.type}")
-        raise HTTPBadRequest()
     video = HashedVideoFile(jwt_data.hash, jwt_data.file_ext)
     file_storage = FileStorage.get_instance()
     if jwt_data.type == FileType.VIDEO:

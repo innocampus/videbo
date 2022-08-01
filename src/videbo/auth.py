@@ -1,8 +1,7 @@
 import logging
 import functools
-from enum import IntEnum
 from time import time
-from typing import Any, Callable, Dict, Mapping, Optional, Type, Union, cast
+from typing import Any, Callable, Dict, Mapping, Optional, Tuple, Type, cast
 
 import jwt
 from aiohttp.typedefs import LooseHeaders
@@ -11,9 +10,9 @@ from aiohttp.web_exceptions import HTTPUnauthorized, HTTPForbidden
 from pydantic import ValidationError
 
 from videbo import storage_settings as settings
-from videbo.exceptions import InvalidRoleIssued, NoJWTFound
+from videbo.exceptions import InvalidRoleIssued, InvalidIssuerClaim, NoJWTFound
 from videbo.misc import get_route_model_param
-from videbo.models import BaseJWTData
+from videbo.models import Role, BaseJWTData
 from videbo.types import RouteHandler
 
 
@@ -22,26 +21,6 @@ logger = logging.getLogger('videbo-auth')
 JWT_ALGORITHM = 'HS256'
 JWT_ISS_EXTERNAL = 'ext'
 JWT_ISS_INTERNAL = 'int'
-
-
-class Role(IntEnum):
-    """All roles in a system ordered by powerfulness."""
-    client = 0
-    lms = 2
-    node = 3
-    admin = 5
-
-    @classmethod
-    def get_level(cls, role: str, issuer: str) -> int:
-        """Get the level of a role and check if the issuer is allowed to use this role."""
-        try:
-            level = cls[role]
-        except KeyError:
-            raise InvalidRoleIssued()
-        # External tokens can only be issued for a role up to lms.
-        if (issuer == JWT_ISS_EXTERNAL and level > cls.lms) or issuer not in (JWT_ISS_EXTERNAL, JWT_ISS_INTERNAL):
-            raise InvalidRoleIssued()
-        return level
 
 
 def extract_jwt_from_request(request: Request) -> str:
@@ -62,47 +41,61 @@ def extract_jwt_from_request(request: Request) -> str:
     raise NoJWTFound()
 
 
-# TODO: Refactor en-/decoding functions
-def internal_jwt_decode(encoded: str) -> Dict[str, Any]:
-    """Decode JSON Web token using the internal secret."""
-    return jwt.decode(encoded, settings.internal_api_secret, algorithms=[JWT_ALGORITHM], issuer=JWT_ISS_INTERNAL)
+def _get_jwt_params(*, internal: bool) -> Tuple[str, str]:
+    """Convenience function returning the correct API secret and JWT issuer claim for internal or external requests."""
+    if internal:
+        return settings.internal_api_secret, JWT_ISS_INTERNAL
+    else:
+        return settings.external_api_secret, JWT_ISS_EXTERNAL
 
 
-def internal_jwt_encode(data: Union[Dict[str, Any], BaseJWTData], expiry: int = 300) -> str:
-    """Encode data to JSON Web token using the internal secret."""
-    if isinstance(data, dict):
-        data['exp'] = int(time()) + expiry
-        data['iss'] = JWT_ISS_INTERNAL
-    elif isinstance(data, BaseJWTData):
-        data.exp = int(time()) + expiry
-        data.iss = JWT_ISS_INTERNAL
-        data = data.dict()
+def decode_jwt(encoded: str, *, internal: bool = False) -> Dict[str, Any]:
+    """
+    Decodes a JWT string returning the data as a dictionary.
 
-    headers = {
-        'kid': JWT_ISS_INTERNAL
-    }
-    return jwt.encode(data, settings.internal_api_secret, algorithm=JWT_ALGORITHM, headers=headers)
+    Args:
+        encoded:
+            The JWT string
+        internal (optional):
+            If `True` the token is assumed to be encoded with the internal secret and issuer claim, probably coming
+            from another node or the admin CLI; otherwise it is assumed to come from an external party (e.g. the LMS).
 
-
-def external_jwt_decode(encoded: str) -> Dict[str, Any]:
-    """Decode JSON Web token using the external/lms secret."""
-    return jwt.decode(encoded, settings.external_api_secret, algorithms=[JWT_ALGORITHM], issuer=JWT_ISS_EXTERNAL)
+    Returns:
+        Dictionary containing the data that was encoded in the JWT.
+    """
+    secret, issuer = _get_jwt_params(internal=internal)
+    return jwt.decode(encoded, secret, algorithms=[JWT_ALGORITHM], issuer=issuer)
 
 
-def external_jwt_encode(data: Union[Dict[str, Any], BaseJWTData], expiry: int = 300) -> str:
-    """Encode data to JSON Web token using the external secret."""
-    if isinstance(data, dict):
-        data['exp'] = int(time()) + expiry
-        data['iss'] = JWT_ISS_EXTERNAL
-    elif isinstance(data, BaseJWTData):
-        data.exp = int(time()) + expiry
-        data.iss = JWT_ISS_EXTERNAL
-        data = data.dict()
+def encode_jwt(data: BaseJWTData, *, expiry: int = 300, internal: bool = False) -> str:
+    """
+    Encodes provided data in the form of a JWT string.
 
-    headers = {
-        'kid': JWT_ISS_EXTERNAL
-    }
-    return jwt.encode(data, settings.external_api_secret, algorithm=JWT_ALGORITHM, headers=headers)
+    Args:
+        data:
+            An instance of `BaseJWTData` (or a subclass) carrying the data to encode.
+        expiry (optional):
+            The time in seconds from the moment of the function call until the token is set to expire.
+            Defaults to 300 (5 minutes).
+        internal (optional):
+            If `True` the token is encoded with the internal secret and issuer claim, likely for use with another node
+            or the admin CLI; otherwise it is created for an external party (e.g. the LMS).
+
+    Returns:
+        The JWT string containing the provided data.
+    """
+    secret, issuer = _get_jwt_params(internal=internal)
+    data.exp = int(time()) + expiry
+    data.iss = issuer
+    validated = data.__class__(**data.dict(exclude_unset=True))
+    return jwt.encode(validated.dict(exclude_unset=True), secret, algorithm=JWT_ALGORITHM, headers={'kid': issuer})
+
+
+def check_issuer_claim(data: BaseJWTData) -> None:
+    if data.iss == JWT_ISS_EXTERNAL and data.role > Role.lms:
+        raise InvalidRoleIssued("External tokens can only be issued for a role up to LMS")
+    if data.iss not in (JWT_ISS_EXTERNAL, JWT_ISS_INTERNAL):
+        raise InvalidIssuerClaim(f"{data.iss} is not a valid issuer claim")
 
 
 def check_jwt_auth_save_data(request: Request, min_role_level: int, model: Type[BaseJWTData]) -> bool:
@@ -114,17 +107,18 @@ def check_jwt_auth_save_data(request: Request, min_role_level: int, model: Type[
 
         if min_role_level >= Role.node:
             # the issuer must be internal anyway
-            decoded = internal_jwt_decode(token)
+            decoded = decode_jwt(token, internal=True)
         else:
             # check the header for the kid field
             kid = jwt.get_unverified_header(token)['kid']  # type: ignore[no-untyped-call]
             if kid == JWT_ISS_EXTERNAL:
-                decoded = external_jwt_decode(token)
+                decoded = decode_jwt(token)
             elif kid == JWT_ISS_INTERNAL:
-                decoded = internal_jwt_decode(token)
+                decoded = decode_jwt(token, internal=True)
             else:
                 return False
 
+        # TODO: This should cause a Bad Request 400
         try:
             data = model.parse_obj(decoded)
         except ValidationError as error:
@@ -132,20 +126,22 @@ def check_jwt_auth_save_data(request: Request, min_role_level: int, model: Type[
             return False
 
         request['jwt_data'] = data
-        return Role.get_level(decoded['role'], decoded['iss']) >= min_role_level
+        check_issuer_claim(data)
+        return data.role >= min_role_level
 
     except KeyError:
         pass
     except NoJWTFound:
-        logger.info('No JWT found in request.')
+        logger.info("No JWT found in request.")
     except jwt.InvalidTokenError as error:
         msg = f"Invalid JWT error: {error} ({request.url}), min role level {min_role_level}"
         if min_role_level >= Role.lms:
             logger.info(msg)
         else:
             logger.debug(msg)
-    except InvalidRoleIssued:
-        logger.info('JWT has a role that the issuer is not allowed to take on')
+    # TODO: Invalid issuer should cause 400
+    except (InvalidRoleIssued, InvalidIssuerClaim):
+        logger.info("JWT has a role that the issuer is not allowed to take on")
 
     return False
 

@@ -3,7 +3,7 @@ from typing import List, Optional, Type, Tuple, Any
 from videbo import storage_settings as settings
 from videbo.exceptions import HTTPResponseError
 from videbo.misc import ensure_url_does_not_end_with_slash
-from videbo.models import JSONBaseModel
+from videbo.models import JSONBaseModel, Role
 from videbo.web import HTTPClient
 
 
@@ -29,7 +29,7 @@ class MoodleAPI:
                             expected_return_type: Optional[Type[JSONBaseModel]] = None) -> Tuple[int, Any]:
 
         url = self.api_url + "?function=" + function
-        jwt = HTTPClient.get_standard_jwt_with_role("node", external=True)
+        jwt = HTTPClient.get_standard_jwt_with_role(Role.node, external=True)
         return await HTTPClient.videbo_request("POST", url, jwt, json_data, expected_return_type, timeout=30,
                                                external=True)
 

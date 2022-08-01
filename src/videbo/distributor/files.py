@@ -8,7 +8,7 @@ from typing import Optional, Dict, Set, List
 from aiohttp import ClientTimeout
 
 from videbo import distributor_settings as settings
-from videbo.auth import internal_jwt_encode
+from videbo.auth import encode_jwt
 from videbo.misc import MEGA, get_free_disk_space, TaskManager, rel_path
 from videbo.web import HTTPClient
 from videbo.storage.util import HashedVideoFile
@@ -164,10 +164,10 @@ class DistributorFileController:
                 free_space = await self.get_free_space()
 
                 # prepare request
-                jwt_data = RequestFileJWTData.construct(type=FileType.VIDEO.value, hash=file.hash,
+                jwt_data = RequestFileJWTData.construct(type=FileType.VIDEO, hash=file.hash,
                                                         file_ext=file.file_extension, rid="", role="node")
-                jwt = internal_jwt_encode(jwt_data)
-                headers = { "Authorization": "Bearer " + jwt }
+                jwt = encode_jwt(jwt_data, internal=True)
+                headers = {"Authorization": "Bearer " + jwt}
                 timeout = ClientTimeout(total=120*60)
 
                 async with HTTPClient.session.request("GET", from_url + "/file", headers=headers,

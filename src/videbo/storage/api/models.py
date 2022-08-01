@@ -1,19 +1,15 @@
 from enum import Enum
-from typing import Optional, List, FrozenSet, Dict
+from typing import Dict, FrozenSet, List, Optional
 
-from videbo.models import BaseJWTData, JSONBaseModel, NodeStatus
+from videbo.models import BaseJWTData, JSONBaseModel, NodeStatus, Role
 from videbo.distributor.api.models import DistributorStatus
 
 
 class FileType(Enum):
-    VIDEO = "video"
-    THUMBNAIL = "thumbnail"
-    VIDEO_TEMP = "video_temp"
-    THUMBNAIL_TEMP = "thumbnail_temp"
-
-    @classmethod
-    def is_valid(cls, value: str) -> bool:
-        return value in cls.values()
+    VIDEO = 'video'
+    THUMBNAIL = 'thumbnail'
+    VIDEO_TEMP = 'video_temp'
+    THUMBNAIL_TEMP = 'thumbnail_temp'
 
     @classmethod
     def values(cls) -> FrozenSet[str]:
@@ -71,3 +67,11 @@ class DistributorStatusDict(JSONBaseModel):
 
 class DeleteFilesList(JSONBaseModel):
     hashes: List[str]
+
+
+class FileUploadedResponseJWT(BaseJWTData):
+    role: Optional[Role] = None  # not needed for a response model
+    hash: str
+    file_ext: str
+    thumbnails_available: int
+    duration: float

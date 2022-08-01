@@ -17,10 +17,10 @@ from aiohttp.web_response import Response
 from aiohttp.web_routedef import RouteDef, RouteTableDef
 from pydantic import ValidationError
 
-from videbo.auth import internal_jwt_encode, external_jwt_encode, JWT_ISS_EXTERNAL, JWT_ISS_INTERNAL
+from videbo.auth import encode_jwt, JWT_ISS_EXTERNAL, JWT_ISS_INTERNAL
 from videbo.exceptions import HTTPResponseError
 from videbo.misc import TaskManager, sanitize_filename, get_route_model_param
-from videbo.models import JSONBaseModel, BaseJWTData
+from videbo.models import JSONBaseModel, BaseJWTData, Role
 from videbo.types import CleanupContext, RouteHandler
 from videbo.video import get_content_type_for_extension
 
@@ -228,7 +228,7 @@ def json_response(data: JSONBaseModel, status: int = 200) -> Response:
 
 class HTTPClient:
     session: ClientSession
-    _cached_jwt: Dict[Tuple[str, str], Tuple[str, float]] = {}  # (role, int|ext) -> (jwt, expiration date)
+    _cached_jwt: Dict[Tuple[Role, str], Tuple[str, float]] = {}  # (role, int|ext) -> (jwt, expiration date)
 
     @classmethod
     def create_client_session(cls) -> None:
@@ -253,10 +253,7 @@ class HTTPClient:
         data = None
         if jwt_data:
             if isinstance(jwt_data, BaseJWTData):
-                if external:
-                    jwt = external_jwt_encode(jwt_data)
-                else:
-                    jwt = internal_jwt_encode(jwt_data)
+                jwt = encode_jwt(jwt_data, internal=not external)
             else:
                 # Then it is a string. Assume it is a valid jwt.
                 jwt = jwt_data
@@ -304,7 +301,7 @@ class HTTPClient:
                                     timeout: Union[ClientTimeout, int, None] = None,
                                     print_connection_exception: bool = True) -> Tuple[int, Any]:
         """Do an internal request with the node role (without having to specify jwt_data)."""
-        jwt = cls.get_standard_jwt_with_role('node')
+        jwt = cls.get_standard_jwt_with_role(Role.node)
         return await cls.videbo_request(method, url, jwt, json_data, expected_return_type, timeout,
                                         print_connection_exception=print_connection_exception)
 
@@ -315,12 +312,12 @@ class HTTPClient:
                                      timeout: Union[ClientTimeout, int, None] = None,
                                      print_connection_exception: bool = True) -> Tuple[int, Any]:
         """Do an internal request with the node role (without having to specify jwt_data)."""
-        jwt = cls.get_standard_jwt_with_role('admin')
+        jwt = cls.get_standard_jwt_with_role(Role.admin)
         return await cls.videbo_request(method, url, jwt, json_data, expected_return_type, timeout,
                                         print_connection_exception=print_connection_exception)
 
     @classmethod
-    def get_standard_jwt_with_role(cls, role: str, external: bool = False) -> str:
+    def get_standard_jwt_with_role(cls, role: Role, external: bool = False) -> str:
         """Return a JWT with the BaseJWTData and just the role.
 
         Implements a caching mechanism."""
@@ -335,9 +332,6 @@ class HTTPClient:
             return jwt
 
         jwt_data = BaseJWTData.construct(role=role)
-        if external:
-            jwt = external_jwt_encode(jwt_data, 4 * 3600)
-        else:
-            jwt = internal_jwt_encode(jwt_data, 4 * 3600)
+        jwt = encode_jwt(jwt_data, expiry=4 * 3600, internal=not external)
         cls._cached_jwt[(role, iss)] = (jwt, current_time + 3 * 3600)  # don't cache until the expiration time is reached
         return jwt

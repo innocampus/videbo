@@ -9,9 +9,9 @@ from aiohttp.web_response import Response
 from aiohttp.web_fileresponse import FileResponse
 
 from videbo import distributor_settings as settings
-from videbo.auth import Role, ensure_auth, JWT_ISS_INTERNAL
+from videbo.auth import ensure_auth, JWT_ISS_INTERNAL
 from videbo.misc import MEGA, rel_path
-from videbo.models import BaseJWTData
+from videbo.models import Role, BaseJWTData
 from videbo.network import NetworkInterfaces
 from videbo.web import json_response, ensure_json_body, file_serve_response
 from videbo.storage.util import HashedVideoFile
