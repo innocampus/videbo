@@ -9,9 +9,9 @@ from aiohttp.web_response import Response
 from aiohttp.web_fileresponse import FileResponse
 
 from videbo import distributor_settings as settings
-from videbo.auth import ensure_auth, JWT_ISS_INTERNAL
+from videbo.auth import ensure_auth
 from videbo.misc import MEGA, rel_path
-from videbo.models import Role, BaseJWTData
+from videbo.models import TokenIssuer, Role, BaseJWTData
 from videbo.network import NetworkInterfaces
 from videbo.web import json_response, ensure_json_body, file_serve_response
 from videbo.storage.util import HashedVideoFile
@@ -109,5 +109,5 @@ async def request_file(request: Request, jwt_data: RequestFileJWTData) -> Union[
     else:
         path = file_controller.get_path(video)
     dl = request.query.get('downloadas')
-    limit_rate = float(jwt_data.iss != JWT_ISS_INTERNAL and settings.nginx_x_accel_limit_rate_mbit)
+    limit_rate = float(jwt_data.iss != TokenIssuer.internal and settings.nginx_x_accel_limit_rate_mbit)
     return file_serve_response(path, bool(settings.nginx_x_accel_location), dl, limit_rate)

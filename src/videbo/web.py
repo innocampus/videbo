@@ -17,10 +17,10 @@ from aiohttp.web_response import Response
 from aiohttp.web_routedef import RouteDef, RouteTableDef
 from pydantic import ValidationError
 
-from videbo.auth import encode_jwt, JWT_ISS_EXTERNAL, JWT_ISS_INTERNAL
+from videbo.auth import encode_jwt
 from videbo.exceptions import HTTPResponseError
 from videbo.misc import TaskManager, sanitize_filename, get_route_model_param
-from videbo.models import JSONBaseModel, BaseJWTData, Role
+from videbo.models import JSONBaseModel, TokenIssuer, Role, BaseJWTData
 from videbo.types import CleanupContext, RouteHandler
 from videbo.video import get_content_type_for_extension
 
@@ -228,7 +228,7 @@ def json_response(data: JSONBaseModel, status: int = 200) -> Response:
 
 class HTTPClient:
     session: ClientSession
-    _cached_jwt: Dict[Tuple[Role, str], Tuple[str, float]] = {}  # (role, int|ext) -> (jwt, expiration date)
+    _cached_jwt: Dict[Tuple[Role, TokenIssuer], Tuple[str, float]] = {}  # (role, int|ext) -> (jwt, expiration date)
 
     @classmethod
     def create_client_session(cls) -> None:
@@ -323,9 +323,9 @@ class HTTPClient:
         Implements a caching mechanism."""
 
         if external:
-            iss = JWT_ISS_EXTERNAL
+            iss = TokenIssuer.external
         else:
-            iss = JWT_ISS_INTERNAL
+            iss = TokenIssuer.internal
         current_time = time()
         jwt, expiration = cls._cached_jwt.get((role, iss), ('', 0))
         if jwt and current_time < expiration:
@@ -333,5 +333,6 @@ class HTTPClient:
 
         jwt_data = BaseJWTData.construct(role=role)
         jwt = encode_jwt(jwt_data, expiry=4 * 3600, internal=not external)
-        cls._cached_jwt[(role, iss)] = (jwt, current_time + 3 * 3600)  # don't cache until the expiration time is reached
+        # Don't cache until the expiration time is reached:
+        cls._cached_jwt[(role, iss)] = (jwt, current_time + 3 * 3600)
         return jwt

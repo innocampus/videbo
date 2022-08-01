@@ -74,10 +74,6 @@ class InvalidAuthData(AuthError):
     pass
 
 
-class NoJWTFound(InvalidAuthData):
-    pass
-
-
 class NotAuthorized(AuthError):
     pass
 

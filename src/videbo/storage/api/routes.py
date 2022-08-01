@@ -17,10 +17,10 @@ from aiohttp.web_exceptions import (HTTPBadRequest, HTTPForbidden, HTTPNotFound,
 from aiohttp.web_exceptions import HTTPInternalServerError, HTTPServiceUnavailable  # 5xx
 
 from videbo import storage_settings as settings
-from videbo.auth import ensure_auth, encode_jwt, JWT_ISS_INTERNAL
+from videbo.auth import ensure_auth, encode_jwt
 from videbo.exceptions import InvalidMimeTypeError, InvalidVideoError, FFProbeError
 from videbo.misc import MEGA, rel_path
-from videbo.models import Role, BaseJWTData
+from videbo.models import TokenIssuer, Role, BaseJWTData
 from videbo.network import NetworkInterfaces
 from videbo.video import VideoInfo, VideoValidator, VideoConfig
 from videbo.web import (ensure_json_body, register_route_with_cors, json_response as model_json_response,
@@ -277,7 +277,7 @@ async def request_file(request: Request, jwt_data: RequestFileJWTData) -> Union[
         except FileNotFoundError:
             raise HTTPNotFound()
         # Only consider redirecting the client when it is an external request.
-        if jwt_data.iss != JWT_ISS_INTERNAL:
+        if jwt_data.iss != TokenIssuer.internal:
             file_storage.distribution_controller.count_file_access(video, jwt_data.rid)
             await video_check_redirect(request, video)
         access_logger.info(f"serve video with hash {jwt_data.hash}")
@@ -293,7 +293,7 @@ async def request_file(request: Request, jwt_data: RequestFileJWTData) -> Union[
     if settings.nginx_x_accel_location:
         path = Path(settings.nginx_x_accel_location, rel_path(str(video)))
     dl = request.query.get('downloadas')
-    limit_rate = float(jwt_data.iss != JWT_ISS_INTERNAL and settings.nginx_x_accel_limit_rate_mbit)
+    limit_rate = float(jwt_data.iss != TokenIssuer.internal and settings.nginx_x_accel_limit_rate_mbit)
     return file_serve_response(path, bool(settings.nginx_x_accel_location), dl, limit_rate)
 
 

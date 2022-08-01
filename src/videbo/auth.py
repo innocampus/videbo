@@ -10,17 +10,15 @@ from aiohttp.web_exceptions import HTTPBadRequest, HTTPUnauthorized, HTTPForbidd
 from pydantic import ValidationError
 
 from videbo import storage_settings as settings
-from videbo.exceptions import InvalidAuthData, NoJWTFound, NotAuthorized
+from videbo.exceptions import InvalidAuthData, NotAuthorized
 from videbo.misc import get_route_model_param
-from videbo.models import Role, BaseJWTData
+from videbo.models import TokenIssuer, Role, BaseJWTData
 from videbo.types import RouteHandler
 
 
 logger = logging.getLogger('videbo-auth')
 
-JWT_ALGORITHM = 'HS256'
-JWT_ISS_EXTERNAL = 'ext'
-JWT_ISS_INTERNAL = 'int'
+JWT_ALG = 'HS256'
 
 
 def extract_jwt_from_request(request: Request) -> str:
@@ -37,7 +35,7 @@ def extract_jwt_from_request(request: Request) -> str:
         The JWT string
 
     Raises:
-        `NoJWTFound` if the assumptions mentioned above are not satisfied.
+        `InvalidAuthData` if the assumptions mentioned above are not satisfied.
     """
     try:
         # First try to find the token in the header.
@@ -51,8 +49,7 @@ def extract_jwt_from_request(request: Request) -> str:
         prefix = 'Bearer '
         if header_auth.startswith(prefix):
             return header_auth[len(prefix):]
-    logger.info("No JWT found in request.")
-    raise NoJWTFound()
+    raise InvalidAuthData("No JWT found in request.")
 
 
 def jwt_kid_internal(token: str) -> bool:
@@ -63,8 +60,8 @@ def jwt_kid_internal(token: str) -> bool:
         token: The JWT string to check
 
     Returns:
-        `True` if the value of the "kid" header corresponds to `JWT_ISS_INTERNAL`.
-        `False` if the value of the "kid" header corresponds to `JWT_ISS_EXTERNAL`.
+        `True` if the value of the "kid" header corresponds to `TokenIssuer.internal`.
+        `False` if the value of the "kid" header corresponds to `TokenIssuer.external`.
 
     Raises:
         `InvalidAuthData` if the "kid" header is missing or its value is anything other than the two valid options.
@@ -73,17 +70,19 @@ def jwt_kid_internal(token: str) -> bool:
         kid: str = jwt.get_unverified_header(token)['kid']  # type: ignore[no-untyped-call]
     except KeyError:
         raise InvalidAuthData("JWT missing key ID header")
-    if kid not in (JWT_ISS_EXTERNAL, JWT_ISS_INTERNAL):
+    try:
+        kid = TokenIssuer(kid)
+    except ValueError:
         raise InvalidAuthData(f"{kid} is not a valid key ID")
-    return kid == JWT_ISS_INTERNAL
+    return kid == TokenIssuer.internal
 
 
-def _get_jwt_params(*, internal: bool) -> Tuple[str, str]:
-    """Convenience function returning the correct API secret and JWT issuer claim for internal or external requests."""
+def _get_jwt_params(*, internal: bool) -> Tuple[str, TokenIssuer]:
+    """Convenience function returning the correct API secret and JWT issuer for internal or external requests."""
     if internal:
-        return settings.internal_api_secret, JWT_ISS_INTERNAL
+        return settings.internal_api_secret, TokenIssuer.internal
     else:
-        return settings.external_api_secret, JWT_ISS_EXTERNAL
+        return settings.external_api_secret, TokenIssuer.external
 
 
 def decode_jwt(encoded: str, *, model: Type[BaseJWTData] = BaseJWTData, internal: bool = False) -> BaseJWTData:
@@ -104,7 +103,7 @@ def decode_jwt(encoded: str, *, model: Type[BaseJWTData] = BaseJWTData, internal
         Model object containing the data that was encoded in the JWT.
     """
     secret, issuer = _get_jwt_params(internal=internal)
-    decoded = jwt.decode(encoded, secret, algorithms=[JWT_ALGORITHM], issuer=issuer)
+    decoded = jwt.decode(encoded, secret, algorithms=[JWT_ALG], issuer=issuer.value)
     return model.parse_obj(decoded)
 
 
@@ -129,16 +128,7 @@ def encode_jwt(data: BaseJWTData, *, expiry: int = 300, internal: bool = False) 
     data.exp = int(time()) + expiry
     data.iss = issuer
     validated = data.__class__(**data.dict(exclude_unset=True))
-    return jwt.encode(validated.dict(exclude_unset=True), secret, algorithm=JWT_ALGORITHM, headers={'kid': issuer})
-
-
-# TODO: Implement this as a model validator.
-def check_issuer_claim(data: BaseJWTData) -> None:
-    """Validates the issuer claim in a JWT data object."""
-    if data.iss == JWT_ISS_EXTERNAL and data.role > Role.lms:
-        raise InvalidAuthData("External tokens can only be issued for a role up to LMS")
-    if data.iss not in (JWT_ISS_EXTERNAL, JWT_ISS_INTERNAL):
-        raise InvalidAuthData(f"{data.iss} is not a valid issuer claim")
+    return jwt.encode(validated.dict(exclude_unset=True), secret, algorithm=JWT_ALG, headers={'kid': issuer.value})
 
 
 def check_and_save_jwt_data(request: Request, min_level: int, model: Type[BaseJWTData]) -> None:
@@ -151,7 +141,6 @@ def check_and_save_jwt_data(request: Request, min_level: int, model: Type[BaseJW
         model: The JWT model class to use for decoding and parsing the JWT string.
 
     Raises:
-        `NoJWTFound` if no JWT could be found in the request.
         `InvalidAuthData` if the key ID header in the JWT was missing or invalid or the data object parsing failed.
         `NotAuthorized` if the role encoded in the JWT is lower than `min_role_level`.
     """
@@ -167,9 +156,7 @@ def check_and_save_jwt_data(request: Request, min_level: int, model: Type[BaseJW
             logger.debug(msg)
         raise error
     except ValidationError as error:
-        logger.info(f"JWT data does not correspond to expected data: {error}")
-        raise InvalidAuthData()
-    check_issuer_claim(data)
+        raise InvalidAuthData(f"JWT data does not correspond to expected data: {error}")
     if data.role < min_level:
         raise NotAuthorized()
     request['jwt_data'] = data
@@ -204,7 +191,8 @@ def ensure_auth(min_level: int, headers: Optional[LooseHeaders] = None) -> Calla
                 check_and_save_jwt_data(request, min_level, param_class)
             except (jwt.InvalidTokenError, NotAuthorized):
                 raise HTTPUnauthorized(headers=headers)
-            except InvalidAuthData:
+            except InvalidAuthData as e:
+                logger.info("Auth data invalid: %s", str(e))
                 raise HTTPBadRequest(headers=headers)
             if min_level >= Role.admin and settings.forbid_admin_via_proxy and 'X-Forwarded-For' in request.headers:
                 raise HTTPForbidden(headers=headers)

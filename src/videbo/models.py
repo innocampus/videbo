@@ -8,6 +8,11 @@ class JSONBaseModel(BaseModel):
     pass
 
 
+class TokenIssuer(str, Enum):
+    internal = 'int'
+    external = 'ext'
+
+
 class Role(IntEnum):
     """All roles in a system ordered by powerfulness."""
     client = 0
@@ -20,10 +25,18 @@ class BaseJWTData(BaseModel):
     """Base data fields that have to be stored in the JWT."""
     # standard fields defined by RFC 7519 that we require for all tokens
     exp: int  # expiration time claim
-    iss: str  # issuer claim
+    iss: TokenIssuer  # issuer claim
 
     # role must always be present
     role: Role
+
+    @validator('iss', pre=True)
+    def iss_is_enum_member(cls, v: Union[TokenIssuer, str]) -> TokenIssuer:
+        if isinstance(v, TokenIssuer):
+            return v
+        if isinstance(v, str):
+            return TokenIssuer(v)
+        raise TypeError(f"{repr(v)} is not a valid issuer type")
 
     @validator('role', pre=True)
     def role_is_enum_member(cls, v: Union[Role, int, str]) -> Role:
@@ -37,6 +50,12 @@ class BaseJWTData(BaseModel):
             except KeyError:
                 raise ValueError(f"Invalid role name '{v}'")
         raise TypeError(f"{repr(v)} is not a valid role type")
+
+    @validator('role')
+    def role_appropriate_for_external(cls, v: Role, values: Dict[str, Any]) -> Role:
+        if values.get('iss') == TokenIssuer.external and v > Role.lms:
+            raise ValueError("External tokens can only be issued for a role up to LMS")
+        return v
 
     def dict(self, *args: Any, **kwargs: Any) -> Dict[str, Any]:
         """
