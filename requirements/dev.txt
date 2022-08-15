@@ -1,2 +1,4 @@
 -r full.txt
+build==0.8.0
 coverage==6.4.1
+mypy==0.971

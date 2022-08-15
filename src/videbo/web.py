@@ -17,10 +17,9 @@ from aiohttp.web_response import Response
 from aiohttp.web_routedef import RouteDef, RouteTableDef
 from pydantic import ValidationError
 
-from videbo.auth import encode_jwt
 from videbo.exceptions import HTTPResponseError
 from videbo.misc import TaskManager, sanitize_filename, get_route_model_param
-from videbo.models import JSONBaseModel, TokenIssuer, Role, BaseJWTData
+from videbo.models import JSONBaseModel, TokenIssuer, Role, RequestJWTData
 from videbo.types import CleanupContext, RouteHandler
 from videbo.video import get_content_type_for_extension
 
@@ -239,7 +238,7 @@ class HTTPClient:
         await cls.session.close()
 
     @classmethod
-    async def videbo_request(cls, method: str, url: str, jwt_data: Union[BaseJWTData, str, None] = None,
+    async def videbo_request(cls, method: str, url: str, jwt_data: Union[RequestJWTData, str, None] = None,
                              json_data: Optional[JSONBaseModel] = None,
                              expected_return_type: Optional[Type[JSONBaseModel]] = None,
                              timeout: Union[ClientTimeout, int, None] = None,
@@ -252,8 +251,8 @@ class HTTPClient:
         headers = {}
         data = None
         if jwt_data:
-            if isinstance(jwt_data, BaseJWTData):
-                jwt = encode_jwt(jwt_data, internal=not external)
+            if isinstance(jwt_data, RequestJWTData):
+                jwt = jwt_data.encode()
             else:
                 # Then it is a string. Assume it is a valid jwt.
                 jwt = jwt_data
@@ -331,8 +330,11 @@ class HTTPClient:
         if jwt and current_time < expiration:
             return jwt
 
-        jwt_data = BaseJWTData.construct(role=role)
-        jwt = encode_jwt(jwt_data, expiry=4 * 3600, internal=not external)
+        jwt = RequestJWTData(
+            exp=int(time()) + 4 * 3600,  # expires in 4 hours
+            iss=iss,
+            role=role
+        ).encode()
         # Don't cache until the expiration time is reached:
         cls._cached_jwt[(role, iss)] = (jwt, current_time + 3 * 3600)
         return jwt

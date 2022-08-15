@@ -1,7 +1,6 @@
 import logging
 import functools
-from time import time
-from typing import Any, Callable, Mapping, Optional, Tuple, Type, cast
+from typing import Any, Callable, Mapping, Optional, Type, cast
 
 import jwt
 from aiohttp.typedefs import LooseHeaders
@@ -12,13 +11,11 @@ from pydantic import ValidationError
 from videbo import storage_settings as settings
 from videbo.exceptions import InvalidAuthData, NotAuthorized
 from videbo.misc import get_route_model_param
-from videbo.models import TokenIssuer, Role, BaseJWTData
+from videbo.models import TokenIssuer, Role, RequestJWTData
 from videbo.types import RouteHandler
 
 
 __all__ = [
-    'decode_jwt',
-    'encode_jwt',
     'ensure_auth'
 ]
 
@@ -84,68 +81,14 @@ def jwt_kid_internal(token: str) -> bool:
     return kid == TokenIssuer.internal
 
 
-def _get_jwt_params(*, internal: bool) -> Tuple[str, TokenIssuer]:
-    """Convenience function returning the correct API secret and JWT issuer for internal or external requests."""
-    if internal:
-        return settings.internal_api_secret, TokenIssuer.internal
-    else:
-        return settings.external_api_secret, TokenIssuer.external
-
-
-def decode_jwt(encoded: str, *, model: Type[BaseJWTData] = BaseJWTData, internal: bool = False) -> BaseJWTData:
-    """
-    Decodes a JWT string returning the data in the form of the desired model.
-
-    Args:
-        encoded:
-            The JWT string
-        model (optional):
-            The model the JWT data must correspond to. Defaults to `BaseJWTData`.
-        internal (optional):
-            If `True` the token is assumed to be encoded with the internal secret and issuer claim, probably coming
-            from another node or the admin CLI; otherwise it is assumed to come from an external party (e.g. the LMS).
-            `False` by default.
-
-    Returns:
-        Model object containing the data that was encoded in the JWT.
-    """
-    secret, issuer = _get_jwt_params(internal=internal)
-    decoded = jwt.decode(encoded, secret, algorithms=[JWT_ALG], issuer=issuer.value)
-    return model.parse_obj(decoded)
-
-
-def encode_jwt(data: BaseJWTData, *, expiry: int = 300, internal: bool = False) -> str:
-    """
-    Encodes provided data in the form of a JWT string.
-
-    Args:
-        data:
-            An instance of `BaseJWTData` (or a subclass) carrying the data to encode.
-        expiry (optional):
-            The time in seconds from the moment of the function call until the token is set to expire.
-            Defaults to 300 (5 minutes).
-        internal (optional):
-            If `True` the token is encoded with the internal secret and issuer claim, likely for use with another node
-            or the admin CLI; otherwise it is created for an external party (e.g. the LMS).
-
-    Returns:
-        The JWT string containing the provided data.
-    """
-    secret, issuer = _get_jwt_params(internal=internal)
-    data.exp = int(time()) + expiry
-    data.iss = issuer
-    validated = data.parse_obj(data.dict(exclude_unset=True))
-    return jwt.encode(validated.dict(exclude_unset=True), secret, algorithm=JWT_ALG, headers={'kid': issuer.value})
-
-
-def check_and_save_jwt_data(request: Request, min_level: int, model: Type[BaseJWTData]) -> None:
+def check_and_save_jwt_data(request: Request, min_level: int, jwt_model: Type[RequestJWTData]) -> None:
     """
     Finds the JSON Web Token in a request and validates it before saving the decoded data back into the request.
 
     Args:
         request: The `aiohttp` request object to check and save to
         min_level: The minimum access level (see `Role`) the requesting party needs for the specified request.
-        model: The JWT model class to use for decoding and parsing the JWT string.
+        jwt_model: The JWT model class to use for decoding and parsing the JWT string.
 
     Raises:
         `InvalidAuthData` if the key ID header in the JWT was missing or invalid or the data object parsing failed.
@@ -154,7 +97,7 @@ def check_and_save_jwt_data(request: Request, min_level: int, model: Type[BaseJW
     token = extract_jwt_from_request(request)
     internal = min_level >= Role.node or jwt_kid_internal(token)
     try:
-        data = decode_jwt(token, model=model, internal=internal)
+        data = jwt_model.decode(token, internal=internal)
     except jwt.InvalidTokenError as error:
         msg = f"Invalid JWT error: {error} ({request.url}); min. access level: {Role(min_level).name}"
         if min_level >= Role.lms:
@@ -169,12 +112,15 @@ def check_and_save_jwt_data(request: Request, min_level: int, model: Type[BaseJW
     request['jwt_data'] = data
 
 
-def ensure_auth(min_level: int, headers: Optional[LooseHeaders] = None) -> Callable[[RouteHandler], RouteHandler]:
+def ensure_auth(min_level: int, *, headers: Optional[LooseHeaders] = None) -> Callable[[RouteHandler], RouteHandler]:
     """
     Decorator for route handler functions ensuring only authorized access to the decorated route.
 
-    It checks that the request has a valid JWT, that the issuer has the role needed for the action.
+    It checks that the request has a valid JWT and that its issuer has the role needed for the action.
     It does this by trying to match the JWT data with the JWT model in the type annotation of the decorated function.
+
+    The decorated route handler function **must** be have exactly one parameter annotated with `RequestJWTData`
+    (or a subclass) in its signature.
 
     It also checks that access to admin routes does not come from a reverse proxy, if the settings forbid this.
 
@@ -189,7 +135,7 @@ def ensure_auth(min_level: int, headers: Optional[LooseHeaders] = None) -> Calla
 
     def decorator(function: RouteHandler) -> RouteHandler:
         """internal decorator function"""
-        param_name, param_class = get_route_model_param(function, BaseJWTData)
+        param_name, param_class = get_route_model_param(function, RequestJWTData)
 
         @functools.wraps(function)
         async def wrapper(request: Request, *args: Any, **kwargs: Any) -> Any:

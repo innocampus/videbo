@@ -1,7 +1,7 @@
 from enum import Enum
 from typing import Dict, FrozenSet, List, Optional
 
-from videbo.models import BaseJWTData, JSONBaseModel, NodeStatus, Role
+from videbo.models import BaseJWTData, RequestJWTData, JSONBaseModel, NodeStatus
 from videbo.distributor.api.models import DistributorStatus
 
 
@@ -32,19 +32,19 @@ class FileType(Enum):
         return frozenset(member.value for member in cls.__members__.values())
 
 
-class UploadFileJWTData(BaseJWTData):
+class UploadFileJWTData(RequestJWTData):
     is_allowed_to_upload_file: bool
 
 
-class SaveFileJWTData(BaseJWTData):
+class SaveFileJWTData(RequestJWTData):
     is_allowed_to_save_file: bool
 
 
-class DeleteFileJWTData(BaseJWTData):
+class DeleteFileJWTData(RequestJWTData):
     is_allowed_to_delete_file: bool
 
 
-class RequestFileJWTData(BaseJWTData):
+class RequestFileJWTData(RequestJWTData):
     type: FileType
     hash: str
     file_ext: str
@@ -86,7 +86,6 @@ class DeleteFilesList(JSONBaseModel):
 
 
 class FileUploadedResponseJWT(BaseJWTData):
-    role: Optional[Role] = None  # not needed for a response model
     hash: str
     file_ext: str
     thumbnails_available: int

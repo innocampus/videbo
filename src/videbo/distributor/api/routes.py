@@ -11,7 +11,7 @@ from aiohttp.web_fileresponse import FileResponse
 from videbo import distributor_settings as settings
 from videbo.auth import ensure_auth
 from videbo.misc import MEGA, rel_path
-from videbo.models import TokenIssuer, Role, BaseJWTData
+from videbo.models import TokenIssuer, Role, RequestJWTData
 from videbo.network import NetworkInterfaces
 from videbo.web import json_response, ensure_json_body, file_serve_response
 from videbo.storage.util import HashedVideoFile
@@ -26,7 +26,7 @@ routes = RouteTableDef()
 
 @routes.get(r'/api/distributor/status')  # type: ignore[arg-type]
 @ensure_auth(Role.node)
-async def get_status(_request: Request, _jwt_data: BaseJWTData) -> Response:
+async def get_status(_request: Request, _jwt_data: RequestJWTData) -> Response:
     file_controller = DistributorFileController.get_instance()
     status = DistributorStatus.construct()
     # Same attributes for storage and distributor nodes:
@@ -44,7 +44,7 @@ async def get_status(_request: Request, _jwt_data: BaseJWTData) -> Response:
 
 @routes.get(r'/api/distributor/files')  # type: ignore[arg-type]
 @ensure_auth(Role.node)
-async def get_all_files(_request: Request, _jwt_data: BaseJWTData) -> Response:
+async def get_all_files(_request: Request, _jwt_data: RequestJWTData) -> Response:
     all_files: List[Tuple[str, str]] = []
     for file in DistributorFileController.get_instance().files.values():
         all_files.append((file.hash, file.file_extension))
@@ -55,7 +55,7 @@ async def get_all_files(_request: Request, _jwt_data: BaseJWTData) -> Response:
 @routes.post(r'/api/distributor/copy/{hash:[0-9a-f]{64}}{file_ext:\.[0-9a-z]{1,10}}')  # type: ignore[arg-type]
 @ensure_auth(Role.node)
 @ensure_json_body
-async def copy_file(request: Request, _jwt_data: BaseJWTData, data: DistributorCopyFile) -> None:
+async def copy_file(request: Request, _jwt_data: RequestJWTData, data: DistributorCopyFile) -> None:
     file_controller = DistributorFileController.get_instance()
     file = HashedVideoFile(request.match_info['hash'], request.match_info['file_ext'])
     new_file = file_controller.copy_file(file, data.from_base_url, data.file_size)
@@ -70,7 +70,7 @@ async def copy_file(request: Request, _jwt_data: BaseJWTData, data: DistributorC
 @routes.post(r'/api/distributor/delete')  # type: ignore[arg-type]
 @ensure_auth(Role.node)
 @ensure_json_body
-async def delete_files(_request: Request, _jwt_data: BaseJWTData, data: DistributorDeleteFiles) -> Response:
+async def delete_files(_request: Request, _jwt_data: RequestJWTData, data: DistributorDeleteFiles) -> Response:
     file_controller = DistributorFileController.get_instance()
     files_skipped: List[Tuple[str, str]] = []
     for file_hash, file_ext in data.files:

@@ -3,6 +3,7 @@ import asyncio
 import urllib.parse
 from distutils.util import strtobool
 from pathlib import Path
+from time import time
 from typing import Iterator, Optional, Tuple, Union
 
 from aiohttp.web_request import Request
@@ -17,10 +18,10 @@ from aiohttp.web_exceptions import (HTTPBadRequest, HTTPForbidden, HTTPNotFound,
 from aiohttp.web_exceptions import HTTPInternalServerError, HTTPServiceUnavailable  # 5xx
 
 from videbo import storage_settings as settings
-from videbo.auth import ensure_auth, encode_jwt
+from videbo.auth import ensure_auth
 from videbo.exceptions import InvalidMimeTypeError, InvalidVideoError, FFProbeError
 from videbo.misc import MEGA, rel_path
-from videbo.models import TokenIssuer, Role, BaseJWTData
+from videbo.models import RequestJWTData, Role, TokenIssuer
 from videbo.network import NetworkInterfaces
 from videbo.video import VideoInfo, VideoValidator, VideoConfig
 from videbo.web import (ensure_json_body, register_route_with_cors, json_response as model_json_response,
@@ -37,33 +38,42 @@ from videbo.storage import storage_logger
 routes = RouteTableDef()
 access_logger = logging.getLogger('videbo-storage-access')
 
-EXTERNAL_JWT_LIFE_TIME = 3600
-CHUNK_SIZE_DEFAULT = 300 * 1024  # in bytes
+EXTERNAL_JWT_LIFE_TIME = 3600  # 1 hour in seconds
+CHUNK_SIZE_DEFAULT = 300 * 1024  # 300 KB in bytes
 CONTENT_TYPES = {JPG_EXT: 'image/jpeg'}
 
 
+def get_expiration_time(seconds_from_now: int = EXTERNAL_JWT_LIFE_TIME) -> int:
+    return int(time() + seconds_from_now)
+
+
 def generate_video_url(video: HashedVideoFile, temp: bool) -> str:
-    jwt_data = RequestFileJWTData.construct(
+    jwt_data = RequestFileJWTData(
+        exp=get_expiration_time(),
+        iss=TokenIssuer.external,
         role=Role.client,
         type=FileType.VIDEO_TEMP if temp else FileType.VIDEO,
         hash=video.hash,
         file_ext=video.file_extension,
-        rid='',
+        rid=''
     )
-    return f"{settings.public_base_url}/file?jwt={encode_jwt(jwt_data, expiry=EXTERNAL_JWT_LIFE_TIME)}"
+    return f"{settings.public_base_url}/file?jwt={jwt_data.encode()}"
 
 
 def generate_thumb_urls(video: HashedVideoFile, temp: bool, thumb_count: int) -> Iterator[str]:
+    exp = get_expiration_time()
     for thumb_id in range(thumb_count):
-        jwt_data = RequestFileJWTData.construct(
+        jwt_data = RequestFileJWTData(
+            exp=exp,
+            iss=TokenIssuer.external,
             role=Role.client,
             type=FileType.THUMBNAIL_TEMP if temp else FileType.THUMBNAIL,
             hash=video.hash,
-            thumb_id=thumb_id,
             file_ext=video.file_extension,
+            thumb_id=thumb_id,
             rid='',
         )
-        yield f"{settings.public_base_url}/file?jwt={encode_jwt(jwt_data, expiry=EXTERNAL_JWT_LIFE_TIME)}"
+        yield f"{settings.public_base_url}/file?jwt={jwt_data.encode()}"
 
 
 async def read_data(file: TempFile, field: BodyPartReader, chunk_size: int = CHUNK_SIZE_DEFAULT) -> None:
@@ -174,11 +184,17 @@ async def read_and_save_temp(file: TempFile, field: BodyPartReader) -> Response:
     except BadFileExtension:
         await file.delete()
         return invalid_format_response()
-    jwt_data = FileUploadedResponseJWT.construct(hash=stored_file.hash, file_ext=stored_file.file_extension,
-                                                 thumbnails_available=thumb_count, duration=duration)
+    jwt_data = FileUploadedResponseJWT(
+        exp=get_expiration_time(),
+        iss=TokenIssuer.external,
+        hash=stored_file.hash,
+        file_ext=stored_file.file_extension,
+        thumbnails_available=thumb_count,
+        duration=duration
+    )
     resp = {
         'result': 'ok',
-        'jwt': encode_jwt(jwt_data, expiry=EXTERNAL_JWT_LIFE_TIME),
+        'jwt': jwt_data.encode(),
         'url': generate_video_url(stored_file, temp=True),
         'thumbnails': list(generate_thumb_urls(stored_file, temp=True, thumb_count=thumb_count)),
     }
@@ -417,7 +433,7 @@ async def handle_thumbnail_request(jwt_data: RequestFileJWTData) -> Response:
 @routes.post(r'/api/storage/distributor/add')  # type: ignore[arg-type]
 @ensure_auth(Role.admin)
 @ensure_json_body
-async def add_dist_node(_request: Request, _jwt_data: BaseJWTData, data: DistributorNodeInfo) -> None:
+async def add_dist_node(_request: Request, _jwt_data: RequestJWTData, data: DistributorNodeInfo) -> None:
     FileStorage.get_instance().distribution_controller.add_new_dist_node(data.base_url)
     raise HTTPOk()
 
@@ -425,7 +441,7 @@ async def add_dist_node(_request: Request, _jwt_data: BaseJWTData, data: Distrib
 @routes.post(r'/api/storage/distributor/remove')  # type: ignore[arg-type]
 @ensure_auth(Role.admin)
 @ensure_json_body
-async def remove_dist_node(_request: Request, _jwt_data: BaseJWTData, data: DistributorNodeInfo) -> None:
+async def remove_dist_node(_request: Request, _jwt_data: RequestJWTData, data: DistributorNodeInfo) -> None:
     await FileStorage.get_instance().distribution_controller.remove_dist_node(data.base_url)
     raise HTTPOk()
 
@@ -446,34 +462,34 @@ async def set_dist_node_state(base_url: str, enabled: bool) -> None:
 @routes.post(r'/api/storage/distributor/disable')  # type: ignore[arg-type]
 @ensure_auth(Role.admin)
 @ensure_json_body
-async def disable_dist_node(_request: Request, _jwt_data: BaseJWTData, data: DistributorNodeInfo) -> None:
+async def disable_dist_node(_request: Request, _jwt_data: RequestJWTData, data: DistributorNodeInfo) -> None:
     await set_dist_node_state(data.base_url, enabled=False)
 
 
 @routes.post(r'/api/storage/distributor/enable')  # type: ignore[arg-type]
 @ensure_auth(Role.admin)
 @ensure_json_body
-async def enable_dist_node(_request: Request, _jwt_data: BaseJWTData, data: DistributorNodeInfo) -> None:
+async def enable_dist_node(_request: Request, _jwt_data: RequestJWTData, data: DistributorNodeInfo) -> None:
     await set_dist_node_state(data.base_url, enabled=True)
 
 
 @routes.get(r'/api/storage/distributor/status')  # type: ignore[arg-type]
 @ensure_auth(Role.admin)
-async def get_all_dist_nodes(_request: Request, _jwt_data: BaseJWTData) -> Response:
+async def get_all_dist_nodes(_request: Request, _jwt_data: RequestJWTData) -> Response:
     nodes_statuses = FileStorage.get_instance().distribution_controller.get_nodes_status()
     return model_json_response(DistributorStatusDict(nodes=nodes_statuses))
 
 
 @routes.get(r'/api/storage/status')  # type: ignore[arg-type]
 @ensure_auth(Role.admin)
-async def get_status(_request: Request, _jwt_data: BaseJWTData) -> Response:
+async def get_status(_request: Request, _jwt_data: RequestJWTData) -> Response:
     storage = FileStorage.get_instance()
     return model_json_response(await storage.get_status())
 
 
 @routes.get(r'/api/storage/files')  # type: ignore[arg-type]
 @ensure_auth(Role.admin)
-async def get_files_list(request: Request, _jwt_data: BaseJWTData) -> Response:
+async def get_files_list(request: Request, _jwt_data: RequestJWTData) -> Response:
     files = []
     storage = FileStorage.get_instance()
     if request.query:
@@ -492,7 +508,7 @@ async def get_files_list(request: Request, _jwt_data: BaseJWTData) -> Response:
 @routes.post('/api/storage/delete')  # type: ignore[arg-type]
 @ensure_auth(Role.admin)
 @ensure_json_body
-async def batch_delete_files(_request: Request, _jwt_data: BaseJWTData, data: DeleteFilesList) -> Response:
+async def batch_delete_files(_request: Request, _jwt_data: RequestJWTData, data: DeleteFilesList) -> Response:
     storage = FileStorage.get_instance()
     removed_list = await storage.remove_files(*data.hashes)
     results = zip(data.hashes, removed_list)

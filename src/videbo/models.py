@@ -1,7 +1,10 @@
 from enum import Enum, IntEnum
-from typing import Any, Dict, Optional, Union
+from typing import Any, Dict, Optional, Type, TypeVar, Union
 
+import jwt
 from pydantic import BaseModel, validator
+
+from videbo import storage_settings
 
 
 __all__ = [
@@ -9,8 +12,13 @@ __all__ = [
     'TokenIssuer',
     'Role',
     'BaseJWTData',
+    'RequestJWTData',
     'NodeStatus'
 ]
+
+J = TypeVar('J', bound='BaseJWTData')
+
+DEFAULT_JWT_ALG = 'HS256'
 
 
 class JSONBaseModel(BaseModel):
@@ -22,49 +30,31 @@ class TokenIssuer(str, Enum):
     external = 'ext'
 
 
-class Role(IntEnum):
-    """All roles in a system ordered by powerfulness."""
-    client = 0
-    lms = 2
-    node = 3
-    admin = 5
-
-
 class BaseJWTData(BaseModel):
-    """Base data fields that have to be stored in the JWT."""
-    # standard fields defined by RFC 7519 that we require for all tokens
+    """
+    Base data fields that have to be stored in the JWT.
+
+    Contains only the standard fields defined by RFC 7519 that we require for all tokens.
+
+    Allows encoding an instance's data as a JWT string, as well as decoding a JWT string to an instance of the model.
+    """
     exp: int  # expiration time claim
     iss: TokenIssuer  # issuer claim
 
-    # role must always be present
-    role: Role
-
     @validator('iss', pre=True)
     def iss_is_enum_member(cls, v: Union[TokenIssuer, str]) -> TokenIssuer:
+        """Coerces the issuer value to the appropriate `TokenIssuer` enum member."""
         if isinstance(v, TokenIssuer):
             return v
         if isinstance(v, str):
-            return TokenIssuer(v)
-        raise TypeError(f"{repr(v)} is not a valid issuer type")
-
-    @validator('role', pre=True)
-    def role_is_enum_member(cls, v: Union[Role, int, str]) -> Role:
-        if isinstance(v, Role):
-            return v
-        if isinstance(v, int):
-            return Role(v)
-        if isinstance(v, str):
             try:
-                return Role[v]
-            except KeyError:
-                raise ValueError(f"Invalid role name '{v}'")
-        raise TypeError(f"{repr(v)} is not a valid role type")
-
-    @validator('role')
-    def role_appropriate_for_external(cls, v: Role, values: Dict[str, Any]) -> Role:
-        if values.get('iss') == TokenIssuer.external and v > Role.lms:
-            raise ValueError("External tokens can only be issued for a role up to LMS")
-        return v
+                return TokenIssuer(v)
+            except ValueError:
+                try:
+                    return TokenIssuer[v]
+                except KeyError:
+                    raise ValueError(f"Invalid issuer '{v}'")
+        raise TypeError(f"{repr(v)} is not a valid issuer type")
 
     def dict(self, *args: Any, **kwargs: Any) -> Dict[str, Any]:
         """
@@ -78,6 +68,90 @@ class BaseJWTData(BaseModel):
             if isinstance(attr_value, Enum):
                 d[attr_name] = attr_value.value
         return d
+
+    def encode(self, *, secret: Optional[str] = None, algorithm: str = DEFAULT_JWT_ALG) -> str:
+        """
+        Encodes its data in the form of a JWT string.
+
+        Args:
+            secret (optional):
+                Secret key to use for signing the token; by default the `storage_settings.internal_api_secret` is used
+                with internal and the `.external_api_secret` with external JWT issuers.
+            algorithm (optional):
+                JWT signature algorithm to use for encoding; defaults to the constant `DEFAULT_JWT_ALG`.
+
+        Returns:
+            The JWT string containing the model instance's data.
+        """
+        if secret is None:
+            if self.iss == TokenIssuer.internal:
+                secret = storage_settings.internal_api_secret
+            else:
+                secret = storage_settings.external_api_secret
+        return jwt.encode(self.dict(exclude_unset=True), secret, algorithm=algorithm, headers={'kid': self.iss.value})
+
+    @classmethod
+    def decode(cls: Type[J], encoded: str, *, internal: bool = False, algorithm: str = DEFAULT_JWT_ALG) -> J:
+        """
+        Decodes a JWT string returning the data as an instance of the calling model.
+
+        Args:
+            encoded:
+                The JWT string
+            internal (optional):
+                If `True` the token is assumed to be encoded with the internal secret and issuer claim, probably coming
+                from another node or the admin CLI; otherwise it is assumed to come from an external party (e.g. a LMS).
+                `False` by default.
+            algorithm (optional):
+                JWT signature algorithm to assume for decoding; defaults to the constant `DEFAULT_JWT_ALG`.
+
+        Returns:
+            Instance of the calling class containing the data that was encoded in the JWT.
+        """
+        if internal:
+            secret, issuer = storage_settings.internal_api_secret, TokenIssuer.internal
+        else:
+            secret, issuer = storage_settings.external_api_secret, TokenIssuer.external
+        decoded = jwt.decode(encoded, secret, algorithms=[algorithm], issuer=issuer.value)
+        return cls.parse_obj(decoded)
+
+
+class Role(IntEnum):
+    """All roles in a system ordered by powerfulness."""
+    client = 0
+    lms = 2
+    node = 3
+    admin = 5
+
+
+class RequestJWTData(BaseJWTData):
+    """
+    Base model for the JWT data required in all authenticated routes.
+
+    In addition to the base class, the role is added as a mandatory field.
+    """
+    role: Role
+
+    @validator('role', pre=True)
+    def role_is_enum_member(cls, v: Union[Role, int, str]) -> Role:
+        """Coerces the role value to the appropriate `Role` enum member."""
+        if isinstance(v, Role):
+            return v
+        if isinstance(v, int):
+            return Role(v)
+        if isinstance(v, str):
+            try:
+                return Role[v]
+            except KeyError:
+                raise ValueError(f"Invalid role name '{v}'")
+        raise TypeError(f"{repr(v)} is not a valid role type")
+
+    @validator('role')
+    def role_appropriate_for_external(cls, v: Role, values: Dict[str, Any]) -> Role:
+        """Ensures that the role level is not greater than `lms`, if the issuer is supposed to be external."""
+        if values.get('iss') == TokenIssuer.external and v > Role.lms:
+            raise ValueError("External tokens can only be issued for a role up to LMS")
+        return v
 
 
 class NodeStatus(JSONBaseModel):
