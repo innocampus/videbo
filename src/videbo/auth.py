@@ -134,7 +134,7 @@ def encode_jwt(data: BaseJWTData, *, expiry: int = 300, internal: bool = False) 
     secret, issuer = _get_jwt_params(internal=internal)
     data.exp = int(time()) + expiry
     data.iss = issuer
-    validated = data.__class__(**data.dict(exclude_unset=True))
+    validated = data.parse_obj(data.dict(exclude_unset=True))
     return jwt.encode(validated.dict(exclude_unset=True), secret, algorithm=JWT_ALG, headers={'kid': issuer.value})
 
 
