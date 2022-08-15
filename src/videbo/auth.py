@@ -140,7 +140,7 @@ def encode_jwt(data: BaseJWTData, *, expiry: int = 300, internal: bool = False) 
 
 def check_and_save_jwt_data(request: Request, min_level: int, model: Type[BaseJWTData]) -> None:
     """
-    Find the JSON Web Token in a request and validates it before saving the decoded data back into the request.
+    Finds the JSON Web Token in a request and validates it before saving the decoded data back into the request.
 
     Args:
         request: The `aiohttp` request object to check and save to
