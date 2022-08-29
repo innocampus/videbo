@@ -3,9 +3,10 @@ import hashlib
 import os
 import tempfile
 import time
+from collections.abc import Iterable
 from pathlib import Path
 from copy import deepcopy
-from typing import Optional, Union, Dict, BinaryIO, List, Iterable
+from typing import BinaryIO, Optional, Union
 
 from videbo import storage_settings as settings
 from videbo.exceptions import PendingWriteOperationError, CouldNotCreateDir
@@ -53,8 +54,8 @@ class StoredHashedVideoFile(HashedVideoFile):
         return self.views < other.views
 
 
-_FilesDict = Dict[str, HashedVideoFile]
-_StoredFilesDict = Dict[str, StoredHashedVideoFile]
+_FilesDict = dict[str, HashedVideoFile]
+_StoredFilesDict = dict[str, StoredHashedVideoFile]
 
 
 def create_dir_if_not_exists(path: Union[Path, str], mode: int = 0o777, explicit_chmod: bool = False) -> None:
@@ -194,7 +195,7 @@ class FileStorage:
             filtered[file_hash] = file
         return filtered
 
-    async def _file_hashes_orphaned_dict(self, hashed_files_dict: Optional[_StoredFilesDict] = None) -> Dict[str, bool]:
+    async def _file_hashes_orphaned_dict(self, hashed_files_dict: Optional[_StoredFilesDict] = None) -> dict[str, bool]:
         """
         Checks the orphan status for stored files.
         A file is defined to be orphaned, iff not a single LMS knows about its existence.
@@ -208,13 +209,13 @@ class FileStorage:
             Dictionary with keys being hashes of the files that were checked, and values being booleans
             indicating whether the file with the corresponding hash is an orphan.
         """
-        hash_orphaned_dict: Dict[str, bool] = {}  # Output
+        hash_orphaned_dict: dict[str, bool] = {}  # Output
         # Copy currently cached files, if none were passed, and disregard storage changes from here on
         if hashed_files_dict is None:
             hashed_files_dict = self.all_files()
         storage_logger.info(f"Checking {len(hashed_files_dict)} files for their orphan status...")
         # Gather calls to lms_has_file(...) coroutines for each file; the awaited result is a list of booleans.
-        existing: List[bool] = await gather_in_batches(20, *(lms_has_file(f) for f in hashed_files_dict.values()))
+        existing: list[bool] = await gather_in_batches(20, *(lms_has_file(f) for f in hashed_files_dict.values()))
         # Both the `files` dictionary (since Python 3.6) and the `asyncio.gather` function preserve order,
         # therefore each hash's index in `files.keys()` can be used to get the corresponding `existing` value.
         for idx, key in enumerate(hashed_files_dict.keys()):
@@ -355,7 +356,7 @@ class FileStorage:
 
         storage_logger.info(f"Removed {thumb_nr} thumbnails for file with hash {file.hash} permanently from storage.")
 
-    async def remove_files(self, *hashes: str) -> List[bool]:
+    async def remove_files(self, *hashes: str) -> list[bool]:
         """
         Gathers and awaits calls to the check_lms_and_remove_file method,
         passing one of the files into each call.

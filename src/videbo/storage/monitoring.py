@@ -1,5 +1,6 @@
+from collections.abc import Callable, Container
 from pathlib import Path
-from typing import Container, Dict, Tuple, Set, Callable, Optional, Type, Union
+from typing import Optional, Type, Union
 
 from pydantic.main import BaseModel
 from prometheus_client.registry import CollectorRegistry
@@ -43,8 +44,8 @@ class Monitoring:
         # TODO: Separate "as-is"-metrics from calculated metrics;
         #       make more attributes protected;
         #       fix the following typing issue
-        self.metrics: Dict[str, Tuple[Gauge, Optional[Callable]]] = {}  # type: ignore
-        self.dist_urls: Set[str] = set()
+        self.metrics: dict[str, tuple[Gauge, Optional[Callable]]] = {}  # type: ignore
+        self.dist_urls: set[str] = set()
         self._add_metrics_from_model(StorageStatus, exclude={'distributor_nodes'})
         self._add_metrics_from_model(DistributorStatus, exclude={'bound_to_storage_node_base_url', 'copy_files_status'})
         self._init_calc_metrics()

@@ -1,6 +1,7 @@
 import logging
 import functools
-from typing import Any, Callable, Mapping, Optional, Type, cast
+from collections.abc import Callable, Mapping
+from typing import Any, Optional, Type, cast
 
 import jwt
 from aiohttp.typedefs import LooseHeaders

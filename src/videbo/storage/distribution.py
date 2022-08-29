@@ -1,6 +1,7 @@
 import asyncio
+from collections.abc import Callable, Iterable
 from timeit import default_timer as timer
-from typing import Optional, Set, Tuple, List, Dict, Iterable, Callable, TYPE_CHECKING
+from typing import Optional, TYPE_CHECKING
 
 from videbo import storage_settings as settings
 from videbo.exceptions import HTTPResponseError, NoRunningTask
@@ -26,13 +27,13 @@ class DownloadScheduler:
         pass
 
     def __init__(self) -> None:
-        self.files_from_urls: Set[Tuple['StoredHashedVideoFile', str]] = set()
+        self.files_from_urls: set[tuple['StoredHashedVideoFile', str]] = set()
 
     def schedule(self, file: 'StoredHashedVideoFile', from_url: str) -> None:
         self.files_from_urls.add((file, from_url))
         log.info(f"File {file} from {from_url} now scheduled for download")
 
-    def next(self) -> Tuple['StoredHashedVideoFile', str]:
+    def next(self) -> tuple['StoredHashedVideoFile', str]:
         """
         If any files are left to be downloaded, chose the one with the highest number of views.
         Note that the `StoredHashedVideoFile` class compares objects by their `.views` attribute.
@@ -60,8 +61,8 @@ class DistributionNodeInfo:
     def __init__(self, base_url: str):
         self.base_url: str = base_url
         self.status: Optional[DistributorStatus] = None
-        self.stored_videos: Set['StoredHashedVideoFile'] = set()
-        self.loading: Set['StoredHashedVideoFile'] = set()  # Node is currently downloading these files.
+        self.stored_videos: set['StoredHashedVideoFile'] = set()
+        self.loading: set['StoredHashedVideoFile'] = set()  # Node is currently downloading these files.
         self.awaiting_download = DownloadScheduler()  # Files waiting to be downloaded
         self.watcher_task: Optional[asyncio.Task[None]] = None
         self._good: bool = False  # node is reachable
@@ -161,7 +162,7 @@ class DistributionNodeInfo:
         """Fetch a list of all files that the node currently has."""
         from videbo.storage.util import FileStorage
         storage = FileStorage.get_instance()
-        remove_unknown_files: List[FileID] = []
+        remove_unknown_files: list[FileID] = []
         url = self.base_url + '/api/distributor/files'
         ret: DistributorFileList
         try:
@@ -229,7 +230,7 @@ class DistributionNodeInfo:
                 return
             TaskManager.fire_and_forget_task(asyncio.create_task(self._copy_file_task(next_file, next_from_url)))
 
-    async def _remove_files(self, rem_files: List[FileID], safe: bool = True) -> DistributorDeleteFilesResponse:
+    async def _remove_files(self, rem_files: list[FileID], safe: bool = True) -> DistributorDeleteFilesResponse:
         url = f'{self.base_url}/api/distributor/delete'
         data = DistributorDeleteFiles(files=rem_files, safe=safe)
         number = len(rem_files)
@@ -320,10 +321,10 @@ class FileNodes:
     __slots__ = 'nodes', 'copying'
 
     def __init__(self) -> None:
-        self.nodes: Set[DistributionNodeInfo] = set()  # A list of all nodes that have the file or are loading the file.
+        self.nodes: set[DistributionNodeInfo] = set()  # A list of all nodes that have the file or are loading the file.
         self.copying: bool = False  # File is currently being copied to a node.
 
-    def get_least_busy_nodes(self) -> List[DistributionNodeInfo]:
+    def get_least_busy_nodes(self) -> list[DistributionNodeInfo]:
         return sorted(self.nodes)
 
     def add_node(self, node: DistributionNodeInfo) -> None:
@@ -332,7 +333,7 @@ class FileNodes:
     def remove_node(self, node: DistributionNodeInfo) -> None:
         self.nodes.discard(node)
 
-    def find_good_node(self, file: 'StoredHashedVideoFile') -> Tuple[Optional[DistributionNodeInfo], bool]:
+    def find_good_node(self, file: 'StoredHashedVideoFile') -> tuple[Optional[DistributionNodeInfo], bool]:
         """
         Find a node that can serve the file and that is not too busy. May also return a node that is currently
         loading the file (if there is no other node).
@@ -361,9 +362,9 @@ class DistributionController:
     TRACK_MAX_CLIENTS_ACCESSES = 50000
 
     def __init__(self) -> None:
-        self._client_accessed: Set[Tuple[str, str]] = set()  # tuple of video hash and user's rid
-        self._videos_sorted: List['StoredHashedVideoFile'] = []
-        self._dist_nodes: List[DistributionNodeInfo] = []
+        self._client_accessed: set[tuple[str, str]] = set()  # tuple of video hash and user's rid
+        self._videos_sorted: list['StoredHashedVideoFile'] = []
+        self._dist_nodes: list[DistributionNodeInfo] = []
 
     def _reset(self) -> None:
         self._client_accessed.clear()
@@ -461,10 +462,10 @@ class DistributionController:
     async def enable_dist_node(self, base_url: str) -> None:
         self.set_node_state(base_url, enabled=True)
 
-    def get_dist_node_base_urls(self) -> List[str]:
+    def get_dist_node_base_urls(self) -> list[str]:
         return [n.base_url for n in self._dist_nodes]
 
-    def get_nodes_status(self, only_good: bool = False, only_enabled: bool = False) -> Dict[str, DistributorStatus]:
+    def get_nodes_status(self, only_good: bool = False, only_enabled: bool = False) -> dict[str, DistributorStatus]:
         output_dict = {}
         for node in self._dist_nodes:
             if (only_good and not node.is_good) or (only_enabled and not node.is_enabled):

@@ -1,4 +1,4 @@
-from typing import List, Optional, Type, Tuple, Any
+from typing import Any, Optional, Type
 
 from videbo import storage_settings as settings
 from videbo.exceptions import HTTPResponseError
@@ -9,7 +9,7 @@ from videbo.web import HTTPClient
 
 class LMSSitesCollection:
     def __init__(self) -> None:
-        self.sites: List[MoodleAPI] = []
+        self.sites: list[MoodleAPI] = []
 
     @staticmethod
     def get_all() -> 'LMSSitesCollection':
@@ -26,7 +26,7 @@ class MoodleAPI:
         self.api_url = self.base_url + "/mod/videoservice/api.php"
 
     async def _post_request(self, function: str, json_data: JSONBaseModel,
-                            expected_return_type: Optional[Type[JSONBaseModel]] = None) -> Tuple[int, Any]:
+                            expected_return_type: Optional[Type[JSONBaseModel]] = None) -> tuple[int, Any]:
 
         url = self.api_url + "?function=" + function
         jwt = HTTPClient.get_standard_jwt_with_role(Role.node, external=True)

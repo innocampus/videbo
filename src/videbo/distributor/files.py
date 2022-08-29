@@ -3,7 +3,7 @@ import os
 from asyncio import get_running_loop, Event, wait_for
 from pathlib import Path
 from time import time
-from typing import Optional, Dict, Set, List
+from typing import Optional
 
 from aiohttp import ClientTimeout
 
@@ -44,9 +44,9 @@ class DistributorFileController:
 
     def __init__(self, path: Path) -> None:
         # file hash -> Event if the node is still downloading the file right now (event is fired when load completed)
-        self.files: Dict[str, DistributorHashedVideoFile] = {}
+        self.files: dict[str, DistributorHashedVideoFile] = {}
         self.files_total_size: int = 0  # in bytes
-        self.files_being_copied: Set[DistributorHashedVideoFile] = set()
+        self.files_being_copied: set[DistributorHashedVideoFile] = set()
         self.base_path: Path = path
         self.waiting: int = 0  # number of clients waiting for a file being downloaded
 
@@ -267,7 +267,7 @@ class DistributorFileController:
         path = self.get_path(dist_file)
         await get_running_loop().run_in_executor(None, path.unlink)
 
-    def get_copy_file_status(self) -> List[DistributorCopyFileStatus]:
+    def get_copy_file_status(self) -> list[DistributorCopyFileStatus]:
         """Returns a list of `DistributorCopyFileStatus` objects, one for each file currently being copied"""
         now = time()
         return [

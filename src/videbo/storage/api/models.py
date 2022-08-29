@@ -1,5 +1,5 @@
 from enum import Enum
-from typing import Dict, FrozenSet, List, Optional
+from typing import Optional
 
 from videbo.models import BaseJWTData, RequestJWTData, JSONBaseModel, NodeStatus
 from videbo.distributor.api.models import DistributorStatus
@@ -28,7 +28,7 @@ class FileType(Enum):
     THUMBNAIL_TEMP = 'thumbnail_temp'
 
     @classmethod
-    def values(cls) -> FrozenSet[str]:
+    def values(cls) -> frozenset[str]:
         return frozenset(member.value for member in cls.__members__.values())
 
 
@@ -53,7 +53,7 @@ class RequestFileJWTData(RequestJWTData):
 
 
 class StorageStatus(NodeStatus):
-    distributor_nodes: List[str]  # list of base_urls
+    distributor_nodes: list[str]  # list of base_urls
     num_current_uploads: int
 
 
@@ -70,7 +70,7 @@ class StorageFileInfo(JSONBaseModel):
 
 
 class StorageFilesList(JSONBaseModel):
-    files: List[StorageFileInfo]
+    files: list[StorageFileInfo]
 
 
 class DistributorNodeInfo(JSONBaseModel):
@@ -78,11 +78,11 @@ class DistributorNodeInfo(JSONBaseModel):
 
 
 class DistributorStatusDict(JSONBaseModel):
-    nodes: Dict[str, DistributorStatus]  # keys are base urls
+    nodes: dict[str, DistributorStatus]  # keys are base urls
 
 
 class DeleteFilesList(JSONBaseModel):
-    hashes: List[str]
+    hashes: list[str]
 
 
 class FileUploadedResponseJWT(BaseJWTData):

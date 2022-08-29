@@ -3,10 +3,11 @@ import os
 import re
 from asyncio import CancelledError, Task, gather, get_event_loop, get_running_loop, sleep
 from collections import OrderedDict
+from collections.abc import Awaitable, Callable, Iterable
 from inspect import Parameter, isawaitable, isclass, signature
 from pathlib import Path
 from time import time
-from typing import Any, Awaitable, Callable, Hashable, Iterable, List, Optional, Set, Tuple, Type, TypeVar
+from typing import Any, Hashable, Optional, Type, TypeVar
 
 from pydantic import BaseModel
 
@@ -22,7 +23,7 @@ M = TypeVar('M', bound=BaseModel)
 
 
 class TaskManager:
-    _tasks: Set[Task[Any]] = set()
+    _tasks: set[Task[Any]] = set()
 
     @classmethod
     def cancel_all(cls) -> None:
@@ -60,8 +61,8 @@ class Periodic:
         self.kwargs = kwargs
         self.task_name: str = f'periodic-{self.async_func.__name__}'  # for convenience
         self._task: Optional[Task[Any]] = None  # initialized upon starting periodic execution
-        self.pre_stop_callbacks: List[StopCallbackT] = []
-        self.post_stop_callbacks: List[StopCallbackT] = []
+        self.pre_stop_callbacks: list[StopCallbackT] = []
+        self.post_stop_callbacks: list[StopCallbackT] = []
 
     async def loop(self, interval_seconds: float, limit: Optional[int] = None, call_immediately: bool = False) -> None:
         """
@@ -105,7 +106,7 @@ class Periodic:
         return out
 
     @staticmethod
-    async def _run_callbacks(callbacks: List[StopCallbackT]) -> None:
+    async def _run_callbacks(callbacks: list[StopCallbackT]) -> None:
         """Taking into account if the callback functions require the `await` syntax, they are executed in order."""
         for func in callbacks:
             out = func()
@@ -123,7 +124,7 @@ class BytesLimitLRU(OrderedDict[Hashable, bytes]):
     Only `bytes` type values are accepted. Their size is calculated by passing them into the builtin `len()` function.
     """
 
-    def __init__(self, max_bytes: int, other: Iterable[Tuple[Hashable, bytes]] = (), **kwargs: bytes) -> None:
+    def __init__(self, max_bytes: int, other: Iterable[tuple[Hashable, bytes]] = (), **kwargs: bytes) -> None:
         """
         Uses the `dict` constructor to initialize; in addition the `.max_bytes` attribute is set and the protected
         attribute `._total_bytes` used for keeping track of the total size of the values stored is initialized.
@@ -193,7 +194,7 @@ class BytesLimitLRU(OrderedDict[Hashable, bytes]):
     def space_left(self) -> int: return self.max_bytes - self._total_bytes
 
 
-async def gather_in_batches(batch_size: int, *aws: Awaitable[Any], return_exceptions: bool = False) -> List[Any]:
+async def gather_in_batches(batch_size: int, *aws: Awaitable[Any], return_exceptions: bool = False) -> list[Any]:
     results = []
     for idx in range(0, len(aws), batch_size):
         results += await gather(*aws[idx:idx + batch_size], return_exceptions=return_exceptions)
@@ -232,7 +233,7 @@ def rel_path(filename: str) -> Path:
     return Path(filename[:2], filename)
 
 
-def get_parameters_of_type(function: Callable[..., Any], cls: type) -> List[Parameter]:
+def get_parameters_of_type(function: Callable[..., Any], cls: type) -> list[Parameter]:
     output = []
     param: Parameter
     for name, param in signature(function).parameters.items():
@@ -241,7 +242,7 @@ def get_parameters_of_type(function: Callable[..., Any], cls: type) -> List[Para
     return output
 
 
-def get_route_model_param(route_handler: RouteHandler, model: Type[M]) -> Tuple[str, Type[M]]:
+def get_route_model_param(route_handler: RouteHandler, model: Type[M]) -> tuple[str, Type[M]]:
     params = get_parameters_of_type(route_handler, model)
     if len(params) == 0:
         raise InvalidRouteSignature(f"No parameter of the type `{model.__name__}` present in function "

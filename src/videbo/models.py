@@ -1,5 +1,5 @@
 from enum import Enum, IntEnum
-from typing import Any, Dict, Optional, Type, TypeVar, Union
+from typing import Any, Optional, Type, TypeVar, Union
 
 import jwt
 from pydantic import BaseModel, validator
@@ -57,7 +57,7 @@ class BaseJWTData(BaseModel):
                     raise ValueError(f"Invalid issuer '{v}'")
         raise TypeError(f"{repr(v)} is not a valid issuer type")
 
-    def dict(self, *args: Any, **kwargs: Any) -> Dict[str, Any]:
+    def dict(self, *args: Any, **kwargs: Any) -> dict[str, Any]:
         """
         Replaces enum members with their values in the dictionary representation.
 
@@ -144,7 +144,7 @@ class RequestJWTData(BaseJWTData):
         raise TypeError(f"{repr(v)} is not a valid role type")
 
     @validator('role')
-    def role_appropriate_for_external(cls, v: Role, values: Dict[str, Any]) -> Role:
+    def role_appropriate_for_external(cls, v: Role, values: dict[str, Any]) -> Role:
         """Ensures that the role level is not greater than `lms`, if the issuer is supposed to be external."""
         if values.get('iss') == TokenIssuer.external and v > Role.lms:
             raise ValueError("External tokens can only be issued for a role up to LMS")

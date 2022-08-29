@@ -1,7 +1,7 @@
 import asyncio
 from time import time
 from pathlib import Path
-from typing import List, Tuple, Union
+from typing import Union
 
 from aiohttp.web import Request, RouteTableDef
 from aiohttp.web_exceptions import HTTPNotFound, HTTPOk, HTTPServiceUnavailable, HTTPInternalServerError
@@ -45,7 +45,7 @@ async def get_status(_request: Request, _jwt_data: RequestJWTData) -> Response:
 @routes.get(r'/api/distributor/files')  # type: ignore[arg-type]
 @ensure_auth(Role.node)
 async def get_all_files(_request: Request, _jwt_data: RequestJWTData) -> Response:
-    all_files: List[Tuple[str, str]] = []
+    all_files: list[tuple[str, str]] = []
     for file in DistributorFileController.get_instance().files.values():
         all_files.append((file.hash, file.file_extension))
 
@@ -72,7 +72,7 @@ async def copy_file(request: Request, _jwt_data: RequestJWTData, data: Distribut
 @ensure_json_body
 async def delete_files(_request: Request, _jwt_data: RequestJWTData, data: DistributorDeleteFiles) -> Response:
     file_controller = DistributorFileController.get_instance()
-    files_skipped: List[Tuple[str, str]] = []
+    files_skipped: list[tuple[str, str]] = []
     for file_hash, file_ext in data.files:
         try:
             await file_controller.delete_file(file_hash, safe=data.safe)

@@ -1,10 +1,11 @@
 import logging
 import functools
 import urllib.parse
+from collections.abc import AsyncIterator, Callable
 from pathlib import Path
 from json import JSONDecodeError
 from time import time
-from typing import Any, AsyncIterator, Callable, Dict, List, Optional, Tuple, Type, Union, cast, overload
+from typing import Any, Optional, Type, Union, cast, overload
 
 from aiohttp.client import ClientSession, ClientError, ClientTimeout
 from aiohttp.typedefs import LooseHeaders
@@ -130,7 +131,7 @@ def ensure_json_body(_func: Optional[RouteHandler] = None, *,
         return decorator(_func)
 
 
-def get_x_accel_headers(redirect_uri: str, limit_rate_bytes: Optional[int] = None) -> Dict[str, str]:
+def get_x_accel_headers(redirect_uri: str, limit_rate_bytes: Optional[int] = None) -> dict[str, str]:
     headers = {'X-Accel-Redirect': redirect_uri}
     if limit_rate_bytes:
         headers['X-Accel-Limit-Rate'] = str(limit_rate_bytes)
@@ -171,7 +172,7 @@ def file_serve_response(path: Path, x_accel: bool, downloadas: Optional[str] = N
     return FileResponse(path, headers=headers)
 
 
-def file_serve_headers(downloadas: Optional[str] = None) -> Dict[str, str]:
+def file_serve_headers(downloadas: Optional[str] = None) -> dict[str, str]:
     headers = {
         'Cache-Control': 'private, max-age=50400'
     }
@@ -180,8 +181,8 @@ def file_serve_headers(downloadas: Optional[str] = None) -> Dict[str, str]:
     return headers
 
 
-def register_route_with_cors(routes: RouteTableDef, allow_methods: Union[str, List[str]], path: str,
-                             allow_headers: Optional[List[str]] = None) -> Callable[[RouteHandler], RouteHandler]:
+def register_route_with_cors(routes: RouteTableDef, allow_methods: Union[str, list[str]], path: str,
+                             allow_headers: Optional[list[str]] = None) -> Callable[[RouteHandler], RouteHandler]:
     """Decorator function used to add Cross-Origin Resource Sharing (CORS) header fields to the responses.
 
     It also registers a route for the path with the OPTIONS method.
@@ -227,7 +228,7 @@ def json_response(data: JSONBaseModel, status: int = 200) -> Response:
 
 class HTTPClient:
     session: ClientSession
-    _cached_jwt: Dict[Tuple[Role, TokenIssuer], Tuple[str, float]] = {}  # (role, int|ext) -> (jwt, expiration date)
+    _cached_jwt: dict[tuple[Role, TokenIssuer], tuple[str, float]] = {}  # (role, int|ext) -> (jwt, expiration date)
 
     @classmethod
     def create_client_session(cls) -> None:
@@ -243,7 +244,7 @@ class HTTPClient:
                              expected_return_type: Optional[Type[JSONBaseModel]] = None,
                              timeout: Union[ClientTimeout, int, None] = None,
                              external: bool = False,
-                             print_connection_exception: bool = True) -> Tuple[int, Any]:
+                             print_connection_exception: bool = True) -> tuple[int, Any]:
         """Do a HTTP request, i.e. a request to another node with a JWT using the internal or external secret.
 
         You may transmit json data and specify the expected return type."""
@@ -298,7 +299,7 @@ class HTTPClient:
                                     json_data: Optional[JSONBaseModel] = None,
                                     expected_return_type: Optional[Type[JSONBaseModel]] = None,
                                     timeout: Union[ClientTimeout, int, None] = None,
-                                    print_connection_exception: bool = True) -> Tuple[int, Any]:
+                                    print_connection_exception: bool = True) -> tuple[int, Any]:
         """Do an internal request with the node role (without having to specify jwt_data)."""
         jwt = cls.get_standard_jwt_with_role(Role.node)
         return await cls.videbo_request(method, url, jwt, json_data, expected_return_type, timeout,
@@ -309,7 +310,7 @@ class HTTPClient:
                                      json_data: Optional[JSONBaseModel] = None,
                                      expected_return_type: Optional[Type[JSONBaseModel]] = None,
                                      timeout: Union[ClientTimeout, int, None] = None,
-                                     print_connection_exception: bool = True) -> Tuple[int, Any]:
+                                     print_connection_exception: bool = True) -> tuple[int, Any]:
         """Do an internal request with the node role (without having to specify jwt_data)."""
         jwt = cls.get_standard_jwt_with_role(Role.admin)
         return await cls.videbo_request(method, url, jwt, json_data, expected_return_type, timeout,

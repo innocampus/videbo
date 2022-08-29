@@ -2,7 +2,7 @@ import asyncio
 import json
 import shutil
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Optional
 
 from videbo import storage_settings as settings
 from videbo.exceptions import FileCmdError, FFMpegError, FFProbeError, InvalidMimeTypeError, InvalidVideoError
@@ -19,7 +19,7 @@ class VideoConfig:
         self.binary_ffprobe = binary_ffprobe or settings.binary_ffprobe
         self.binary_file = binary_file or settings.binary_file
 
-    async def create_sudo_subprocess(self, args: List[str], binary: str,
+    async def create_sudo_subprocess(self, args: list[str], binary: str,
                                      stdout: int = asyncio.subprocess.DEVNULL,
                                      stderr: int = asyncio.subprocess.DEVNULL) -> asyncio.subprocess.Process:
         if binary == FILE:
@@ -45,8 +45,8 @@ class VideoInfo:
         self.valid_video = False
         self._video_config = video_config
         self.mime_type: str = ''
-        self.streams: List[Dict[str, Any]] = []
-        self.format: Dict[str, Any] = {}
+        self.streams: list[dict[str, Any]] = []
+        self.format: dict[str, Any] = {}
 
     async def fetch_mime_type(self) -> None:
         """Call file and fetch mime type."""
@@ -82,7 +82,7 @@ class VideoInfo:
         except KeyError:
             raise FFProbeError(timeout=False, stderr=err)
 
-    def get_one_stream_type(self, codec_type: str) -> Optional[Dict[str, Any]]:
+    def get_one_stream_type(self, codec_type: str) -> Optional[dict[str, Any]]:
         """Get one stream in video of a certain type (video, audio)"""
         for stream in self.streams:
             if stream["codec_type"] == codec_type:
@@ -106,7 +106,7 @@ class VideoInfo:
 
         return max_duration
 
-    def get_file_format_container(self) -> List[str]:
+    def get_file_format_container(self) -> list[str]:
         """Return the container formats as list."""
         formats = self.format.get("format_name", "")  # type: str
         return formats.split(',')

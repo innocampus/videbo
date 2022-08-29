@@ -1,6 +1,6 @@
 import json
 from distutils.util import strtobool
-from typing import List, Optional, Union
+from typing import Optional, Union
 from urllib.parse import urlencode
 
 from videbo import storage_settings
@@ -51,7 +51,7 @@ async def find_orphaned_files(delete: bool) -> None:
         print("\nIf you want to delete all orphaned files, use the command with the --delete flag.")
 
 
-async def get_filtered_files(**kwargs: Union[str, int, bool]) -> Optional[List[StorageFileInfo]]:
+async def get_filtered_files(**kwargs: Union[str, int, bool]) -> Optional[list[StorageFileInfo]]:
     """
     Makes a GET request to the storage node's files endpoint to receive a list of stored files.
     Any keyword arguments passed are encoded into the url query string, and may be used to filter the results.

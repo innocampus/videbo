@@ -2,7 +2,7 @@ import asyncio
 import re
 from logging import Logger, getLogger
 from time import time
-from typing import Optional, Dict, List, Union
+from typing import Optional, Union
 
 from videbo.exceptions import HTTPResponseError
 from videbo.misc import MEGA, TaskManager
@@ -71,7 +71,7 @@ class NetworkInterfaces:
     """
     # make _interfaces a singleton since they can be shared on one system
     _instance: Optional["NetworkInterfaces"] = None
-    _interfaces: Dict[str, NetworkInterface] = {}
+    _interfaces: dict[str, NetworkInterface] = {}
 
     # A regular expression which separates the interesting fields and saves them in named groups
     # @see https://stackoverflow.com/questions/24897608/how-to-find-network-usage-in-linux-programatically
@@ -123,7 +123,7 @@ class NetworkInterfaces:
             raise KeyError("server type was never fetched")
         return getattr(self._server_status, "server_type", "Unknown")
 
-    def get_interface_names(self) -> List[str]:
+    def get_interface_names(self) -> list[str]:
         return list(self._interfaces.keys())
 
     async def _fetch_proc_info(self) -> None:

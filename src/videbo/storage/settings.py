@@ -1,5 +1,5 @@
 from pathlib import Path
-from typing import List, Set, Optional
+from typing import Optional
 
 from pydantic import validator
 
@@ -16,15 +16,15 @@ class StorageSettings(CommonSettings):
     max_file_size_mb: float = 200.0
     thumb_suggestion_count: int = 3
     thumb_height: int = 90
-    mime_types_allowed: Set[str] = {'video/mp4', 'video/webm'}
-    container_formats_allowed: Set[str] = {'mp4', 'webm'}
-    video_codecs_allowed: Set[str] = {'h264', 'vp8'}
-    audio_codecs_allowed: Set[str] = {'aac', 'vorbis'}
+    mime_types_allowed: set[str] = {'video/mp4', 'video/webm'}
+    container_formats_allowed: set[str] = {'mp4', 'webm'}
+    video_codecs_allowed: set[str] = {'h264', 'vp8'}
+    audio_codecs_allowed: set[str] = {'aac', 'vorbis'}
     check_user: Optional[str] = None
     binary_file: str = 'file'
     binary_ffmpeg: str = 'ffmpeg'
     binary_ffprobe: str = 'ffprobe'
-    static_dist_node_base_urls: List[str] = ['http://localhost:9030/', ]
+    static_dist_node_base_urls: list[str] = ['http://localhost:9030/', ]
     copy_to_dist_views_threshold: int = 3
     reset_views_every_hours: int = 4
     dist_free_space_target_ratio: float = 0.1

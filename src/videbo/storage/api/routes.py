@@ -1,10 +1,11 @@
 import logging
 import asyncio
 import urllib.parse
+from collections.abc import Iterator
 from distutils.util import strtobool
 from pathlib import Path
 from time import time
-from typing import Iterator, Optional, Tuple, Union
+from typing import Optional, Union
 
 from aiohttp.web_request import Request
 from aiohttp.web_response import Response, json_response
@@ -148,7 +149,7 @@ def file_too_big_response() -> Response:
     return json_response({'max_size': settings.max_file_size_mb}, status=413)
 
 
-async def save_temp_file(file: TempFile, video_info: VideoInfo) -> Tuple[HashedVideoFile, int, float]:
+async def save_temp_file(file: TempFile, video_info: VideoInfo) -> tuple[HashedVideoFile, int, float]:
     """Saves video in a temporary file and returns its wrapper, thumbnail count and the video duration."""
     video_duration = int(video_info.get_length())
     try:

@@ -2,7 +2,7 @@ import logging
 import sys
 from argparse import ArgumentParser, SUPPRESS
 from pathlib import Path
-from typing import Dict, List, Any
+from typing import Any
 
 from .base_settings import DEFAULT_CONFIG_FILE_PATHS, CONFIG_FILE_PATHS_PARAM
 from .cli.args import setup_cli_args, run
@@ -20,7 +20,7 @@ LISTEN_ADDRESS, LISTEN_PORT = 'listen_address', 'listen_port'
 _VALID_SETTINGS_KWARGS = {CONFIG_FILE_PATHS_PARAM, LISTEN_ADDRESS, LISTEN_PORT}
 
 
-def parse_cli() -> Dict[str, Any]:
+def parse_cli() -> dict[str, Any]:
     parser = ArgumentParser(
         prog='videbo',
         description="Launch a video server node or interact with one that is already running."
@@ -52,7 +52,7 @@ def parse_cli() -> Dict[str, Any]:
     return vars(parser.parse_args())
 
 
-def path_list(string: str) -> List[Path]:
+def path_list(string: str) -> list[Path]:
     return [Path(path.strip()) for path in string.split(',')]
 
 

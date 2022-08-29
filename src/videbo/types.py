@@ -1,4 +1,5 @@
-from typing import Any, AsyncIterator, Awaitable, Callable, Tuple, TypeVar
+from collections.abc import AsyncIterator, Awaitable, Callable
+from typing import Any, TypeVar
 
 from aiohttp.web_app import Application
 
@@ -7,6 +8,6 @@ AwaitFuncT = Callable[..., Awaitable[Any]]
 
 RouteHandler = TypeVar('RouteHandler', bound=AwaitFuncT)
 
-FileID = Tuple[str, str]  # (hash, file extension)
+FileID = tuple[str, str]  # (hash, file extension)
 
 CleanupContext = Callable[[Application], AsyncIterator[None]]

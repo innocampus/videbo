@@ -1,5 +1,5 @@
 import logging
-from typing import AsyncIterator
+from collections.abc import AsyncIterator
 
 from aiohttp.web_app import Application
 

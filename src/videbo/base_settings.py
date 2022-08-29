@@ -1,9 +1,10 @@
 import logging
 import sys
+from collections.abc import Callable
 from configparser import ConfigParser
 from pathlib import Path
 from distutils.util import strtobool
-from typing import Any, Callable, ClassVar, Dict, List, Optional, Set, Tuple, Union
+from typing import Any, ClassVar, Optional, Union
 
 from pydantic import BaseSettings, validator
 from pydantic.env_settings import SettingsSourceCallable
@@ -36,7 +37,7 @@ CONFIG_FILE_PATHS_PARAM = '_config_file_paths'
 
 class AbstractBaseSettings(BaseSettings):
     _section: ClassVar[str] = ''
-    _config_file_paths: ClassVar[List[Path]] = DEFAULT_CONFIG_FILE_PATHS
+    _config_file_paths: ClassVar[list[Path]] = DEFAULT_CONFIG_FILE_PATHS
 
     def __init__(self, *args: Any, **kwargs: Any) -> None:
         self._config_file_paths.extend(kwargs.pop(CONFIG_FILE_PATHS_PARAM, []))
@@ -45,7 +46,7 @@ class AbstractBaseSettings(BaseSettings):
     def get_section(self) -> str:
         return self._section
 
-    def get_config_file_paths(self) -> List[Path]:
+    def get_config_file_paths(self) -> list[Path]:
         return self._config_file_paths
 
     class Config:
@@ -58,7 +59,7 @@ class AbstractBaseSettings(BaseSettings):
                 init_settings: SettingsSourceCallable,
                 env_settings: SettingsSourceCallable,
                 file_secret_settings: SettingsSourceCallable
-        ) -> Tuple[Callable[['CommonSettings'], Dict[str, Any]], ...]:
+        ) -> tuple[Callable[['CommonSettings'], dict[str, Any]], ...]:
             return init_settings, env_settings, ini_config_settings_source
 
 
@@ -70,7 +71,7 @@ class CommonSettings(AbstractBaseSettings):
     internal_api_secret: str = ''
     external_api_secret: str = ''
     forbid_admin_via_proxy: bool = True
-    lms_base_urls: List[str] = []
+    lms_base_urls: list[str] = []
     dev_mode: bool = False
     tx_max_rate_mbit: float = 20.0
     server_status_page: Optional[str] = None
@@ -78,7 +79,7 @@ class CommonSettings(AbstractBaseSettings):
     nginx_x_accel_limit_rate_mbit: float = 0.0
 
     @validator('*', pre=True)
-    def split_str(cls, v: str, field: ModelField) -> Union[str, List[str], Set[str]]:
+    def split_str(cls, v: str, field: ModelField) -> Union[str, list[str], set[str]]:
         if field.type_ is str and isinstance(v, str):
             if field.shape == SHAPE_LIST:
                 return [part.strip() for part in v.split(',')]
@@ -87,7 +88,7 @@ class CommonSettings(AbstractBaseSettings):
         return v
 
     @validator('*')
-    def discard_empty_str_elements(cls, v: str, field: ModelField) -> Union[str, List[str], Set[str]]:
+    def discard_empty_str_elements(cls, v: str, field: ModelField) -> Union[str, list[str], set[str]]:
         if field.type_ is str:
             if isinstance(v, list):
                 return [element for element in v if element != '']
@@ -102,7 +103,7 @@ class CommonSettings(AbstractBaseSettings):
     _norm_nginx_x_accel_location = validator('nginx_x_accel_location', allow_reuse=True)(normalize_url)
 
 
-def ini_config_settings_source(settings: CommonSettings) -> Dict[str, Any]:
+def ini_config_settings_source(settings: CommonSettings) -> dict[str, Any]:
     """
     Incrementally loads (and updates) settings from all config files that can be found as returned by the
     `Settings.get_config_file_paths` method and returns the result in a dictionary.
@@ -118,7 +119,7 @@ def ini_config_settings_source(settings: CommonSettings) -> Dict[str, Any]:
     return config
 
 
-def load_ini_config(path: Path, settings: CommonSettings) -> Dict[str, Any]:
+def load_ini_config(path: Path, settings: CommonSettings) -> dict[str, Any]:
     """
     Loads settings from a single section in an `.ini`-style configuration file.
     NOTE: As per construction of the `ConfigParser` class, parameters from the DEFAULT section will also be included,
@@ -131,7 +132,7 @@ def load_ini_config(path: Path, settings: CommonSettings) -> Dict[str, Any]:
         sys.exit(3)
     parser = ConfigParser()
     parser.read(path)
-    config: Dict[str, Any] = dict(parser[settings.get_section()])
+    config: dict[str, Any] = dict(parser[settings.get_section()])
     # Perform type conversion for each value.
     for name, value in config.items():
         assert isinstance(value, str)
