@@ -22,10 +22,6 @@ class AuthTestCase(IsolatedAsyncioTestCase):
         # Settings mocking:
         self.settings_patcher = patch(SETTINGS_PATH)
         self.mock_settings = self.settings_patcher.start()
-        self.internal_secret = 'secretA'
-        self.external_secret = 'secretB'
-        self.mock_settings.internal_api_secret = self.internal_secret
-        self.mock_settings.external_api_secret = self.external_secret
 
     def tearDown(self) -> None:
         super().tearDown()

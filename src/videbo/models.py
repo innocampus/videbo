@@ -8,6 +8,7 @@ from videbo import storage_settings
 
 
 __all__ = [
+    'DEFAULT_JWT_ALG',
     'JSONBaseModel',
     'TokenIssuer',
     'Role',
@@ -69,25 +70,21 @@ class BaseJWTData(BaseModel):
                 d[attr_name] = attr_value.value
         return d
 
-    def encode(self, *, secret: Optional[str] = None, algorithm: str = DEFAULT_JWT_ALG) -> str:
+    def encode(self, *, algorithm: str = DEFAULT_JWT_ALG) -> str:
         """
         Encodes its data in the form of a JWT string.
 
         Args:
-            secret (optional):
-                Secret key to use for signing the token; by default the `storage_settings.internal_api_secret` is used
-                with internal and the `.external_api_secret` with external JWT issuers.
             algorithm (optional):
                 JWT signature algorithm to use for encoding; defaults to the constant `DEFAULT_JWT_ALG`.
 
         Returns:
             The JWT string containing the model instance's data.
         """
-        if secret is None:
-            if self.iss == TokenIssuer.internal:
-                secret = storage_settings.internal_api_secret
-            else:
-                secret = storage_settings.external_api_secret
+        if self.iss == TokenIssuer.internal:
+            secret = storage_settings.internal_api_secret
+        else:
+            secret = storage_settings.external_api_secret
         return jwt.encode(self.dict(exclude_unset=True), secret, algorithm=algorithm, headers={'kid': self.iss.value})
 
     @classmethod
