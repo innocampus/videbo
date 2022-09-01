@@ -239,11 +239,6 @@ def route_with_cors(routes: RouteTableDef, path: str, *allow_methods: str,
     return decorator
 
 
-# TODO: Move to the model class
-def json_response(data: JSONBaseModel, status: int = 200) -> Response:
-    return Response(text=data.json(), status=status, content_type='application/json')
-
-
 class HTTPClient:
     session: ClientSession
     _cached_jwt: dict[tuple[Role, TokenIssuer], tuple[str, float]] = {}  # (role, int|ext) -> (jwt, expiration date)

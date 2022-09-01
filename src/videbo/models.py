@@ -2,6 +2,7 @@ from enum import Enum, IntEnum
 from typing import Any, Optional, Type, TypeVar, Union
 
 import jwt
+from aiohttp.web import Response
 from pydantic import BaseModel, validator
 
 from videbo import storage_settings
@@ -23,7 +24,8 @@ DEFAULT_JWT_ALG = 'HS256'
 
 
 class JSONBaseModel(BaseModel):
-    pass
+    def json_response(self, status_code: int = 200, **kwargs: Any) -> Response:
+        return Response(text=self.json(**kwargs), status=status_code, content_type='application/json')
 
 
 class TokenIssuer(str, Enum):

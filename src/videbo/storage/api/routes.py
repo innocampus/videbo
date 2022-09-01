@@ -25,8 +25,7 @@ from videbo.misc import MEGA, rel_path
 from videbo.models import RequestJWTData, Role, TokenIssuer
 from videbo.network import NetworkInterfaces
 from videbo.video import VideoInfo, VideoValidator, VideoConfig
-from videbo.web import (ensure_json_body, route_with_cors, json_response as model_json_response,
-                        file_serve_response, file_serve_headers)
+from videbo.web import ensure_json_body, file_serve_headers, file_serve_response, route_with_cors
 from videbo.storage.util import (FileStorage, JPG_EXT, HashedVideoFile, StoredHashedVideoFile, TempFile,
                                  is_allowed_file_ending, schedule_video_delete)
 from videbo.storage.exceptions import (FileTooBigError, FormFieldMissing, BadFileExtension, UnknownDistURL,
@@ -479,14 +478,14 @@ async def enable_dist_node(_request: Request, _jwt_data: RequestJWTData, data: D
 @ensure_auth(Role.admin)
 async def get_all_dist_nodes(_request: Request, _jwt_data: RequestJWTData) -> Response:
     nodes_statuses = FileStorage.get_instance().distribution_controller.get_nodes_status()
-    return model_json_response(DistributorStatusDict(nodes=nodes_statuses))
+    return DistributorStatusDict(nodes=nodes_statuses).json_response()
 
 
 @routes.get(r'/api/storage/status')  # type: ignore[arg-type]
 @ensure_auth(Role.admin)
 async def get_status(_request: Request, _jwt_data: RequestJWTData) -> Response:
-    storage = FileStorage.get_instance()
-    return model_json_response(await storage.get_status())
+    storage_status = await FileStorage.get_instance().get_status()
+    return storage_status.json_response()
 
 
 @routes.get(r'/api/storage/files')  # type: ignore[arg-type]
@@ -504,7 +503,7 @@ async def get_files_list(request: Request, _jwt_data: RequestJWTData) -> Respons
         files_dict = storage.all_files()
     for file in files_dict.values():
         files.append(StorageFileInfo(hash=file.hash, file_extension=file.file_extension, file_size=file.file_size))
-    return model_json_response(StorageFilesList(files=files))
+    return StorageFilesList(files=files).json_response()
 
 
 @routes.post('/api/storage/delete')  # type: ignore[arg-type]

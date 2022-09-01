@@ -13,7 +13,7 @@ from videbo.auth import ensure_auth
 from videbo.misc import MEGA, rel_path
 from videbo.models import TokenIssuer, Role, RequestJWTData
 from videbo.network import NetworkInterfaces
-from videbo.web import json_response, ensure_json_body, file_serve_response
+from videbo.web import ensure_json_body, file_serve_response
 from videbo.storage.util import HashedVideoFile
 from videbo.storage.api.models import RequestFileJWTData, FileType
 from videbo.distributor.files import DistributorFileController, TooManyWaitingClients, NoSuchFile, NotSafeToDelete
@@ -39,7 +39,7 @@ async def get_status(_request: Request, _jwt_data: RequestJWTData) -> Response:
     status.copy_files_status = file_controller.get_copy_file_status()
     status.waiting_clients = file_controller.waiting
     status.bound_to_storage_node_base_url = settings.bound_to_storage_base_url
-    return json_response(status)
+    return status.json_response()
 
 
 @routes.get(r'/api/distributor/files')  # type: ignore[arg-type]
@@ -48,8 +48,7 @@ async def get_all_files(_request: Request, _jwt_data: RequestJWTData) -> Respons
     all_files: list[tuple[str, str]] = []
     for file in DistributorFileController.get_instance().files.values():
         all_files.append((file.hash, file.file_extension))
-
-    return json_response(DistributorFileList(files=all_files))
+    return DistributorFileList(files=all_files).json_response()
 
 
 @routes.post(r'/api/distributor/copy/{hash:[0-9a-f]{64}}{file_ext:\.[0-9a-z]{1,10}}')  # type: ignore[arg-type]
@@ -79,8 +78,7 @@ async def delete_files(_request: Request, _jwt_data: RequestJWTData, data: Distr
         except (NoSuchFile, NotSafeToDelete):
             files_skipped.append((file_hash, file_ext))
     free_space = await file_controller.get_free_space()
-    resp = DistributorDeleteFilesResponse(files_skipped=files_skipped, free_space=free_space)
-    return json_response(resp)
+    return DistributorDeleteFilesResponse(files_skipped=files_skipped, free_space=free_space).json_response()
 
 
 @routes.get('/file')  # type: ignore[arg-type]

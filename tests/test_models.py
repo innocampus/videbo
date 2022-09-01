@@ -1,6 +1,7 @@
 from time import time
 from unittest import TestCase
 from unittest.mock import patch
+from typing import Optional
 
 import jwt
 from pydantic import ValidationError
@@ -10,6 +11,25 @@ from videbo import models
 
 TESTED_MODULE_PATH = 'videbo.models'
 SETTINGS_PATH = TESTED_MODULE_PATH + '.storage_settings'
+
+
+class JSONBaseModelTestCase(TestCase):
+
+    def test_json_response(self) -> None:
+        class ModelForTesting(models.JSONBaseModel):
+            foo: int
+            bar: str
+            baz: Optional[str] = None
+
+        data = dict(foo=42, bar='baz')
+        obj = ModelForTesting(**data)
+
+        json_kwargs = dict(exclude_unset=True)
+        text = obj.json(**json_kwargs)
+        status = 201
+        response = obj.json_response(status_code=status, **json_kwargs)
+        self.assertEqual(text, response.text)
+        self.assertEqual(status, response.status)
 
 
 class BaseJWTDataTestCase(TestCase):
