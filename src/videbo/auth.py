@@ -135,12 +135,12 @@ def ensure_auth(min_level: int, *, headers: Optional[LooseHeaders] = None) -> Ca
     min_level = Role(min_level)  # immediately throws a `ValueError` if `min_level` is not a valid `Role` value
 
     def decorator(function: RouteHandler) -> RouteHandler:
-        """internal decorator function"""
+        """Internal decorator function"""
         param_name, param_class = get_route_model_param(function, RequestJWTData)
 
         @functools.wraps(function)
         async def wrapper(request: Request, *args: Any, **kwargs: Any) -> Any:
-            """Wrapper around the actual function call."""
+            """Wrapper around the actual function call"""
             try:
                 check_and_save_jwt_data(request, min_level, param_class)
             except (jwt.InvalidTokenError, NotAuthorized):

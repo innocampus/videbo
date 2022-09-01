@@ -108,5 +108,6 @@ async def request_file(request: Request, jwt_data: RequestFileJWTData) -> Union[
     else:
         path = file_controller.get_path(video)
     dl = request.query.get('downloadas')
+    # The 'X-Accel-Limit-Rate' header value should be non-zero, only if the request is not internal:
     limit_rate = float(jwt_data.iss != TokenIssuer.internal and settings.nginx_x_accel_limit_rate_mbit)
     return file_serve_response(path, bool(settings.nginx_x_accel_location), dl, limit_rate)

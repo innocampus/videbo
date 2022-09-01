@@ -1,7 +1,7 @@
 import logging
 import functools
 import urllib.parse
-from collections.abc import AsyncIterator, Callable
+from collections.abc import AsyncIterator, Callable, Iterable
 from pathlib import Path
 from json import JSONDecodeError
 from time import time
@@ -15,11 +15,11 @@ from aiohttp.web_exceptions import HTTPException, HTTPBadRequest
 from aiohttp.web_fileresponse import FileResponse
 from aiohttp.web_request import Request
 from aiohttp.web_response import Response
-from aiohttp.web_routedef import RouteDef, RouteTableDef
+from aiohttp.web_routedef import RouteTableDef
 from pydantic import ValidationError
 
 from videbo.exceptions import HTTPResponseError
-from videbo.misc import TaskManager, sanitize_filename, get_route_model_param
+from videbo.misc import TaskManager, sanitize_filename, get_route_model_param, MEGA
 from videbo.models import JSONBaseModel, TokenIssuer, Role, RequestJWTData
 from videbo.types import CleanupContext, RouteHandler
 from videbo.video import get_content_type_for_extension
@@ -131,48 +131,13 @@ def ensure_json_body(_func: Optional[RouteHandler] = None, *,
         return decorator(_func)
 
 
-def get_x_accel_headers(redirect_uri: str, limit_rate_bytes: Optional[int] = None) -> dict[str, str]:
-    headers = {'X-Accel-Redirect': redirect_uri}
-    if limit_rate_bytes:
-        headers['X-Accel-Limit-Rate'] = str(limit_rate_bytes)
-    return headers
-
-
-def get_x_accel_limit_rate(in_mbit: Optional[float]) -> int:
-    if in_mbit is None:
-        return 0
-    return int(in_mbit * 2**20 / 8)
-
-
-def file_serve_response(path: Path, x_accel: bool, downloadas: Optional[str] = None,
-                        x_accel_limit_rate: Optional[float] = None) -> Union[Response, FileResponse]:
-    """
-    Constructs a response object to serve a file either "as is" or via NGINX X-Accel capabilities.
-
-    Args:
-        path:
-            Either the actual full path to the file or the X-Accel-Redirect URI
-        x_accel:
-            If `True`, the response will not reference the file directly, but instead contain relevant X-Accel headers;
-            otherwise a FileResponse is returned.
-        downloadas (optional):
-            The `downloadas` value of the request's query
-        x_accel_limit_rate (optional):
-            Passed to the `get_x_accel_limit_rate` function to get the X-Accel-Limit-Rate value in bytes
-
-    Returns:
-        An appropriately constructed `aiohttp.web.Response` object, if X-Accel is to be used,
-        and a `aiohttp.web.FileResponse` object for the provided file path otherwise.
-    """
-    headers = file_serve_headers(downloadas)
-    if x_accel:
-        headers.update(get_x_accel_headers(str(path), get_x_accel_limit_rate(x_accel_limit_rate)))
-        content_type = get_content_type_for_extension(''.join(path.suffixes))
-        return Response(headers=headers, content_type=content_type)
-    return FileResponse(path, headers=headers)
-
-
 def file_serve_headers(downloadas: Optional[str] = None) -> dict[str, str]:
+    """
+    Returns a dictionary of HTTP headers to use in file serving responses.
+
+    The 'Cache-Control' header is always set;
+    if `downloadas` is provided, the 'Content-Disposition' header is also set accordingly.
+    """
     headers = {
         'Cache-Control': 'private, max-age=50400'
     }
@@ -181,17 +146,69 @@ def file_serve_headers(downloadas: Optional[str] = None) -> dict[str, str]:
     return headers
 
 
-def register_route_with_cors(routes: RouteTableDef, allow_methods: Union[str, list[str]], path: str,
-                             allow_headers: Optional[list[str]] = None) -> Callable[[RouteHandler], RouteHandler]:
-    """Decorator function used to add Cross-Origin Resource Sharing (CORS) header fields to the responses.
-
-    It also registers a route for the path with the OPTIONS method.
+def get_x_accel_headers(redirect_uri: str, limit_rate_bytes: Optional[int] = None) -> dict[str, str]:
     """
-    if isinstance(allow_methods, str):
-        allow_methods = [allow_methods]
+    Returns a dictionary of HTTP headers to use for reverse proxy setups.
 
+    The 'X-Accel-Redirect' header is always set to `redirect_uri`;
+    if `limit_rate_bytes` is provided, the 'X-Accel-Limit-Rate' header is also set accordingly.
+    """
+    headers = {'X-Accel-Redirect': redirect_uri}
+    if limit_rate_bytes:
+        headers['X-Accel-Limit-Rate'] = str(limit_rate_bytes)
+    return headers
+
+
+def file_serve_response(path: Path, x_accel: bool, downloadas: Optional[str] = None,
+                        x_accel_limit_rate: float = 0.0) -> Union[Response, FileResponse]:
+    """
+    Constructs a response object to serve a file either "as is" or via NGINX X-Accel capabilities.
+
+    Args:
+        path:
+            Either the actual full path to the file or the 'X-Accel-Redirect' URI
+        x_accel:
+            If `True`, the response will not reference the file directly, but instead contain relevant X-Accel headers;
+            otherwise a `FileResponse` is returned.
+        downloadas (optional):
+            The `downloadas` value of the request's query
+        x_accel_limit_rate (optional):
+            'X-Accel-Limit-Rate' header value in megabits (2^20 bits) per second; ignored if `x_accel` is False.
+
+    Returns:
+        An appropriately constructed `aiohttp.web.Response` object, if X-Accel is to be used,
+        and a `aiohttp.web.FileResponse` object for the provided file path otherwise.
+    """
+    headers = file_serve_headers(downloadas)
+    if x_accel:
+        limit_rate_bytes = int(x_accel_limit_rate * MEGA / 8)
+        headers.update(get_x_accel_headers(str(path), limit_rate_bytes))
+        content_type = get_content_type_for_extension(''.join(path.suffixes))
+        return Response(headers=headers, content_type=content_type)
+    return FileResponse(path, headers=headers)
+
+
+def route_with_cors(routes: RouteTableDef, path: str, *allow_methods: str,
+                    allow_headers: Optional[Iterable[str]] = None) -> Callable[[RouteHandler], RouteHandler]:
+    """
+    Decorator function used to register a route with Cross-Origin Resource Sharing (CORS) header fields to the response.
+
+    It also registers a route for the path with the OPTIONS method that responds with the same headers.
+
+    Args:
+        routes:
+            The `aiohttp.web_routedef.RouteTableDef` instance to use for registering the route
+        path:
+            The URL path to register the route for
+        *allow_methods:
+            Each argument should be the name of an HTTP method to register the route with;
+            a route with the `OPTIONS` method is always registered.
+        allow_headers (optional):
+            Can be passed an iterable of strings representing header fields to allow for the route;
+            if provided, a corresponding 'Access-Control-Allow-Headers' header will be added to the response.
+    """
     def decorator(function: RouteHandler) -> RouteHandler:
-        """internal decorator function"""
+        """Internal decorator function"""
         headers = {
             'Access-Control-Allow-Origin': '*',
             'Access-Control-Allow-Methods': ','.join(allow_methods),
@@ -202,7 +219,7 @@ def register_route_with_cors(routes: RouteTableDef, allow_methods: Union[str, li
 
         @functools.wraps(function)
         async def wrapper(request: Request, *args: Any, **kwargs: Any) -> Any:
-            """Wrapper around the actual function call."""
+            """Wrapper around the actual function call"""
             try:
                 response = await function(request, *args, **kwargs)
                 response.headers.extend(headers)
@@ -211,17 +228,18 @@ def register_route_with_cors(routes: RouteTableDef, allow_methods: Union[str, li
                 error.headers.extend(headers)
                 raise error
 
-        async def return_options(request: Request) -> Response:
+        async def return_options(_request: Request) -> Response:
             return Response(headers=headers)
 
         for method in allow_methods:
-            routes._items.append(RouteDef(method, path, wrapper, {}))
-        routes._items.append(RouteDef('OPTIONS', path, return_options, {}))
+            routes.route(method, path)(wrapper)
+        routes.route('OPTIONS', path)(return_options)
 
         return cast(RouteHandler, wrapper)
     return decorator
 
 
+# TODO: Move to the model class
 def json_response(data: JSONBaseModel, status: int = 200) -> Response:
     return Response(text=data.json(), status=status, content_type='application/json')
 

@@ -25,7 +25,7 @@ from videbo.misc import MEGA, rel_path
 from videbo.models import RequestJWTData, Role, TokenIssuer
 from videbo.network import NetworkInterfaces
 from videbo.video import VideoInfo, VideoValidator, VideoConfig
-from videbo.web import (ensure_json_body, register_route_with_cors, json_response as model_json_response,
+from videbo.web import (ensure_json_body, route_with_cors, json_response as model_json_response,
                         file_serve_response, file_serve_headers)
 from videbo.storage.util import (FileStorage, JPG_EXT, HashedVideoFile, StoredHashedVideoFile, TempFile,
                                  is_allowed_file_ending, schedule_video_delete)
@@ -202,13 +202,13 @@ async def read_and_save_temp(file: TempFile, field: BodyPartReader) -> Response:
     return json_response(resp)
 
 
-@register_route_with_cors(routes, 'GET', '/api/upload/maxsize')
+@route_with_cors(routes, '/api/upload/maxsize', 'GET')
 async def get_max_size(_: Request) -> Response:
     """Get max file size in mb."""
     return json_response({'max_size': settings.max_file_size_mb})
 
 
-@register_route_with_cors(routes, 'POST', '/api/upload/file', ['Authorization'])
+@route_with_cors(routes, '/api/upload/file', 'POST', allow_headers=['Authorization'])
 @ensure_auth(Role.client)
 async def upload_file(request: Request, jwt_token: UploadFileJWTData) -> Response:
     """User wants to upload a video."""
@@ -308,6 +308,7 @@ async def request_file(request: Request, jwt_data: RequestFileJWTData) -> Union[
     if settings.nginx_x_accel_location:
         path = Path(settings.nginx_x_accel_location, rel_path(str(video)))
     dl = request.query.get('downloadas')
+    # The 'X-Accel-Limit-Rate' header value should be non-zero, only if the request is not internal:
     limit_rate = float(jwt_data.iss != TokenIssuer.internal and settings.nginx_x_accel_limit_rate_mbit)
     return file_serve_response(path, bool(settings.nginx_x_accel_location), dl, limit_rate)
 
