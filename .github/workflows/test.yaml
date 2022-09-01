@@ -1,0 +1,103 @@
+name: CI - Tests & Checks
+
+on:
+  push:
+    branches:
+      - master
+
+jobs:
+  unit-tests:
+    name: Python ${{ matrix.python-version }} unit tests
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version:
+        - '3.9'
+        - '3.10'
+    steps:
+    - uses: actions/checkout@v3
+
+    - uses: actions/setup-python@v3
+      with:
+        python-version: ${{ matrix.python-version }}
+        cache: 'pip'
+        cache-dependency-path: 'requirements/dev.txt'
+
+    - name: Upgrade pip
+      run: pip install -U pip
+
+    - name: Install dependencies
+      run: pip install -U -r requirements/dev.txt
+
+    - name: Install videbo
+      run: pip install -e .
+
+    - name: Run unit tests for Python ${{ matrix.python-version }}
+      if: ${{ matrix.python-version != '3.10' }}
+      run: python -m tests
+
+    - name: Run unit test coverage script for Python 3.10 and save total percentage
+      if: ${{ matrix.python-version == '3.10' }}
+      run: |
+        total=$(./coverage.sh)
+        [[ $? -eq 0 ]] && echo "coverage=${total}" >> $GITHUB_ENV
+
+    outputs:
+      coverage: ${{ env.coverage }}
+
+  integration-tests:
+    name: Python ${{ matrix.python-version }} integration tests
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version:
+        - '3.9'
+        - '3.10'
+    steps:
+    - uses: actions/checkout@v3
+
+    - uses: actions/setup-python@v3
+      with:
+        python-version: ${{ matrix.python-version }}
+        cache: 'pip'
+        cache-dependency-path: 'requirements/dev.txt'
+
+    - uses: FedericoCarboni/setup-ffmpeg@v1
+      id: setup-ffmpeg
+
+    - name: Upgrade pip
+      run: pip install -U pip
+
+    - name: Install dependencies
+      run: pip install -U -r requirements/dev.txt
+
+    - name: Install videbo
+      run: pip install -e .
+
+    - name: Create temporary storage directory
+      run: mkdir -p /tmp/videbo/storage
+
+    - name: Run integration tests for Python ${{ matrix.python-version }}
+      run: python -m tests 'integration_test*.py'
+
+  type-checks:
+    name: Type checks with mypy
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v3
+
+    - uses: actions/setup-python@v3
+      with:
+        python-version: '3.9'
+        cache: 'pip'
+        cache-dependency-path: 'requirements/dev.txt'
+
+    - name: Upgrade pip
+      run: pip install -U pip
+
+    - name: Install dependencies
+      run: pip install -U -r requirements/dev.txt
+
+    - name: Run mypy
+      run: mypy
+
