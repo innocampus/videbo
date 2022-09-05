@@ -1,0 +1,38 @@
+site_name: Videbo
+site_description: Distributed video hosting for Moodle and other LMS
+repo_name: innocampus/videbo
+repo_url: https://github.com/innocampus/videbo
+
+theme:
+  language: en
+  name: material
+  palette:
+  - scheme: tub
+    media: "(prefers-color-scheme: light)"
+    accent: red
+    toggle:
+      icon: material/brightness-7
+      name: Switch to dark mode
+  - scheme: slate
+    media: "(prefers-color-scheme: dark)"
+    accent: red
+    toggle:
+      icon: material/brightness-4
+      name: Switch to light mode
+extra_css:
+  - css/extra.css
+
+plugins:
+  - search
+  - mkdocstrings
+
+markdown_extensions:
+  - admonition
+  - codehilite
+  - extra
+  - pymdownx.superfences
+
+nav:
+  - Home: index.md
+  - usage.md
+  - Reverse proxy: reverse-proxy.md
