@@ -97,7 +97,7 @@ async def delete_files(*files: StorageFileInfo) -> None:
     data = DeleteFilesList(hashes=[f.hash for f in files])
     status_code, ret = await HTTPClient.internal_request_admin('POST', url, data)
     if status_code != 200:
-        print(f"Request failed. Please check the storage logs.")
+        print("Request failed. Please check the storage logs.")
         return
     if ret['status'] == 'ok':
         print("All files have been successfully deleted from storage.")
@@ -105,7 +105,7 @@ async def delete_files(*files: StorageFileInfo) -> None:
     print("Error! The following files could not be deleted from storage:")
     for file_hash in ret['not_deleted']:
         print(file_hash)
-    print(f"Please check the storage logs for more information.")
+    print("Please check the storage logs for more information.")
 
 
 async def get_distributor_nodes() -> None:

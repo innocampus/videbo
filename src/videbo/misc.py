@@ -188,10 +188,12 @@ class BytesLimitLRU(OrderedDict[Hashable, bytes]):
             del self[next(iter(self))]
 
     @property
-    def total_bytes(self) -> int: return self._total_bytes
+    def total_bytes(self) -> int:
+        return self._total_bytes
 
     @property
-    def space_left(self) -> int: return self.max_bytes - self._total_bytes
+    def space_left(self) -> int:
+        return self.max_bytes - self._total_bytes
 
 
 async def gather_in_batches(batch_size: int, *aws: Awaitable[Any], return_exceptions: bool = False) -> list[Any]:

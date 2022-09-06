@@ -174,7 +174,7 @@ class DistributorFileController:
                     rid=''
                 )
                 headers = {"Authorization": "Bearer " + jwt_data.encode()}
-                timeout = ClientTimeout(total=120*60)
+                timeout = ClientTimeout(total=120 * 60)
 
                 async with HTTPClient.session.request("GET", from_url + "/file", headers=headers,
                                                       timeout=timeout) as response:
@@ -213,7 +213,7 @@ class DistributorFileController:
                                      f"but expected {expected_file_size} bytes.")
                         raise CopyFileError()
                     logger.info(f"Copied file {file} ({file_size_mb:.1f} MB) from {from_url}")
-            except:
+            except Exception:
                 # Set event to wake up all waiting tasks even though we don't have the file.
                 copy_status.event.set()
                 self.files.pop(file.hash)

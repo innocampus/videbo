@@ -38,7 +38,8 @@ async def session_context(_app: Application) -> AsyncIterator[None]:
     await HTTPClient.close_all()
 
 
-async def cancel_tasks(_app: Application) -> None: TaskManager.cancel_all()
+async def cancel_tasks(_app: Application) -> None:
+    TaskManager.cancel_all()
 
 
 def start_web_server(routes: RouteTableDef, *cleanup_contexts: CleanupContext, address: Optional[str] = None,
@@ -79,11 +80,13 @@ def start_web_server(routes: RouteTableDef, *cleanup_contexts: CleanupContext, a
 
 
 @overload
-def ensure_json_body(_func: RouteHandler) -> RouteHandler: ...
+def ensure_json_body(_func: RouteHandler) -> RouteHandler:
+    ...
 
 
 @overload
-def ensure_json_body(*, headers: Optional[LooseHeaders] = None) -> Callable[[RouteHandler], RouteHandler]: ...
+def ensure_json_body(*, headers: Optional[LooseHeaders] = None) -> Callable[[RouteHandler], RouteHandler]:
+    ...
 
 
 def ensure_json_body(_func: Optional[RouteHandler] = None, *,
@@ -285,7 +288,7 @@ class HTTPClient:
         elif isinstance(timeout, ClientTimeout):
             timeout_obj = timeout
         else:
-            timeout_obj = ClientTimeout(total=15*60)
+            timeout_obj = ClientTimeout(total=15 * 60)
 
         try:
             async with cls.session.request(method, url, data=data, headers=headers, timeout=timeout_obj) as response:
@@ -301,8 +304,7 @@ class HTTPClient:
                 else:
                     some_data = await response.read()
                     return response.status, some_data
-        except (ClientError, UnicodeDecodeError, ValidationError, JSONDecodeError, ConnectionError) \
-                as error:
+        except (ClientError, UnicodeDecodeError, ValidationError, JSONDecodeError, ConnectionError):
             if print_connection_exception:
                 web_logger.exception(f"Error while internal web request ({url}).")
             raise HTTPResponseError()

@@ -385,7 +385,7 @@ class FileStorage:
             storage_logger.info(f"Video delete: Could not check all LMS for file: {file}. Not deleting.")
             return False
         if file_is_known:
-            storage_logger.info(f"Video delete: One LMS still has the video. Do not delete.")
+            storage_logger.info("Video delete: One LMS still has the video. Do not delete.")
             return False
         await self.remove_thumbs(file)
         await self.remove(file)

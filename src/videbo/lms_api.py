@@ -35,7 +35,6 @@ class MoodleAPI:
 
     async def video_exists(self, hash: str, file_ext: str) -> bool:
         try:
-            url = self.api_url + "?function=video_exists"
             params = VideoExistsParams(hash=hash, file_ext=file_ext)
             ret: VideoExistsResponse
             status, ret = await self._post_request("video_exists", params, VideoExistsResponse)

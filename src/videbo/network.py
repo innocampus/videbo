@@ -163,7 +163,7 @@ class NetworkInterfaces:
             status, ret = await HTTPClient.videbo_request("GET", url, external=True)
         except HTTPResponseError:
             if logger:
-                logger.warning(f"error while handling internal request")
+                logger.warning("error while handling internal request")
             return
         except ConnectionRefusedError:
             if logger:

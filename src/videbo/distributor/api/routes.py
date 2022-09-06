@@ -88,7 +88,7 @@ async def request_file(request: Request, jwt_data: RequestFileJWTData) -> Union[
     if jwt_data.type != FileType.VIDEO:
         logger.info(f"Invalid request type: {jwt_data.type}")
         raise HTTPNotFound()
-    file_hash, file_ext = jwt_data.hash, jwt_data.file_ext
+    file_hash = jwt_data.hash
     try:
         video = await file_controller.get_file(file_hash)
     except NoSuchFile:
