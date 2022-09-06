@@ -1,6 +1,67 @@
 [build-system]
-requires = [
-    "setuptools>=43.0.0",
-    "wheel"
-]
+requires = ["setuptools", "setuptools-scm"]
 build-backend = "setuptools.build_meta"
+
+[project]
+name = "videbo"
+description = "Video hosting server for learning management systems"
+authors = [
+    { name = "Martin Gauk", email = "gauk@math.tu-berlin.de" },
+    { name = "Daniil Fajnberg", email = "mail@daniil.fajnberg.de" },
+]
+maintainers = [
+    { name = "ISIS Team", email = "info@isis.tu-berlin.de" },
+]
+requires-python = ">=3.9, <4.0"
+keywords = [
+    "aiohttp",
+    "asyncio",
+    "asynchronous",
+    "http",
+    "lms",
+    "moodle",
+    "server",
+    "streaming",
+    "video"
+]
+license = { text = "GNU General Public License v3 or later (GPLv3+)" }
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Programming Language :: Python :: 3 :: Only",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Operating System :: POSIX",
+    "License :: OSI Approved :: GNU General Public License v3 or later (GPLv3+)",
+    "Intended Audience :: Developers",
+    "Intended Audience :: Education",
+    "Intended Audience :: System Administrators",
+    "Framework :: AsyncIO",
+    "Framework :: aiohttp",
+    "Topic :: Education",
+    "Topic :: Internet",
+    "Topic :: Internet :: WWW/HTTP",
+    "Topic :: Internet :: WWW/HTTP :: Dynamic Content",
+    "Topic :: Internet :: WWW/HTTP :: HTTP Servers",
+    "Topic :: Multimedia",
+    "Topic :: Multimedia :: Video",
+]
+dynamic = ["version", "readme", "dependencies"]
+
+[project.optional-dependencies]
+full = ["prometheus-client==0.14.1"]
+dev = [
+    "prometheus-client==0.14.1",
+    "coverage==6.4.4",
+    "flake8==5.0.4",
+    "mkdocs-material==8.4.2",
+    "mkdocstrings[python]==0.19.0",
+    "mypy==0.971",
+]
+
+[project.urls]
+repository = "https://github.com/innocampus/videbo"
+bug_tracker = "https://github.com/innocampus/videbo/issues"
+
+[tool.setuptools.dynamic]
+readme = { file = ["README.md"] }
+dependencies = { file = "requirements/common.txt" }
