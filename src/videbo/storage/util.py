@@ -1,5 +1,6 @@
 import asyncio
 import hashlib
+import logging
 import os
 import tempfile
 import time
@@ -17,7 +18,9 @@ from videbo.video import VideoInfo, Video, VideoConfig
 from .distribution import DistributionController, FileNodes
 from .exceptions import HashedFileInvalidExtensionError
 from .api.models import FileType, StorageStatus
-from . import storage_logger
+
+
+log = logging.getLogger(__name__)
 
 
 FILE_EXT_WHITELIST = ('.mp4', '.webm')
@@ -67,7 +70,7 @@ def create_dir_if_not_exists(path: Union[Path, str], mode: int = 0o777, explicit
         path.chmod(mode)
     if not path.is_dir():
         raise CouldNotCreateDir(str(path))
-    storage_logger.info(f"Created {path}")
+    log.info(f"Created {path}")
 
 
 class FileStorage:
@@ -80,7 +83,7 @@ class FileStorage:
 
     def __init__(self, path: Path):
         if not path.is_dir():
-            storage_logger.fatal(f"videos dir {path} does not exist")
+            log.fatal(f"videos dir {path} does not exist")
             raise NotADirectoryError(path)
 
         self.path: Path = path
@@ -123,19 +126,19 @@ class FileStorage:
                             if len(self._cached_files) > 20:
                                 continue
                             elif len(self._cached_files) == 20:
-                                storage_logger.info("Skip logging the other files that were found")
+                                log.info("Skip logging the other files that were found")
                             else:
-                                storage_logger.info(f"Found video {f}")
+                                log.info(f"Found video {f}")
         except Exception as e:
-            storage_logger.exception(f"{str(e)} in load_file_list")
-        storage_logger.info(f"Found {len(self._cached_files)} videos in storage")
+            log.exception(f"{str(e)} in load_file_list")
+        log.info(f"Found {len(self._cached_files)} videos in storage")
 
     def _add_video_to_cache(self, file_hash: str, file_extension: str, file_path: Path) -> StoredHashedVideoFile:
         file = StoredHashedVideoFile(file_hash, file_extension)
         try:
             stat = file_path.stat()
         except FileNotFoundError:
-            storage_logger.exception("FileNotFoundError in _add_video_to_cache")
+            log.exception("FileNotFoundError in _add_video_to_cache")
             return file
         file.file_size = stat.st_size
         self._cached_files[file_hash] = file
@@ -213,7 +216,7 @@ class FileStorage:
         # Copy currently cached files, if none were passed, and disregard storage changes from here on
         if hashed_files_dict is None:
             hashed_files_dict = self.all_files()
-        storage_logger.info(f"Checking {len(hashed_files_dict)} files for their orphan status...")
+        log.info(f"Checking {len(hashed_files_dict)} files for their orphan status...")
         # Gather calls to lms_has_file(...) coroutines for each file; the awaited result is a list of booleans.
         existing: list[bool] = await gather_in_batches(20, *(lms_has_file(f) for f in hashed_files_dict.values()))
         # Both the `files` dictionary (since Python 3.6) and the `asyncio.gather` function preserve order,
@@ -309,7 +312,7 @@ class FileStorage:
 
         # Run in another thread as there is blocking io.
         await asyncio.get_event_loop().run_in_executor(None, self._move_file, temp_path, new_file_path)
-        storage_logger.info("Added file with hash %s permanently to storage.", file.hash)
+        log.info("Added file with hash %s permanently to storage.", file.hash)
         self._add_video_to_cache(file.hash, file.file_extension, new_file_path)
 
     async def add_thumbs_from_temp(self, file: HashedVideoFile, thumb_count: int) -> None:
@@ -323,7 +326,7 @@ class FileStorage:
             tasks.append(asyncio.get_event_loop().run_in_executor(None, self._move_file, old_thumb_path,
                                                                   new_thumb_file))
         await asyncio.gather(*tasks)
-        storage_logger.info(f"Added {thumb_count} thumbnails for file with hash {file.hash} permanently to storage.")
+        log.info(f"Added {thumb_count} thumbnails for file with hash {file.hash} permanently to storage.")
 
     async def remove(self, file: StoredHashedVideoFile) -> None:
         file_path = self.get_path(file)
@@ -337,7 +340,7 @@ class FileStorage:
         self._cached_files_total_size -= file.file_size
         self.distribution_controller.remove_video(file)
 
-        storage_logger.info(f"Removed file with hash {file.hash} permanently from storage.")
+        log.info(f"Removed file with hash {file.hash} permanently from storage.")
 
     async def remove_thumbs(self, file: HashedVideoFile) -> None:
         thumb_nr = 0
@@ -354,7 +357,7 @@ class FileStorage:
                 break
             thumb_nr += 1
 
-        storage_logger.info(f"Removed {thumb_nr} thumbnails for file with hash {file.hash} permanently from storage.")
+        log.info(f"Removed {thumb_nr} thumbnails for file with hash {file.hash} permanently from storage.")
 
     async def remove_files(self, *hashes: str) -> list[bool]:
         """
@@ -382,14 +385,14 @@ class FileStorage:
         try:
             file_is_known = await lms_has_file(file, origin=origin)
         except LMSAPIError:
-            storage_logger.info(f"Video delete: Could not check all LMS for file: {file}. Not deleting.")
+            log.info(f"Video delete: Could not check all LMS for file: {file}. Not deleting.")
             return False
         if file_is_known:
-            storage_logger.info("Video delete: One LMS still has the video. Do not delete.")
+            log.info("Video delete: One LMS still has the video. Do not delete.")
             return False
         await self.remove_thumbs(file)
         await self.remove(file)
-        storage_logger.info(f"Deleted video {file} permanently")
+        log.info(f"Deleted video {file} permanently")
         return True
 
     def garbage_collect_temp_dir(self) -> int:
@@ -409,7 +412,7 @@ class FileStorage:
         while True:
             files_deleted = await asyncio.get_event_loop().run_in_executor(None, self.garbage_collect_temp_dir)
             if files_deleted > 0:
-                storage_logger.info(f"Run GC of temp folder: Removed {files_deleted} file(s).")
+                log.info(f"Run GC of temp folder: Removed {files_deleted} file(s).")
 
             await asyncio.sleep(self.GC_ITERATION_SECS)
 
@@ -420,7 +423,7 @@ class FileStorage:
         status.files_count = self.get_files_count()
         status.free_space = await get_free_disk_space(str(settings.files_path))
         status.tx_max_rate = settings.tx_max_rate_mbit
-        NetworkInterfaces.get_instance().update_node_status(status, settings.server_status_page, storage_logger)
+        NetworkInterfaces.get_instance().update_node_status(status, settings.server_status_page, log)
         # Specific to storage node:
         status.distributor_nodes = self.distribution_controller.get_dist_node_base_urls()
         status.num_current_uploads = self.num_current_uploads
@@ -505,7 +508,7 @@ def is_allowed_file_ending(filename: Optional[str]) -> bool:
 
 
 def schedule_video_delete(file_hash: str, file_ext: str, origin: Optional[str] = None) -> None:
-    storage_logger.info(f"Delete video with hash {file_hash}")
+    log.info(f"Delete video with hash {file_hash}")
     TaskManager.fire_and_forget_task(asyncio.create_task(_video_delete_task(file_hash, file_ext, origin)))
 
 
@@ -514,7 +517,7 @@ async def _video_delete_task(file_hash: str, file_ext: str, origin: Optional[str
     try:
         file = await file_storage.get_file(file_hash, file_ext)
     except FileNotFoundError:
-        storage_logger.info(f"Video delete: file not found: {file_hash}{file_ext}.")
+        log.info(f"Video delete: file not found: {file_hash}{file_ext}.")
         return
     await file_storage.check_lms_and_remove_file(file, origin=origin)
 
@@ -538,14 +541,14 @@ async def lms_has_file(file: StoredHashedVideoFile, origin: Optional[str] = None
     for site in LMSSitesCollection.get_all().sites:
         if origin and site.base_url.startswith(origin):
             continue
-        storage_logger.debug(f"Checking LMS {site.base_url} for file {file}.")
+        log.debug(f"Checking LMS {site.base_url} for file {file}.")
         try:
             exists = await site.video_exists(file.hash, file.file_extension)
         except LMSAPIError:
-            storage_logger.warning(f"LMSAPIError occurred on {site.base_url}.")
+            log.warning(f"LMSAPIError occurred on {site.base_url}.")
             raise
         else:
             if exists:  # Else, continue looping through sites
-                storage_logger.debug(f"The site {site.base_url} has video {file}")
+                log.debug(f"The site {site.base_url} has video {file}")
                 return True
     return False

@@ -1,7 +1,7 @@
-import logging
-import json
-import os
 import asyncio
+import json
+import logging
+import os
 import unittest
 from io import StringIO, BytesIO
 from pathlib import Path
@@ -12,7 +12,6 @@ from aiohttp.test_utils import AioHTTPTestCase
 
 from videbo.misc import rel_path
 from videbo.models import Role, TokenIssuer
-from videbo.storage import storage_logger
 
 from videbo import storage_settings as settings
 from videbo.storage.api.models import (FileType, UploadFileJWTData, SaveFileJWTData, DeleteFileJWTData,
@@ -20,6 +19,8 @@ from videbo.storage.api.models import (FileType, UploadFileJWTData, SaveFileJWTD
 from videbo.storage.api.routes import get_expiration_time, routes
 from videbo.web import session_context
 
+
+main_log = logging.getLogger('videbo')
 
 settings.static_dist_node_base_urls = []  # prevent adding distributor nodes (and sending status requests to them)
 
@@ -46,12 +47,12 @@ class Base(AioHTTPTestCase):
 
     @classmethod
     def setUpClass(cls) -> None:
-        cls.log_lvl = storage_logger.level
-        storage_logger.setLevel(logging.CRITICAL)
+        cls.log_lvl = main_log.level
+        main_log.setLevel(logging.CRITICAL)
 
     @classmethod
     def tearDownClass(cls) -> None:
-        storage_logger.setLevel(cls.log_lvl)
+        main_log.setLevel(cls.log_lvl)
 
     @staticmethod
     def get_request_file_headers(file_hash: str, file_ext: str) -> dict:

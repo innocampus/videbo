@@ -1,4 +1,5 @@
 import asyncio
+import logging
 import os
 from asyncio import get_running_loop, Event, wait_for
 from pathlib import Path
@@ -14,7 +15,9 @@ from videbo.web import HTTPClient
 from videbo.storage.util import HashedVideoFile
 from videbo.storage.api.models import RequestFileJWTData, FileType
 from videbo.distributor.api.models import DistributorCopyFileStatus
-from . import logger
+
+
+log = logging.getLogger(__name__)
 
 
 class CopyFileStatus:
@@ -73,11 +76,11 @@ class DistributorFileController:
                 self.files[file_hash] = file
                 self.files_total_size += file.file_size
                 if len(self.files) < 20:
-                    logger.info(f"Found video {obj}")
+                    log.info(f"Found video {obj}")
 
         if len(self.files) >= 20:
-            logger.info("Skip logging the other files that were found")
-        logger.info(f"Found {len(self.files)} videos")
+            log.info("Skip logging the other files that were found")
+        log.info(f"Found {len(self.files)} videos")
 
     def get_path(self, file: HashedVideoFile, temp: bool = False, relative: bool = False) -> Path:
         """
@@ -141,10 +144,10 @@ class DistributorFileController:
             -> DistributorHashedVideoFile:
         if file.hash in self.files:
             # File is already there or it is downloaded right now.
-            logger.info(f"File {file} is already there or it is downloaded right now.")
+            log.info(f"File {file} is already there or it is downloaded right now.")
             return self.files[file.hash]
 
-        logger.info(f"Start copying file {file} from {from_url}")
+        log.info(f"Start copying file {file} from {from_url}")
         copy_status = CopyFileStatus()
         new_file = DistributorHashedVideoFile(file.hash, file.file_extension)
         new_file.copy_status = copy_status
@@ -179,15 +182,15 @@ class DistributorFileController:
                 async with HTTPClient.session.request("GET", from_url + "/file", headers=headers,
                                                       timeout=timeout) as response:
                     if response.status != 200:
-                        logger.error(f"Error when copying file {file} from {from_url}: got http status {response.status}")
+                        log.error(f"Error when copying file {file} from {from_url}: got http status {response.status}")
                         raise CopyFileError()
 
                     # Check if we have enough space for this file.
                     new_file.file_size = expected_file_size
                     file_size_mb = new_file.file_size / MEGA
                     if file_size_mb > free_space:
-                        logger.error(f"Error when copying file {file} from {from_url}: Not enough space, "
-                                     f"free space {free_space:.1f} MB, file is {file_size_mb:.1f} MB")
+                        log.error(f"Error when copying file {file} from {from_url}: Not enough space, "
+                                  f"free space {free_space:.1f} MB, file is {file_size_mb:.1f} MB")
                         raise CopyFileError()
 
                     # Load file
@@ -204,20 +207,19 @@ class DistributorFileController:
                             last_update_time = time()
                             loaded_mb = copy_status.loaded_bytes / MEGA
                             percent = 100 * (copy_status.loaded_bytes / expected_file_size)
-                            logger.info(f"Still copying, copied {loaded_mb:.1f}/{file_size_mb:.1f} MB "
-                                        f"({percent:.1f} %) until now of file {file}")
+                            log.info(f"Still copying, copied {loaded_mb:.1f}/{file_size_mb:.1f} MB "
+                                     f"({percent:.1f} %) until now of file {file}")
 
                     if copy_status.loaded_bytes != expected_file_size:
-                        logger.error(f"Error when copying file {file} from {from_url}: Loaded "
-                                     f"{copy_status.loaded_bytes} bytes,"
-                                     f"but expected {expected_file_size} bytes.")
+                        log.error(f"Error when copying file {file} from {from_url}: Loaded "
+                                  f"{copy_status.loaded_bytes} bytes, but expected {expected_file_size} bytes.")
                         raise CopyFileError()
-                    logger.info(f"Copied file {file} ({file_size_mb:.1f} MB) from {from_url}")
+                    log.info(f"Copied file {file} ({file_size_mb:.1f} MB) from {from_url}")
             except Exception:
                 # Set event to wake up all waiting tasks even though we don't have the file.
                 copy_status.event.set()
                 self.files.pop(file.hash)
-                logger.exception(f"Error when copying file {file} from {from_url}")
+                log.exception(f"Error when copying file {file} from {from_url}")
                 raise CopyFileError()
             finally:
                 self.files_being_copied.discard(new_file)
@@ -229,7 +231,7 @@ class DistributorFileController:
             try:
                 await get_running_loop().run_in_executor(None, temp_path.rename, final_path)
             except OSError:
-                logger.exception(f"Error when renaming file {temp_path} to {final_path}")
+                log.exception(f"Error when renaming file {temp_path} to {final_path}")
                 self.files.pop(file.hash)
             self.files_total_size += expected_file_size
             copy_status.event.set()

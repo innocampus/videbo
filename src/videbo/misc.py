@@ -15,7 +15,7 @@ from videbo.exceptions import NoRunningTask, InvalidRouteSignature
 from videbo.types import RouteHandler
 
 
-logger = logging.getLogger('videbo-misc')
+log = logging.getLogger(__name__)
 MEGA = 1024 * 1024
 
 StopCallbackT = Callable[[], Any]
@@ -27,7 +27,7 @@ class TaskManager:
 
     @classmethod
     def cancel_all(cls) -> None:
-        logger.info(f"TaskManager: cancel all remaining {len(cls._tasks)} tasks")
+        log.info(f"TaskManager: cancel all remaining {len(cls._tasks)} tasks")
         for task in cls._tasks:
             task.cancel()
 
@@ -41,7 +41,7 @@ class TaskManager:
             except CancelledError:
                 pass
             except Exception as e:
-                logger.exception(f"{e.__class__.__name__} occurred in an fire-and-forget task.")
+                log.exception(f"{e.__class__.__name__} occurred in an fire-and-forget task.")
             finally:
                 cls._tasks.remove(task)
 

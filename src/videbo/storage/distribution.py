@@ -1,4 +1,5 @@
 import asyncio
+import logging
 from collections.abc import Callable, Iterable
 from timeit import default_timer as timer
 from typing import Optional, TYPE_CHECKING
@@ -11,9 +12,11 @@ from videbo.web import HTTPClient
 from videbo.distributor.api.models import (DistributorCopyFile, DistributorDeleteFiles, DistributorDeleteFilesResponse,
                                            DistributorStatus, DistributorFileList)
 from .exceptions import DistStatusUnknown, DistAlreadyEnabled, DistAlreadyDisabled, UnknownDistURL
-from videbo.storage import storage_logger as log
 if TYPE_CHECKING:
     from videbo.storage.util import StoredHashedVideoFile
+
+
+log = logging.getLogger(__name__)
 
 
 class DownloadScheduler:

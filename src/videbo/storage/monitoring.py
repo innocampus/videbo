@@ -1,3 +1,4 @@
+import logging
 from collections.abc import Callable, Container
 from pathlib import Path
 from typing import Optional, Type, Union
@@ -13,7 +14,9 @@ from videbo.misc import Periodic
 from videbo.distributor.api.models import DistributorStatus
 from .util import FileStorage
 from .api.models import StorageStatus
-from . import storage_logger
+
+
+log = logging.getLogger(__name__)
 
 
 class Monitoring:
@@ -33,7 +36,7 @@ class Monitoring:
     def delete_text_file() -> None:
         assert isinstance(settings.prom_text_file, Path)
         settings.prom_text_file.unlink()
-        storage_logger.info(f"Deleted monitoring text file {settings.prom_text_file}")
+        log.info(f"Deleted monitoring text file {settings.prom_text_file}")
 
     def __init__(self) -> None:
         self._periodic: Periodic = Periodic(self.update_all_metrics)
@@ -118,7 +121,7 @@ class Monitoring:
             metric.clear()
 
     async def run(self) -> None:
-        storage_logger.info(f"Started monitoring and writing to {settings.prom_text_file}")
+        log.info(f"Started monitoring and writing to {settings.prom_text_file}")
         self._periodic(self.update_freq_sec, call_immediately=True)
 
     async def stop(self) -> None:

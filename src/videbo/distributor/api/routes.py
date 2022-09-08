@@ -1,4 +1,5 @@
 import asyncio
+import logging
 from time import time
 from pathlib import Path
 from typing import Union
@@ -18,8 +19,9 @@ from videbo.storage.util import HashedVideoFile
 from videbo.storage.api.models import RequestFileJWTData, FileType
 from videbo.distributor.files import DistributorFileController, TooManyWaitingClients, NoSuchFile, NotSafeToDelete
 from .models import *
-from videbo.distributor import logger
 
+
+log = logging.getLogger(__name__)
 
 routes = RouteTableDef()
 
@@ -34,7 +36,7 @@ async def get_status(_request: Request, _jwt_data: RequestJWTData) -> Response:
     status.files_count = len(file_controller.files)
     status.free_space = await file_controller.get_free_space()
     status.tx_max_rate = settings.tx_max_rate_mbit
-    NetworkInterfaces.get_instance().update_node_status(status, settings.server_status_page, logger)
+    NetworkInterfaces.get_instance().update_node_status(status, settings.server_status_page, log)
     # Specific to distributor nodes:
     status.copy_files_status = file_controller.get_copy_file_status()
     status.waiting_clients = file_controller.waiting
@@ -86,19 +88,19 @@ async def delete_files(_request: Request, _jwt_data: RequestJWTData, data: Distr
 async def request_file(request: Request, jwt_data: RequestFileJWTData) -> Union[Response, FileResponse]:
     file_controller = DistributorFileController.get_instance()
     if jwt_data.type != FileType.VIDEO:
-        logger.info(f"Invalid request type: {jwt_data.type}")
+        log.info(f"Invalid request type: {jwt_data.type}")
         raise HTTPNotFound()
     file_hash = jwt_data.hash
     try:
         video = await file_controller.get_file(file_hash)
     except NoSuchFile:
-        logger.info(f"Requested file that does not exist on this node: {file_hash}")
+        log.info(f"Requested file that does not exist on this node: {file_hash}")
         raise HTTPNotFound()
     except asyncio.TimeoutError:
-        logger.info(f"Waited for file, but timeout reached, file {file_hash}")
+        log.info(f"Waited for file, but timeout reached, file {file_hash}")
         raise HTTPServiceUnavailable()
     except TooManyWaitingClients:
-        logger.info(f"Too many waiting users, file {file_hash}")
+        log.info(f"Too many waiting users, file {file_hash}")
         raise HTTPServiceUnavailable()
     video.last_requested = int(time())
     if settings.nginx_x_accel_location:

@@ -148,7 +148,7 @@ class FileStorageTestCase(BaseTestCase):
         def do_tests():
             # add method called, no log entry made
             self.storage._cached_files = {n: None for n in range(21)}
-            with patch.object(util, 'storage_logger') as mock_logger:
+            with patch.object(util, 'log') as mock_logger:
                 self.storage._load_file_list()
                 mock__add_video_to_cache.assert_called_once_with(hash_part, ext_part, file_to_load)
                 mock_logger.assert_not_called()
@@ -156,19 +156,19 @@ class FileStorageTestCase(BaseTestCase):
 
             # add method called
             self.storage._cached_files = {n: None for n in range(20)}
-            with self.assertLogs(util.storage_logger):
+            with self.assertLogs(util.log):
                 self.storage._load_file_list()
                 mock__add_video_to_cache.assert_called_once_with(hash_part, ext_part, file_to_load)
             mock__add_video_to_cache.reset_mock()
 
             # add method called (other log case)
             self.storage._cached_files = {n: None for n in range(10)}
-            with self.assertLogs(util.storage_logger):
+            with self.assertLogs(util.log):
                 self.storage._load_file_list()
                 mock__add_video_to_cache.assert_called_once_with(hash_part, ext_part, file_to_load)
 
             mock__add_video_to_cache.side_effect = Exception
-            with self.assertLogs(util.storage_logger, logging.ERROR):
+            with self.assertLogs(util.log, logging.ERROR):
                 self.storage._load_file_list()
 
         # Dummy files for this test:
@@ -221,7 +221,7 @@ class FileStorageTestCase(BaseTestCase):
         mock_stat_method.reset_mock()
         self.mock_dist_controller_cls().add_video.reset_mock()
         mock_stat_method.side_effect = FileNotFoundError
-        with self.assertLogs(util.storage_logger, logging.ERROR):
+        with self.assertLogs(util.log, logging.ERROR):
             out = self.storage._add_video_to_cache(file_hash=test_hash,
                                                    file_extension=test_ext,
                                                    file_path=mock_file_path)
@@ -753,7 +753,7 @@ class FileStorageTestCase(BaseTestCase):
         mock_get_free_disk_space.assert_awaited_once_with(str(self.mock_settings.files_path))
         self.assertEqual(self.mock_settings.tx_max_rate_mbit, output.tx_max_rate)
         mock_update_node_status.assert_called_once_with(mock_status, self.mock_settings.server_status_page,
-                                                        util.storage_logger)
+                                                        util.log)
         self.assertEqual(mock_dist_node_urls, output.distributor_nodes)
         self.assertEqual(self.storage.num_current_uploads, output.num_current_uploads)
 
@@ -987,7 +987,7 @@ class FunctionsTestCase(BaseTestCase):
         mock_exists1.reset_mock()
         mock_exists2.reset_mock()
         mock_exists1.side_effect = util.LMSAPIError
-        with self.assertRaises(util.LMSAPIError), self.assertLogs(util.storage_logger):
+        with self.assertRaises(util.LMSAPIError), self.assertLogs(util.log):
             await util.lms_has_file(mock_file, origin=None)
         self.assertFalse(output)
         mock_exists1.assert_awaited_once_with(test_hash, test_ext)

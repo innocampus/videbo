@@ -2,15 +2,15 @@ import logging
 import sys
 from argparse import ArgumentParser, SUPPRESS
 from pathlib import Path
-from typing import Any
+from typing import Any, Union
 
 from .base_settings import DEFAULT_CONFIG_FILE_PATHS, CONFIG_FILE_PATHS_PARAM
 from .cli.args import setup_cli_args, run
 
 import videbo
-from videbo.storage import start as start_storage
+from videbo.storage.start import start as start_storage
 from videbo.storage.settings import StorageSettings
-from videbo.distributor import start as start_distributor
+from videbo.distributor.start import start as start_distributor
 from videbo.distributor.settings import DistributorSettings
 
 # CLI parameters:
@@ -60,19 +60,26 @@ def main() -> None:
     logging.basicConfig(level=logging.INFO)
     cli_kwargs = parse_cli()
     app = cli_kwargs.pop(APP)
-    if app == STORAGE:
-        setattr(videbo, 'storage_settings', StorageSettings(**cli_kwargs))
-        start_storage()
-    elif app == DISTRIBUTOR:
-        setattr(videbo, 'distributor_settings', DistributorSettings(**cli_kwargs))
-        start_distributor()
-    elif app == CLI:
+    if app == CLI:
         init_kwargs = {key: cli_kwargs[key] for key in _VALID_SETTINGS_KWARGS if key in cli_kwargs.keys()}
         setattr(videbo, 'storage_settings', StorageSettings(**init_kwargs))
         run(**cli_kwargs)
+        return
+    settings: Union[StorageSettings, DistributorSettings]
+    if app == STORAGE:
+        settings, start = StorageSettings(**cli_kwargs), start_storage
+        setattr(videbo, 'storage_settings', settings)
+    elif app == DISTRIBUTOR:
+        settings, start = DistributorSettings(**cli_kwargs), start_distributor
+        setattr(videbo, 'distributor_settings', settings)
     else:
         print("Application must be storage or distributor")
         sys.exit(2)
+    if settings.dev_mode:
+        main_log = logging.getLogger("videbo")
+        main_log.setLevel(logging.DEBUG)
+        main_log.warning("Development mode is enabled!")
+    start()
 
 
 if __name__ == '__main__':

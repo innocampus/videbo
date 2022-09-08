@@ -32,11 +32,11 @@ from videbo.storage.exceptions import (FileTooBigError, FormFieldMissing, BadFil
                                        DistAlreadyDisabled, DistAlreadyEnabled)
 from videbo.storage.distribution import DistributionNodeInfo
 from .models import *
-from videbo.storage import storage_logger
 
+
+log = logging.getLogger(__name__)
 
 routes = RouteTableDef()
-access_logger = logging.getLogger('videbo-storage-access')
 
 EXTERNAL_JWT_LIFE_TIME = 3600  # 1 hour in seconds
 CHUNK_SIZE_DEFAULT = 300 * 1024  # 300 KB in bytes
@@ -78,7 +78,7 @@ def generate_thumb_urls(video: HashedVideoFile, temp: bool, thumb_count: int) ->
 
 async def read_data(file: TempFile, field: BodyPartReader, chunk_size: int = CHUNK_SIZE_DEFAULT) -> None:
     """Save the video data into temporary file."""
-    storage_logger.info("Start reading file from client")
+    log.info("Start reading file from client")
     data = await field.read_chunk(chunk_size)
     while len(data) > 0:
         if file.size > settings.max_file_size_mb * MEGA:
@@ -87,7 +87,7 @@ async def read_data(file: TempFile, field: BodyPartReader, chunk_size: int = CHU
         await file.write(data)
         data = await field.read_chunk(chunk_size)
     await file.close()
-    storage_logger.info(f"File was uploaded ({file.size} Bytes)")
+    log.info(f"File was uploaded ({file.size} Bytes)")
 
 
 async def get_video_payload(request: Request) -> BodyPartReader:
@@ -103,7 +103,7 @@ async def get_video_payload(request: Request) -> BodyPartReader:
         field = await multipart.next()
     # Simple file extension check.
     if not is_allowed_file_ending(field.filename):
-        storage_logger.warning(f"file ending not allowed ({field.filename})")
+        log.warning(f"file ending not allowed ({field.filename})")
         raise BadFileExtension()
     # Check file/content size as reported in the header if supplied.
     if request.content_length and request.content_length > settings.max_file_size_mb * MEGA:
@@ -119,32 +119,32 @@ async def get_video_info(file: TempFile) -> VideoInfo:
     try:
         validator.check_valid_mime_type()
     except InvalidMimeTypeError as mimetype_err:
-        storage_logger.warning(f"invalid video mime type found in request (mime type: {mimetype_err.mime_type}).")
+        log.warning(f"invalid video mime type found in request (mime type: {mimetype_err.mime_type}).")
         raise
     try:
         await video.fetch_info()
     except FFProbeError as ffprobe_err:
-        storage_logger.warning("invalid video file found in request (ffprobe error, timeout=%i, stderr below).",
-                               ffprobe_err.timeout)
+        log.warning("invalid video file found in request (ffprobe error, timeout=%i, stderr below).",
+                    ffprobe_err.timeout)
         if ffprobe_err.stderr is not None:
-            storage_logger.warn(ffprobe_err.stderr)
+            log.warning(ffprobe_err.stderr)
         raise
     try:
         validator.check_valid_video()
     except InvalidVideoError as video_err:
-        storage_logger.warning("invalid video file found in request (video: %s, audio: %s, container: %s).",
-                               video_err.video_codec, video_err.audio_codec, video_err.container)
+        log.warning("invalid video file found in request (video: %s, audio: %s, container: %s).",
+                    video_err.video_codec, video_err.audio_codec, video_err.container)
         raise
     return video
 
 
 def invalid_format_response() -> Response:
-    storage_logger.warning("no or invalid file found in request.")
+    log.warning("no or invalid file found in request.")
     return json_response({'error': 'invalid_format'}, status=415)
 
 
 def file_too_big_response() -> Response:
-    storage_logger.warning("client wanted to upload file that is too big.")
+    log.warning("client wanted to upload file that is too big.")
     return json_response({'max_size': settings.max_file_size_mb}, status=413)
 
 
@@ -158,9 +158,9 @@ async def save_temp_file(file: TempFile, video_info: VideoInfo) -> tuple[HashedV
     hashed_file = await file.persist(file_ext)
     file_storage = FileStorage.get_instance()
     video_info.video_file = file_storage.get_path_in_temp(hashed_file)
-    storage_logger.info(f"saved temp file, size: {file.size}, duration: {video_duration}, hash: {hashed_file.hash}")
+    log.info(f"saved temp file, size: {file.size}, duration: {video_duration}, hash: {hashed_file.hash}")
     thumb_count = await file_storage.generate_thumbs(hashed_file, video_info)
-    storage_logger.info(f"saved {thumb_count} temp thumbnails for temp video, hash: {hashed_file.hash}")
+    log.info(f"saved {thumb_count} temp thumbnails for temp video, hash: {hashed_file.hash}")
     return hashed_file, thumb_count, video_duration
 
 
@@ -230,7 +230,7 @@ async def upload_file(request: Request, jwt_token: UploadFileJWTData) -> Respons
         return await read_and_save_temp(file, field)
     except Exception as e:
         await file.delete()
-        storage_logger.exception(e)
+        log.exception(e)
         raise HTTPInternalServerError()
     finally:
         storage.num_current_uploads -= 1
@@ -241,7 +241,7 @@ async def upload_file(request: Request, jwt_token: UploadFileJWTData) -> Respons
 async def save_file(request: Request, jwt_data: SaveFileJWTData) -> Response:
     """Confirms that the file should be saved permanently."""
     if not jwt_data.is_allowed_to_save_file:
-        storage_logger.info('unauthorized request')
+        log.info('unauthorized request')
         raise HTTPForbidden()
     file = HashedVideoFile(request.match_info['hash'], request.match_info['file_ext'])
     try:
@@ -250,7 +250,7 @@ async def save_file(request: Request, jwt_data: SaveFileJWTData) -> Response:
         thumb_count = settings.thumb_suggestion_count
         await file_storage.add_thumbs_from_temp(file, thumb_count)
     except FileNotFoundError:
-        storage_logger.error('Cannot save file with hash %s to video, file does not exist.', file.hash)
+        log.error('Cannot save file with hash %s to video, file does not exist.', file.hash)
         return json_response({'status': 'error', 'error': 'file_does_not_exist'}, status=404)
     return json_response({'status': 'ok'})
 
@@ -260,7 +260,7 @@ async def save_file(request: Request, jwt_data: SaveFileJWTData) -> Response:
 async def delete_file(request: Request, jwt_data: DeleteFileJWTData) -> Response:
     """Delete the file with the hash."""
     if not jwt_data.is_allowed_to_delete_file:
-        storage_logger.info("unauthorized request")
+        log.info("unauthorized request")
         raise HTTPForbidden()
 
     origin = request.headers.getone("Origin", None)
@@ -294,10 +294,10 @@ async def request_file(request: Request, jwt_data: RequestFileJWTData) -> Union[
         if jwt_data.iss != TokenIssuer.internal:
             file_storage.distribution_controller.count_file_access(video, jwt_data.rid)
             await video_check_redirect(request, video)
-        access_logger.info(f"serve video with hash {jwt_data.hash}")
+        log.debug(f"serve video with hash {jwt_data.hash}")
         path = file_storage.get_path(video)
     elif jwt_data.type == FileType.VIDEO_TEMP:
-        access_logger.info(f"serve temp video with hash {jwt_data.hash}")
+        log.debug(f"serve temp video with hash {jwt_data.hash}")
         path = file_storage.get_path_in_temp(video)
     else:  # can only be a thumbnail request, since we check for a valid type in the beginning
         return await handle_thumbnail_request(jwt_data)
@@ -329,15 +329,15 @@ async def video_check_redirect(request: Request, file: StoredHashedVideoFile) ->
             if file.nodes.copying:
                 # When we are here this means that there is no non-busy distribution node. Even the dist node that
                 # is currently loading the file is too busy.
-                storage_logger.info(f"Cannot serve video, node too busy (tx load {own_tx_load:.2f} "
-                                    f"and waiting for copying to complete")
+                log.info(f"Cannot serve video, node too busy (tx load {own_tx_load:.2f} "
+                         f"and waiting for copying to complete")
                 raise HTTPServiceUnavailable()
             else:
                 to_node = FileStorage.get_instance().distribution_controller.copy_file_to_one_node(file)
                 if to_node is None:
                     if own_tx_load > 0.9:
                         # There is no dist node to copy the file to and this storage node is too busy.
-                        storage_logger.warning(f"Cannot serve video, node too busy (tx load {own_tx_load:.2f}")
+                        log.warning(f"Cannot serve video, node too busy (tx load {own_tx_load:.2f}")
                         raise HTTPServiceUnavailable()
                     else:
                         return  # Serve file
@@ -352,7 +352,7 @@ async def video_check_redirect(request: Request, file: StoredHashedVideoFile) ->
         else:
             if own_tx_load > 0.9:
                 # The file is not requested that often and this storage node is too busy.
-                storage_logger.warning(f"Cannot serve video, node too busy (tx load {own_tx_load:.2f}")
+                log.warning(f"Cannot serve video, node too busy (tx load {own_tx_load:.2f}")
                 raise HTTPServiceUnavailable()
             else:
                 # This storage node is not too busy and can serve the file by itself.
@@ -372,7 +372,7 @@ async def video_check_redirect(request: Request, file: StoredHashedVideoFile) ->
 
 
 def video_redirect_to_node(request: Request, node: DistributionNodeInfo, file: StoredHashedVideoFile) -> None:
-    access_logger.info(f"Redirect user to {node.base_url} for video {file}")
+    log.debug(f"Redirect user to {node.base_url} for video {file}")
     jwt = request.query['jwt']
     url = f"{node.base_url}/file?jwt={jwt}"
     downloadas = request.query.getone("downloadas", None)
@@ -391,7 +391,7 @@ def get_own_tx_load() -> float:
 
 async def verify_file_exists(path: Path) -> None:
     if not await asyncio.get_event_loop().run_in_executor(None, path.is_file):
-        storage_logger.warn(f"file does not exist: {path}")
+        log.warning(f"file does not exist: {path}")
         raise HTTPNotFound()
 
 
@@ -404,13 +404,13 @@ async def handle_thumbnail_request(jwt_data: RequestFileJWTData) -> Response:
     video = HashedVideoFile(jwt_data.hash, jwt_data.file_ext)
     file_storage = FileStorage.get_instance()
     if jwt_data.thumb_id is None:
-        storage_logger.info("thumb ID is None in JWT")
+        log.info("thumb ID is None in JWT")
         raise HTTPBadRequest()
     if jwt_data.type == FileType.THUMBNAIL:
-        access_logger.info(f"serve thumbnail {jwt_data.thumb_id} for video with hash {video}")
+        log.debug(f"serve thumbnail {jwt_data.thumb_id} for video with hash {video}")
         path = file_storage.get_thumb_path(video, jwt_data.thumb_id)
     else:
-        access_logger.info(f"serve temp thumbnail {jwt_data.thumb_id} for video with hash {video}")
+        log.debug(f"serve temp thumbnail {jwt_data.thumb_id} for video with hash {video}")
         path = file_storage.get_thumb_path_in_temp(video, jwt_data.thumb_id)
 
     bytes_data: Optional[bytes] = file_storage.thumb_memory_cache.get(path)
@@ -421,7 +421,7 @@ async def handle_thumbnail_request(jwt_data: RequestFileJWTData) -> Response:
         try:
             bytes_data = await asyncio.get_event_loop().run_in_executor(None, read_entire_file_and_close_it)
         except FileNotFoundError:
-            storage_logger.warn(f"file does not exist: {path}")
+            log.warning(f"file does not exist: {path}")
             raise HTTPNotFound()
         assert isinstance(bytes_data, bytes)
 
@@ -452,10 +452,10 @@ async def set_dist_node_state(base_url: str, enabled: bool) -> None:
     try:
         FileStorage.get_instance().distribution_controller.set_node_state(base_url, enabled=enabled)
     except UnknownDistURL:
-        storage_logger.error(f"Request to {prefix}able unknown distributor node with URL `{base_url}`")
+        log.error(f"Request to {prefix}able unknown distributor node with URL `{base_url}`")
         raise HTTPGone()
     except (DistAlreadyDisabled, DistAlreadyEnabled):
-        storage_logger.warning(f"Cannot to {prefix}able distributor node `{base_url}`; already {prefix}abled.")
+        log.warning(f"Cannot to {prefix}able distributor node `{base_url}`; already {prefix}abled.")
         raise HTTPConflict()
     raise HTTPOk()
 

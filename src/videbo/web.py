@@ -8,6 +8,7 @@ from time import time
 from typing import Any, Optional, Type, Union, cast, overload
 
 from aiohttp.client import ClientSession, ClientError, ClientTimeout
+from aiohttp.log import access_logger as aiohttp_access_logger
 from aiohttp.typedefs import LooseHeaders
 from aiohttp.web import run_app
 from aiohttp.web_app import Application
@@ -25,7 +26,7 @@ from videbo.types import CleanupContext, RouteHandler
 from videbo.video import get_content_type_for_extension
 
 
-web_logger = logging.getLogger('videbo-web')
+log = logging.getLogger(__name__)
 
 
 async def session_context(_app: Application) -> AsyncIterator[None]:
@@ -43,7 +44,7 @@ async def cancel_tasks(_app: Application) -> None:
 
 
 def start_web_server(routes: RouteTableDef, *cleanup_contexts: CleanupContext, address: Optional[str] = None,
-                     port: Optional[int] = None, access_logger: Optional[logging.Logger] = None,
+                     port: Optional[int] = None, access_logger: logging.Logger = aiohttp_access_logger,
                      verbose: bool = False) -> None:
     """
     Starts the aiohttp web server.
@@ -72,10 +73,8 @@ def start_web_server(routes: RouteTableDef, *cleanup_contexts: CleanupContext, a
     app.cleanup_ctx.append(session_context)
     app.cleanup_ctx.extend(cleanup_contexts)
     app.on_shutdown.append(cancel_tasks)  # executed **before** cleanup
-    if access_logger is None:
-        access_logger = logging.getLogger('aiohttp.access')
-        if not verbose:
-            access_logger.setLevel(logging.ERROR)
+    if not verbose:
+        access_logger.setLevel(logging.ERROR)
     run_app(app, host=address, port=port, access_log=access_logger)
 
 
@@ -113,16 +112,16 @@ def ensure_json_body(_func: Optional[RouteHandler] = None, *,
             """Wrapper around the actual function call."""
             assert request._client_max_size > 0
             if request.content_type != 'application/json':
-                web_logger.info('Wrong content type, json expected, got %s', request.content_type)
+                log.info('Wrong content type, json expected, got %s', request.content_type)
                 raise HTTPBadRequest(headers=headers)
             try:
                 json = await request.json()
                 data = param_class.parse_obj(json)
             except ValidationError as error:
-                web_logger.info('JSON in request does not match model: %s', str(error))
+                log.info('JSON in request does not match model: %s', str(error))
                 raise HTTPBadRequest(headers=headers)
             except JSONDecodeError:
-                web_logger.info('Invalid JSON in request')
+                log.info('Invalid JSON in request')
                 raise HTTPBadRequest(headers=headers)
             kwargs[param_name] = data
             return await function(request, *args, **kwargs)
@@ -299,14 +298,14 @@ class HTTPClient:
                     else:
                         return response.status, json
                 elif expected_return_type:
-                    web_logger.warning(f"Got unexpected data while internal web request ({url}).")
+                    log.warning(f"Got unexpected data while internal web request ({url}).")
                     raise HTTPResponseError()
                 else:
                     some_data = await response.read()
                     return response.status, some_data
         except (ClientError, UnicodeDecodeError, ValidationError, JSONDecodeError, ConnectionError):
             if print_connection_exception:
-                web_logger.exception(f"Error while internal web request ({url}).")
+                log.exception(f"Error while internal web request ({url}).")
             raise HTTPResponseError()
 
     @classmethod

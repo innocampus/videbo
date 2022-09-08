@@ -21,7 +21,7 @@ __all__ = [
 ]
 
 
-logger = logging.getLogger('videbo-auth')
+log = logging.getLogger(__name__)
 
 JWT_ALG = 'HS256'
 
@@ -102,9 +102,9 @@ def check_and_save_jwt_data(request: Request, min_level: int, jwt_model: Type[Re
     except jwt.InvalidTokenError as error:
         msg = f"Invalid JWT error: {error} ({request.url}); min. access level: {Role(min_level).name}"
         if min_level >= Role.lms:
-            logger.info(msg)
+            log.info(msg)
         else:
-            logger.debug(msg)
+            log.debug(msg)
         raise error
     except ValidationError as error:
         raise InvalidAuthData(f"JWT data does not correspond to expected data: {error}")
@@ -146,7 +146,7 @@ def ensure_auth(min_level: int, *, headers: Optional[LooseHeaders] = None) -> Ca
             except (jwt.InvalidTokenError, NotAuthorized):
                 raise HTTPUnauthorized(headers=headers)
             except InvalidAuthData as e:
-                logger.info("Auth data invalid: %s", str(e))
+                log.info("Auth data invalid: %s", str(e))
                 raise HTTPBadRequest(headers=headers)
             if min_level >= Role.admin and settings.forbid_admin_via_proxy and 'X-Forwarded-For' in request.headers:
                 raise HTTPForbidden(headers=headers)
