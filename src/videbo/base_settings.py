@@ -125,15 +125,17 @@ def load_ini_config(path: Path, settings: CommonSettings) -> dict[str, Any]:
     Loads settings from a single section in an `.ini`-style configuration file.
     NOTE: As per construction of the `ConfigParser` class, parameters from the DEFAULT section will also be included,
     unless overridden in the specific section.
-    Expects the Settings instance to already point to a valid configuration file
-    and its `get_section` method to return a section name in the configuration file.
+    Expects the Settings instance to already point to a valid configuration file.
     """
     if not path.is_file():
         print(f"Config file does not exist: {path}")
         sys.exit(3)
     parser = ConfigParser()
     parser.read(path)
-    config: dict[str, Any] = dict(parser[settings.get_section()])
+    try:
+        config: dict[str, Any] = dict(parser[settings.get_section()])
+    except KeyError:
+        return {}
     # Perform type conversion for each value.
     for name, value in config.items():
         assert isinstance(value, str)
