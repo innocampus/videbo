@@ -11,9 +11,9 @@ from .files import DistributorFileController
 
 
 async def network_context(_app: Application) -> AsyncIterator[None]:
-    NetworkInterfaces.get_instance().start_fetching(settings.server_status_page)
+    NetworkInterfaces.get_instance().start_fetching(settings)
     yield
-    await NetworkInterfaces.get_instance().stop_fetching()
+    NetworkInterfaces.get_instance().stop_fetching()
 
 
 async def distributor_context(_app: Application) -> AsyncIterator[None]:

@@ -36,7 +36,7 @@ async def get_status(_request: Request, _jwt_data: RequestJWTData) -> Response:
     status.files_count = len(file_controller.files)
     status.free_space = await file_controller.get_free_space()
     status.tx_max_rate = settings.tx_max_rate_mbit
-    NetworkInterfaces.get_instance().update_node_status(status, settings.server_status_page, log)
+    NetworkInterfaces.get_instance().update_node_status(status, logger=log)
     # Specific to distributor nodes:
     status.copy_files_status = file_controller.get_copy_file_status()
     status.waiting_clients = file_controller.waiting

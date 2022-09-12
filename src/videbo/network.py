@@ -1,68 +1,80 @@
-import asyncio
 import re
+from asyncio import Task, create_task, sleep
+from enum import Enum
 from logging import Logger, getLogger
 from time import time
 from typing import Optional, Union
 
-from videbo.exceptions import HTTPResponseError
-from videbo.misc import MEGA, TaskManager
+from pydantic import BaseModel
+
+from videbo.distributor.settings import DistributorSettings
+from videbo.exceptions import HTTPResponseError, UnknownServerStatusFormatError
+from videbo.misc import MEGA
 from videbo.models import NodeStatus
+from videbo.storage.settings import StorageSettings
 from videbo.web import HTTPClient
 
-# TODO: Refactor some functions in this module to make it testable and maintainable
 
 log = getLogger(__name__)
 
+HTML_PATTERN = re.compile(r"\s*<(!DOCTYPE|html).*>.*")
 
-class PureDataType:
-    def __repr__(self) -> str:
-        return self.__str__()
-
-    def __str__(self) -> str:
-        # TODO: make it pretty
-        return f"{self.__dict__}"
-
-
-class NetworkInterface(PureDataType):
-    """
-    Pure data holder for NetworkInterfaces
-    """
-    def __init__(self, name: str) -> None:
-        self.name = name
-        self.rx_bytes = 0
-        self.rx_throughput: float = 0  # bytes per second
-        self.rx_packets = 0
-        self.rx_drops = 0
-        self.rx_errors = 0
-        self.rx_fifo = 0
-        self.rx_frame = 0
-        self.rx_compr = 0
-        self.rx_multicast = 0
-        self.tx_bytes = 0
-        self.tx_throughput: float = 0  # bytes per second
-        self.tx_packets = 0
-        self.tx_drop = 0
-        self.tx_errs = 0
-        self.tx_fifo = 0
-        self.tx_frame = 0
-        self.tx_compr = 0
-        self.tx_multicast = 0
+# All regex group names except `name` must match
+# the field names of the `InterfaceStats` model exactly!
+INTERFACE_STATS_PATTERN = re.compile(
+    r"(?:^\s*(?P<name>\w+):\s+)?"
+    r"(?P<bytes>\d+)\s+"
+    r"(?P<packets>\d+)\s+"
+    r"(?P<errs>\d+)\s+"
+    r"(?P<drop>\d+)\s+"
+    r"(?P<fifo>\d+)\s+"
+    r"(?P<frame>\d+)\s+"
+    r"(?P<compr>\d+)\s+"
+    r"(?P<multicast>\d+)"
+)
 
 
-class StubStatus(PureDataType):
-    """
-    Pure data holder for server status
-    """
-    def __init__(self) -> None:
-        self.reading: int = 0
-        self.waiting: int = 0
-        self.writing: int = 0
-        self.server_type: str = "Unknown"
+class InterfaceStats(BaseModel):
+    bytes: int = 0
+    throughput: float = 0.  # bytes per second
+    packets: int = 0
+    drop: int = 0
+    errs: int = 0
+    fifo: int = 0
+    frame: int = 0
+    compr: int = 0
+    multicast: int = 0
+
+    def update_throughput(self, bytes_before: int, interval_seconds: float) -> None:
+        self.throughput = (self.bytes - bytes_before) / interval_seconds
+
+    class Config:
+        validate_assignment = True
 
 
-class UnknownServerStatusFormatError(Exception):
-    def __init__(self, url: str, server_type: str) -> None:
-        super().__init__(f"data received from {url} could not fulfill expected server type ({server_type})")
+class NetworkInterface(BaseModel):
+    name: str
+    rx: InterfaceStats = InterfaceStats()
+    tx: InterfaceStats = InterfaceStats()
+
+    class Config:
+        validate_assignment = True
+
+
+class ServerType(str, Enum):
+    apache = "Apache2"
+    nginx = "nginx"
+    unknown = "unknown"
+
+
+class StubStatus(BaseModel):
+    reading: int = 0
+    waiting: int = 0
+    writing: int = 0
+    server_type: ServerType = ServerType.unknown
+
+    class Config:
+        validate_assignment = True
 
 
 class NetworkInterfaces:
@@ -73,34 +85,9 @@ class NetworkInterfaces:
     _instance: Optional["NetworkInterfaces"] = None
     _interfaces: dict[str, NetworkInterface] = {}
 
-    # A regular expression which separates the interesting fields and saves them in named groups
-    # @see https://stackoverflow.com/questions/24897608/how-to-find-network-usage-in-linux-programatically
-    _pattern = re.compile(r"\s*"
-                          r"(?P<interface>\w+):\s+"
-                          r"(?P<rx_bytes>\d+)\s+"
-                          r"(?P<rx_packets>\d+)\s+"
-                          r"(?P<rx_errs>\d+)\s+"
-                          r"(?P<rx_drop>\d+)\s+"
-                          r"(?P<rx_fifo>\d+)\s+"
-                          r"(?P<rx_frame>\d+)\s+"
-                          r"(?P<rx_compr>\d+)\s+"
-                          r"(?P<rx_multicast>\d+)\s+"
-                          r"(?P<tx_bytes>\d+)\s+"
-                          r"(?P<tx_packets>\d+)\s+"
-                          r"(?P<tx_errs>\d+)\s+"
-                          r"(?P<tx_drop>\d+)\s+"
-                          r"(?P<tx_fifo>\d+)\s+"
-                          r"(?P<tx_frame>\d+)\s+"
-                          r"(?P<tx_compr>\d+)\s+"
-                          r"(?P<tx_multicast>\d+)\s*")
-
-    _html_pattern = re.compile(r"\s*<(!DOCTYPE|html).*>.*")
-
-    def __init__(self, interval: int = 10) -> None:
-        self.interval = interval
+    def __init__(self) -> None:
         self._last_time_network_proc: float = 0.0
-        self._do_fetch = False
-        self._fetch_task: Optional[asyncio.Task[None]] = None
+        self._fetch_task: Optional[Task[None]] = None
         self._server_status: Optional[StubStatus] = None
 
     @staticmethod
@@ -111,198 +98,153 @@ class NetworkInterfaces:
 
     @property
     def is_fetching(self) -> bool:
-        return self._do_fetch and self._fetch_task is not None
+        return self._fetch_task is not None
 
-    def get_server_status(self, attribute: str = "writing") -> Optional[int]:
-        if self._server_status is None:
-            return None
-        return getattr(self._server_status, attribute, 0)
-
-    def get_server_type(self) -> str:
-        if self._server_status is None:
-            raise KeyError("server type was never fetched")
-        return getattr(self._server_status, "server_type", "Unknown")
-
-    def get_interface_names(self) -> list[str]:
-        return list(self._interfaces.keys())
-
-    async def _fetch_proc_info(self) -> None:
+    def _fetch_proc_info(self) -> None:
         """Fetching data from /proc/net/dev"""
+        interval_seconds = time() - self._last_time_network_proc
         with open('/proc/net/dev', 'r') as f:
-            cur_time = time()
-            a = f.readline()
-            while a:
-                match = self._pattern.search(a)
-                # the regexp matched
-                # look for the needed interface and return the rx_bytes and tx_bytes
-                if match:
-                    name = match.group("interface")
-                    if name != "lo":
-                        if name not in self._interfaces:
-                            self._interfaces[name] = NetworkInterface(name)
-                        for attr in ["packets", "drop", "errs", "fifo", "frame", "compr", "multicast"]:
-                            self._set_interface_attr(name, f"rx_{attr}", int(match.group(f"rx_{attr}")))
-                            self._set_interface_attr(name, f"tx_{attr}", int(match.group(f"tx_{attr}")))
-                        for cls in ["tx", "rx"]:
-                            attr = f"{cls}_bytes"
-                            last_bytes: int = getattr(self._interfaces[name], attr)
-                            cur_bytes = int(match.group(attr))
-                            interval = cur_time - self._last_time_network_proc
-                            throughput = (cur_bytes - last_bytes) / interval
-                            self._set_interface_attr(name, attr, cur_bytes)
-                            self._set_interface_attr(name, f"{cls}_throughput", throughput)
-                a = f.readline()
-        self._last_time_network_proc = cur_time
+            for line in f:
+                try:
+                    rx_match, tx_match = re.finditer(INTERFACE_STATS_PATTERN, line)
+                except ValueError:
+                    continue
+                name = rx_match.group("name")
+                assert isinstance(name, str)
+                if name == "lo":
+                    continue
+                interface = self._interfaces.setdefault(name, NetworkInterface(name=name))
+                rx_bytes_before, tx_bytes_before = interface.rx.bytes, interface.tx.bytes
+                interface.rx = InterfaceStats.parse_obj(rx_match.groupdict())
+                interface.tx = InterfaceStats.parse_obj(tx_match.groupdict())
+                if self._last_time_network_proc > 0.:
+                    interface.rx.update_throughput(rx_bytes_before, interval_seconds)
+                    interface.tx.update_throughput(tx_bytes_before, interval_seconds)
+        self._last_time_network_proc += interval_seconds
 
-    async def _fetch_server_status(self, url: str, logger: Logger) -> None:
-        if not url:
-            return
-        status: int
-        ret: bytes
+    def _update_apache_status(self, lines_of_text: list[str]) -> bool:
+        assert isinstance(self._server_status, StubStatus)
+        scan = False
+        text_to_scan = ""
+        for line in lines_of_text:
+            if re.match(r".*<pre>[A-Z_.]+", line):
+                scan = True
+            if scan:
+                text_to_scan += line
+            if scan and re.match(r"[A-Z_.]*</pre>.*", line):
+                self._server_status.writing = text_to_scan.count("W") - 1
+                self._server_status.reading = text_to_scan.count("R")
+                self._server_status.waiting = text_to_scan.count("_")
+                return True
+        return False
+
+    def _update_nginx_status(self, text: str) -> bool:
+        assert isinstance(self._server_status, StubStatus)
+        match = re.match(
+            r"Reading:\s*(?P<reading>\d+)\s+"
+            r"Writing:\s*(?P<writing>\d+)\s+"
+            r"Waiting:\s*(?P<waiting>\d+)\s*",
+            text
+        )
+        if match is None:
+            return False
+        self._server_status.writing = int(match.group("writing")) - 1
+        self._server_status.reading = int(match.group("reading"))
+        self._server_status.waiting = int(match.group("waiting"))
+        return True
+
+    async def _fetch_server_status(self, url: str) -> None:
+        http_code: int
+        response_data: bytes
         try:
-            status, ret = await HTTPClient.videbo_request("GET", url, external=True)
+            http_code, response_data = await HTTPClient.videbo_request("GET", url, external=True)
         except HTTPResponseError:
-            if logger:
-                logger.warning("error while handling internal request")
+            log.warning("error while handling internal request")
             return
         except ConnectionRefusedError:
-            if logger:
-                logger.warning(f"could not connect to {url}")
+            log.warning(f"could not connect to {url}")
             return
-        if status == 200:
-            text = ret.decode("utf-8")
-            lines = text.split("\n")
-            if re.match(self._html_pattern, text):
-                # Apache2 server status
-                scan = False
-                text_to_scan = ""
-                updated = False
-                for line in lines:
-                    if re.match(r".*<pre>[A-Z_.]+", line):
-                        scan = True
-                    if scan:
-                        text_to_scan += line
-                    if scan and re.match(r"[A-Z_.]*</pre>.*", line):
-                        # scan for first <pre> only
-                        if self._server_status is None:
-                            self._server_status = StubStatus()
-                        self._server_status.writing = text_to_scan.count("W") - 1
-                        self._server_status.reading = text_to_scan.count("R")
-                        self._server_status.waiting = text_to_scan.count("_")
-                        self._server_status.server_type = "Apache2"
-                        updated = True
-                        break
-                if not updated:
-                    err = UnknownServerStatusFormatError(url, "apache2")
-                    if logger:
-                        logger.warning(err.__str__())
-                    raise err
-            else:
-                # nginx stub status
-                try:
-                    match = re.match(r"Reading:\s*(?P<reading>\d+)\s+"
-                                     r"Writing:\s*(?P<writing>\d+)\s+"
-                                     r"Waiting:\s*(?P<waiting>\d+)\s*", lines[3])
-                except KeyError:
-                    if logger:
-                        logger.error(f"response to {url} has less than 4 lines: unexpected nginx stub status format")
-                    raise UnknownServerStatusFormatError(url, "nginx")
-                if match:
-                    self._server_status = StubStatus()
-                    self._server_status.writing = int(match.group("writing")) - 1
-                    self._server_status.reading = int(match.group("reading"))
-                    self._server_status.waiting = int(match.group("waiting"))
-                    self._server_status.server_type = "nginx"
-                else:
-                    err = UnknownServerStatusFormatError(url, "nginx")
-                    if logger:
-                        logger.error(err.__str__())
-                    raise err
+        if http_code != 200:
+            log.warning(f"unexpected response from {url} (return code {http_code})")
+            return
+        text = response_data.decode("utf-8")
+        lines = text.split("\n")
+        if self._server_status is None:
+            self._server_status = StubStatus()
+        if re.match(HTML_PATTERN, text):
+            self._server_status.server_type = ServerType.apache
+            updated = self._update_apache_status(lines)
         else:
-            if logger:
-                logger.warning(f"unexpected response from {url} (return code {status})")
+            self._server_status.server_type = ServerType.nginx
+            try:
+                updated = self._update_nginx_status(lines[3])
+            except IndexError:
+                err = UnknownServerStatusFormatError(
+                    f"Response text from '{url}' has less than 4 lines: "
+                    f"Unexpected nginx stub status format"
+                )
+                log.error(str(err))
+                raise err
+        if not updated:
+            err = UnknownServerStatusFormatError(
+                f"Data received from '{url}' does not match the "
+                f"expected server type: {self._server_status.server_type})"
+            )
+            log.error(str(err))
+            raise err
 
-    async def stop_fetching(self) -> None:
+    async def _fetch_loop(self, settings: Union[DistributorSettings, StorageSettings]) -> None:
+        while True:
+            try:
+                self._fetch_proc_info()
+            except Exception as e:
+                log.exception(f"{e} in network _fetch_proc_info")
+            if settings.server_status_page:
+                try:
+                    await self._fetch_server_status(settings.server_status_page)
+                except Exception as e:
+                    log.exception(f"{e} in network _fetch_server_status")
+            await sleep(settings.network_info_fetch_interval)
+
+    def start_fetching(self, settings: Union[DistributorSettings, StorageSettings]) -> None:
+        """Starts the fetching process"""
+        if self._fetch_task is not None:
+            return
+        self._fetch_task = create_task(self._fetch_loop(settings))
+        log.info("Started fetching network resources info")
+
+    def stop_fetching(self) -> None:
         """Stops the fetching process"""
         if self._fetch_task is not None:
-            try:
-                await self._fetch_task
-            finally:
-                self._do_fetch = False
-                self._fetch_task = None
-        else:
-            self._do_fetch = False
-
-    def start_fetching(self, status_page: Optional[str] = None, logger: Logger = log) -> None:
-        """Starts the fetching process"""
-        if self._fetch_task is None:
-            self._do_fetch = True
-
-            async def fetcher() -> None:
-                try:
-                    # fetch in advance to avoid high throughput values
-                    if logger:
-                        logger.info("start fetch for network resources")
-                    await self._fetch_proc_info()
-
-                    while self._do_fetch:
-                        try:
-                            await self._fetch_proc_info()
-                        except asyncio.CancelledError:
-                            pass
-                        except Exception as e:
-                            logger.exception(f"{e} in network _fetch_proc_info")
-
-                        if status_page:
-                            try:
-                                await self._fetch_server_status(url=status_page, logger=logger)
-                            except asyncio.CancelledError:
-                                pass
-                            except Exception as e:
-                                logger.exception(f"{e} in network _fetch_server_status")
-
-                        await asyncio.sleep(self.interval)
-                finally:
-                    if logger:
-                        logger.info("fetch for network resource information stopped")
-                    self._fetch_task = None
-                    self._do_fetch = False
-            self._fetch_task = asyncio.create_task(fetcher())
-            TaskManager.fire_and_forget_task(self._fetch_task)
+            self._fetch_task.cancel()
+            self._fetch_task = None
+            log.info("Stopped fetching network resources info")
 
     def get_first_interface(self) -> Optional[NetworkInterface]:
-        interface_iter = iter(self._interfaces.values())
         try:
-            return next(interface_iter)
+            return next(iter(self._interfaces.values()))
         except StopIteration:
             return None
-
-    def _set_interface_attr(self, interface: str, attr: str, value: Union[int, float]) -> None:
-        """Sets only if interface exists"""
-        if interface in self._interfaces:
-            setattr(self._interfaces[interface], attr, value)
 
     def get_tx_current_rate(self, interface_name: Optional[str] = None) -> Optional[float]:
         interface = self.get_first_interface() if interface_name is None else self._interfaces.get(interface_name)
         if interface is None:
             return None
-        return interface.tx_throughput * 8 / 1_000_000
+        return interface.tx.throughput * 8 / 1_000_000
 
-    def update_node_status(self, status_obj: NodeStatus, server_status_page: Optional[str] = None,
-                           logger: Logger = log) -> None:
+    def update_node_status(self, status_obj: NodeStatus, logger: Logger = log) -> None:
         """Updates a given `NodeStatus` (subclass) instance with network interface information"""
-        if server_status_page:
-            status_obj.current_connections = self.get_server_status()
+        if self._server_status is not None:
+            status_obj.current_connections = self._server_status.writing
         interface = self.get_first_interface()
         if interface is None:
             status_obj.tx_current_rate = 0.
             status_obj.rx_current_rate = 0.
             status_obj.tx_total = 0.
             status_obj.rx_total = 0.
-            if logger:
-                logger.error("No network interface found!")
+            logger.error("No network interface found!")
         else:
-            status_obj.tx_current_rate = round(interface.tx_throughput * 8 / 1_000_000, 2)
-            status_obj.rx_current_rate = round(interface.rx_throughput * 8 / 1_000_000, 2)
-            status_obj.tx_total = round(interface.tx_bytes / MEGA, 2)
-            status_obj.rx_total = round(interface.rx_bytes / MEGA, 2)
+            status_obj.tx_current_rate = round(interface.tx.throughput * 8 / 1_000_000, 2)
+            status_obj.rx_current_rate = round(interface.rx.throughput * 8 / 1_000_000, 2)
+            status_obj.tx_total = round(interface.tx.bytes / MEGA, 2)
+            status_obj.rx_total = round(interface.rx.bytes / MEGA, 2)

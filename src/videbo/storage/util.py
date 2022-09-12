@@ -423,7 +423,7 @@ class FileStorage:
         status.files_count = self.get_files_count()
         status.free_space = await get_free_disk_space(str(settings.files_path))
         status.tx_max_rate = settings.tx_max_rate_mbit
-        NetworkInterfaces.get_instance().update_node_status(status, settings.server_status_page, log)
+        NetworkInterfaces.get_instance().update_node_status(status, logger=log)
         # Specific to storage node:
         status.distributor_nodes = self.distribution_controller.get_dist_node_base_urls()
         status.num_current_uploads = self.num_current_uploads

@@ -74,6 +74,7 @@ class CommonSettings(AbstractBaseSettings):
     lms_base_urls: list[str] = []
     dev_mode: bool = False
     tx_max_rate_mbit: float = 20.0
+    network_info_fetch_interval: float = 10.0
     server_status_page: Optional[str] = None
     nginx_x_accel_location: Optional[str] = None
     nginx_x_accel_limit_rate_mbit: float = 0.0

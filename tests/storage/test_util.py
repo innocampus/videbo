@@ -752,8 +752,7 @@ class FileStorageTestCase(BaseTestCase):
         self.assertEqual(mock_free_disk_space, output.free_space)
         mock_get_free_disk_space.assert_awaited_once_with(str(self.mock_settings.files_path))
         self.assertEqual(self.mock_settings.tx_max_rate_mbit, output.tx_max_rate)
-        mock_update_node_status.assert_called_once_with(mock_status, self.mock_settings.server_status_page,
-                                                        util.log)
+        mock_update_node_status.assert_called_once_with(mock_status, logger=util.log)
         self.assertEqual(mock_dist_node_urls, output.distributor_nodes)
         self.assertEqual(self.storage.num_current_uploads, output.num_current_uploads)
 

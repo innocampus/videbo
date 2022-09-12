@@ -80,3 +80,11 @@ class NotAuthorized(AuthError):
 
 class NoRunningTask(VideboBaseException):
     pass
+
+
+class NetworkInfoError(VideboBaseException):
+    pass
+
+
+class UnknownServerStatusFormatError(NetworkInfoError):
+    pass
