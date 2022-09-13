@@ -2,7 +2,7 @@ from typing import Any, Optional, Type
 
 from videbo import storage_settings as settings
 from videbo.exceptions import HTTPResponseError
-from videbo.misc import ensure_url_does_not_end_with_slash
+from videbo.misc.functions import ensure_url_does_not_end_with_slash
 from videbo.models import JSONBaseModel, Role
 from videbo.web import HTTPClient
 

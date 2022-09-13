@@ -10,8 +10,8 @@ from prometheus_client.exposition import write_to_textfile
 from prometheus_client.process_collector import ProcessCollector
 
 from videbo import storage_settings as settings
-from videbo.misc import Periodic
 from videbo.distributor.api.models import DistributorStatus
+from videbo.misc.periodic import Periodic
 from .util import FileStorage
 from .api.models import StorageStatus
 

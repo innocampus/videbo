@@ -6,7 +6,9 @@ from typing import Optional, TYPE_CHECKING
 
 from videbo import storage_settings as settings
 from videbo.exceptions import HTTPResponseError, NoRunningTask
-from videbo.misc import MEGA, TaskManager, Periodic
+from videbo.misc import MEGA
+from videbo.misc.periodic import Periodic
+from videbo.misc.task_manager import TaskManager
 from videbo.types import FileID
 from videbo.web import HTTPClient
 from videbo.distributor.api.models import (DistributorCopyFile, DistributorDeleteFiles, DistributorDeleteFilesResponse,
@@ -450,7 +452,7 @@ class DistributionController:
             await found_node.unlink_node()
             log.info(f"Removed dist node {base_url}")
         else:
-            log.warn(f"Wanted to remove node {base_url} but did not found.")
+            log.warning(f"Wanted to remove node {base_url} but did not found.")
 
     def set_node_state(self, base_url: str, enabled: bool) -> None:
         found_node = self._find_node(lambda node: node.base_url == base_url)

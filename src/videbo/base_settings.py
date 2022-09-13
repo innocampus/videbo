@@ -10,7 +10,7 @@ from pydantic import BaseSettings, validator
 from pydantic.env_settings import SettingsSourceCallable
 from pydantic.fields import ModelField, SHAPE_LIST, SHAPE_SET
 
-from videbo.misc import ensure_url_does_not_end_with_slash as normalize_url
+from videbo.misc.functions import ensure_url_does_not_end_with_slash as normalize_url
 
 
 __all__ = [

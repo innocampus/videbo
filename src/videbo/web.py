@@ -20,7 +20,9 @@ from aiohttp.web_routedef import RouteTableDef
 from pydantic import ValidationError
 
 from videbo.exceptions import HTTPResponseError
-from videbo.misc import TaskManager, sanitize_filename, get_route_model_param, MEGA
+from videbo.misc import MEGA
+from videbo.misc.functions import sanitize_filename, get_route_model_param
+from videbo.misc.task_manager import TaskManager
 from videbo.models import JSONBaseModel, TokenIssuer, Role, RequestJWTData
 from videbo.types import CleanupContext, RouteHandler
 from videbo.video import get_content_type_for_extension

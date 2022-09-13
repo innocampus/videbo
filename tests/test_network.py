@@ -4,6 +4,7 @@ from unittest import IsolatedAsyncioTestCase, TestCase
 from unittest.mock import AsyncMock, MagicMock, call, patch
 
 from videbo.exceptions import HTTPResponseError
+from videbo.misc import MEGA
 from videbo import network
 
 
@@ -287,12 +288,11 @@ class NetworkInterfacesTestCase(IsolatedAsyncioTestCase):
         connections = 101
         self.ni._server_status = MagicMock(writing=connections)
         mock_get_first_interface.return_value = MagicMock(
-            tx=MagicMock(throughput=1_000_000, bytes=2 * network.MEGA),
-            rx=MagicMock(throughput=2_000_000, bytes=4 * network.MEGA),
+            tx=MagicMock(throughput=1_000_000, bytes=2 * MEGA),
+            rx=MagicMock(throughput=2_000_000, bytes=4 * MEGA),
         )
         self.ni.update_node_status(mock_status_obj)
         self.assertEqual(8., mock_status_obj.tx_current_rate)
         self.assertEqual(16., mock_status_obj.rx_current_rate)
         self.assertEqual(2., mock_status_obj.tx_total)
         self.assertEqual(4., mock_status_obj.rx_total)
-

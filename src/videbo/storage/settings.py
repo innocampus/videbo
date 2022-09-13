@@ -4,7 +4,7 @@ from typing import Optional
 from pydantic import validator
 
 from videbo.base_settings import CommonSettings, PROJECT_DIR
-from videbo.misc import ensure_url_does_not_end_with_slash as normalize_url
+from videbo.misc.functions import ensure_url_does_not_end_with_slash as normalize_url
 
 
 class StorageSettings(CommonSettings):

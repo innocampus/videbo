@@ -2,7 +2,8 @@ from unittest import TestCase
 from collections import OrderedDict
 from string import ascii_lowercase
 
-from videbo.misc import BytesLimitLRU, SizeError
+from videbo.exceptions import SizeError
+from videbo.misc.lru_dict import BytesLimitLRU
 
 
 class BytesLimitLRUTestCase(TestCase):

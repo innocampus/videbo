@@ -2,8 +2,8 @@ from pathlib import Path
 
 from pydantic import validator
 
-from videbo.misc import ensure_url_does_not_end_with_slash as normalize_url
 from videbo.base_settings import CommonSettings
+from videbo.misc.functions import ensure_url_does_not_end_with_slash as normalize_url
 
 
 class DistributorSettings(CommonSettings):

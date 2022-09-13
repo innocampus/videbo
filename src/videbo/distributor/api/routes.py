@@ -11,7 +11,8 @@ from aiohttp.web_fileresponse import FileResponse
 
 from videbo import distributor_settings as settings
 from videbo.auth import ensure_auth
-from videbo.misc import MEGA, rel_path
+from videbo.misc import MEGA
+from videbo.misc.functions import rel_path
 from videbo.models import TokenIssuer, Role, RequestJWTData
 from videbo.network import NetworkInterfaces
 from videbo.web import ensure_json_body, file_serve_response

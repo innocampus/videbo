@@ -88,3 +88,7 @@ class NetworkInfoError(VideboBaseException):
 
 class UnknownServerStatusFormatError(NetworkInfoError):
     pass
+
+
+class SizeError(VideboBaseException):
+    pass

@@ -10,10 +10,9 @@ from hashlib import md5
 from aiohttp import web, FormData
 from aiohttp.test_utils import AioHTTPTestCase
 
-from videbo.misc import rel_path
-from videbo.models import Role, TokenIssuer
-
 from videbo import storage_settings as settings
+from videbo.misc.functions import rel_path
+from videbo.models import Role, TokenIssuer
 from videbo.storage.api.models import (FileType, UploadFileJWTData, SaveFileJWTData, DeleteFileJWTData,
                                        RequestFileJWTData, FileUploadedResponseJWT)
 from videbo.storage.api.routes import get_expiration_time, routes

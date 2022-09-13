@@ -21,7 +21,8 @@ from aiohttp.web_exceptions import HTTPInternalServerError, HTTPServiceUnavailab
 from videbo import storage_settings as settings
 from videbo.auth import ensure_auth
 from videbo.exceptions import InvalidMimeTypeError, InvalidVideoError, FFProbeError
-from videbo.misc import MEGA, rel_path
+from videbo.misc import MEGA
+from videbo.misc.functions import rel_path
 from videbo.models import RequestJWTData, Role, TokenIssuer
 from videbo.network import NetworkInterfaces
 from videbo.video import VideoInfo, VideoValidator, VideoConfig

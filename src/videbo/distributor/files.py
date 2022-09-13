@@ -9,7 +9,9 @@ from typing import Optional
 from aiohttp import ClientTimeout
 
 from videbo import distributor_settings as settings
-from videbo.misc import MEGA, get_free_disk_space, TaskManager, rel_path
+from videbo.misc import MEGA
+from videbo.misc.functions import get_free_disk_space, rel_path
+from videbo.misc.task_manager import TaskManager
 from videbo.models import Role, TokenIssuer
 from videbo.web import HTTPClient
 from videbo.storage.util import HashedVideoFile
