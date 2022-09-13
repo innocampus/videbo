@@ -45,8 +45,8 @@ jobs:
     outputs:
       coverage: ${{ env.coverage }}
 
-  integration-tests:
-    name: Python ${{ matrix.python-version }} integration tests
+  e2e-tests:
+    name: Python ${{ matrix.python-version }} end-to-end tests
     runs-on: ubuntu-latest
     strategy:
       matrix:
@@ -77,8 +77,8 @@ jobs:
     - name: Create temporary storage directory
       run: mkdir -p /tmp/videbo/storage
 
-    - name: Run integration tests for Python ${{ matrix.python-version }}
-      run: python -m tests 'integration_test*.py'
+    - name: Run end-to-end tests for Python ${{ matrix.python-version }}
+      run: python -m tests 'e2e_test*.py'
 
   type-checks:
     name: Type checks with mypy
