@@ -36,8 +36,8 @@ class CopyFileStatus:
 class DistributorHashedVideoFile(HashedVideoFile):
     __slots__ = 'copy_status', 'file_size', 'last_requested'
 
-    def __init__(self, file_hash: str, file_extension: str) -> None:
-        super().__init__(file_hash, file_extension)
+    def __init__(self, file_hash: str, file_ext: str) -> None:
+        super().__init__(file_hash, file_ext)
         self.copy_status: Optional[CopyFileStatus] = None
         self.file_size: int = -1  # in bytes
         self.last_requested: int = -1  # UNIX timestamp (seconds); -1 means never/unknown
@@ -152,7 +152,7 @@ class DistributorFileController:
 
         log.info(f"Start copying file {file} from {from_url}")
         copy_status = CopyFileStatus()
-        new_file = DistributorHashedVideoFile(file.hash, file.file_extension)
+        new_file = DistributorHashedVideoFile(file.hash, file.file_ext)
         new_file.copy_status = copy_status
         self.files[file.hash] = new_file
         self.files_being_copied.add(new_file)
@@ -176,7 +176,7 @@ class DistributorFileController:
                     role=Role.node,
                     type=FileType.VIDEO,
                     hash=file.hash,
-                    file_ext=file.file_extension,
+                    file_ext=file.file_ext,
                     rid=''
                 )
                 headers = {"Authorization": "Bearer " + jwt_data.encode()}
@@ -277,7 +277,7 @@ class DistributorFileController:
         now = time()
         return [
             DistributorCopyFileStatus(
-                hash=file.hash, file_ext=file.file_extension, loaded=file.copy_status.loaded_bytes,
+                hash=file.hash, file_ext=file.file_ext, loaded=file.copy_status.loaded_bytes,
                 file_size=file.file_size, duration=now - file.copy_status.started
             ) for file in self.files_being_copied if file.copy_status
         ]

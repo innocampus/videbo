@@ -20,17 +20,17 @@ class HashedVideoFileTestCase(BaseTestCase):
 
     def test_init(self):
         test_hash, test_ext = 'test', '.ext'
-        obj = util.HashedVideoFile(file_hash=test_hash, file_extension=test_ext)
+        obj = util.HashedVideoFile(file_hash=test_hash, file_ext=test_ext)
         self.assertEqual(obj.hash, test_hash)
-        self.assertEqual(obj.file_extension, test_ext)
+        self.assertEqual(obj.file_ext, test_ext)
 
         # Expecting error, when extension doesn't start with a dot:
         with self.assertRaises(util.HashedFileInvalidExtensionError):
-            util.HashedVideoFile(file_hash=test_hash, file_extension='ext')
+            util.HashedVideoFile(file_hash=test_hash, file_ext='ext')
 
     def test_str(self):
         test_hash, test_ext = 'test', '.ext'
-        obj = util.HashedVideoFile(file_hash=test_hash, file_extension=test_ext)
+        obj = util.HashedVideoFile(file_hash=test_hash, file_ext=test_ext)
         self.assertEqual(str(obj), test_hash + test_ext)
 
 
@@ -43,7 +43,7 @@ class StoredHashedVideoFileTestCase(BaseTestCase):
         mock_file_nodes.return_value = mock_nodes_obj
 
         test_hash, test_ext = 'test', '.ext'
-        obj = util.StoredHashedVideoFile(file_hash=test_hash, file_extension=test_ext)
+        obj = util.StoredHashedVideoFile(file_hash=test_hash, file_ext=test_ext)
 
         mock_superclass_init.assert_called_once_with(test_hash, test_ext)
         self.assertEqual(obj.file_size, -1)
@@ -54,7 +54,7 @@ class StoredHashedVideoFileTestCase(BaseTestCase):
     @patch(TESTED_MODULE_PATH + '.HashedVideoFile.__init__')
     def test_lt(self, *_: MagicMock) -> None:
         test_hash, test_ext = 'test', '.ext'
-        obj = util.StoredHashedVideoFile(file_hash=test_hash, file_extension=test_ext)
+        obj = util.StoredHashedVideoFile(file_hash=test_hash, file_ext=test_ext)
         obj.views = 10
         mock_other = MagicMock(views=20)
         self.assertLess(obj, mock_other)
@@ -208,7 +208,7 @@ class FileStorageTestCase(BaseTestCase):
         test_total_size, test_hash, test_ext = 10, 'abc', '.ext'
         self.storage._cached_files_total_size = test_total_size
 
-        out = self.storage._add_video_to_cache(file_hash=test_hash, file_extension=test_ext, file_path=mock_file_path)
+        out = self.storage._add_video_to_cache(file_hash=test_hash, file_ext=test_ext, file_path=mock_file_path)
 
         mock_hvf_class.assert_called_once_with(test_hash, test_ext)
         mock_stat_method.assert_called_once_with()
@@ -224,7 +224,7 @@ class FileStorageTestCase(BaseTestCase):
         mock_stat_method.side_effect = FileNotFoundError
         with self.assertLogs(util.log, logging.ERROR):
             out = self.storage._add_video_to_cache(file_hash=test_hash,
-                                                   file_extension=test_ext,
+                                                   file_ext=test_ext,
                                                    file_path=mock_file_path)
         mock_hvf_class.assert_called_once_with(test_hash, test_ext)
         mock_stat_method.assert_called_once_with()
@@ -255,8 +255,8 @@ class FileStorageTestCase(BaseTestCase):
     async def test_filtered_files(self, mock__file_hashes_orphaned_dict):
         test_extensions, test_types = ['.mp4'], ['video', 'video_temp']
         expected_file_hash = 'abc'
-        expected_file = MagicMock(file_extension='.mp4', hash=expected_file_hash)
-        wrong_ext_file = MagicMock(file_extension='.webm')
+        expected_file = MagicMock(file_ext='.mp4', hash=expected_file_hash)
+        wrong_ext_file = MagicMock(file_ext='.webm')
         self.storage._cached_files = {'foo': wrong_ext_file, expected_file_hash: expected_file}
         mock__file_hashes_orphaned_dict.return_value = {expected_file_hash: True}
 
@@ -317,7 +317,7 @@ class FileStorageTestCase(BaseTestCase):
     @async_test
     async def test_get_file(self):
         test_hash, test_ext = 'foo', 'bar'
-        mock_file = MagicMock(file_extension=test_ext)
+        mock_file = MagicMock(file_ext=test_ext)
         self.storage._cached_files = {test_hash: mock_file}
         output = await self.storage.get_file(test_hash, test_ext)
         self.assertEqual(output, mock_file)
@@ -529,7 +529,7 @@ class FileStorageTestCase(BaseTestCase):
         mock_run = mocked_loop_runner(mock_aio)
 
         test_hash, test_ext = 'foo', 'bar'
-        mock_file = MagicMock(hash=test_hash, file_extension=test_ext)
+        mock_file = MagicMock(hash=test_hash, file_ext=test_ext)
 
         output = await self.storage.add_file_from_temp(mock_file)
         self.assertIsNone(output)
@@ -840,7 +840,7 @@ class TempFileTestCase(BaseTestCase):
 
     def test_get_path(self):
         test_hash, test_ext = 'foo', 'bar'
-        test_temp_dir, test_file = Path('test'), MagicMock(hash=test_hash, file_extension=test_ext)
+        test_temp_dir, test_file = Path('test'), MagicMock(hash=test_hash, file_ext=test_ext)
         expected_output = Path(test_temp_dir, test_hash + test_ext)
         output = self.obj.get_path(test_temp_dir, test_file)
         self.assertEqual(output, expected_output)
@@ -958,7 +958,7 @@ class FunctionsTestCase(BaseTestCase):
         mock_site3 = MagicMock(video_exists=mock_exists3, api_url='other3')
         mock_lms_cls.iter_all.return_value = [mock_site1, mock_site2, mock_site3]
 
-        mock_file = MagicMock(hash=test_hash, file_extension=test_ext)
+        mock_file = MagicMock(hash=test_hash, file_ext=test_ext)
         output = await util.lms_has_file(mock_file, test_origin)
         self.assertTrue(output)
         mock_exists1.assert_not_awaited()

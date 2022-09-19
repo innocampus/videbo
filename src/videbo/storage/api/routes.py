@@ -55,7 +55,7 @@ def generate_video_url(video: HashedVideoFile, temp: bool) -> str:
         role=Role.client,
         type=FileType.VIDEO_TEMP if temp else FileType.VIDEO,
         hash=video.hash,
-        file_ext=video.file_extension,
+        file_ext=video.file_ext,
         rid=''
     )
     return f"{settings.public_base_url}/file?jwt={jwt_data.encode()}"
@@ -70,7 +70,7 @@ def generate_thumb_urls(video: HashedVideoFile, temp: bool, thumb_count: int) ->
             role=Role.client,
             type=FileType.THUMBNAIL_TEMP if temp else FileType.THUMBNAIL,
             hash=video.hash,
-            file_ext=video.file_extension,
+            file_ext=video.file_ext,
             thumb_id=thumb_id,
             rid='',
         )
@@ -189,7 +189,7 @@ async def read_and_save_temp(file: TempFile, field: BodyPartReader) -> Response:
         exp=get_expiration_time(),
         iss=TokenIssuer.external,
         hash=stored_file.hash,
-        file_ext=stored_file.file_extension,
+        file_ext=stored_file.file_ext,
         thumbnails_available=thumb_count,
         duration=duration
     )

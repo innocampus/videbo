@@ -260,8 +260,8 @@ class DistributionNodeInfo:
     async def remove_videos(self, files: Iterable[StoredHashedVideoFile], safe: bool = True) -> None:
         hashes_extensions, to_discard = [], {}
         for file in files:
-            hashes_extensions.append((file.hash, file.file_extension))
-            to_discard[f'{file.hash}{file.file_extension}'] = file
+            hashes_extensions.append((file.hash, file.file_ext))
+            to_discard[f'{file.hash}{file.file_ext}'] = file
         response_data = await self._remove_files(hashes_extensions, safe=safe)  # calls the distributor's API
         # Only discard files that were actually deleted:
         not_deleted_size = 0

@@ -50,7 +50,7 @@ async def get_status(_request: Request, _jwt_data: RequestJWTData) -> Response:
 async def get_all_files(_request: Request, _jwt_data: RequestJWTData) -> Response:
     all_files: list[tuple[str, str]] = []
     for file in DistributorFileController.get_instance().files.values():
-        all_files.append((file.hash, file.file_extension))
+        all_files.append((file.hash, file.file_ext))
     return DistributorFileList(files=all_files).json_response()
 
 

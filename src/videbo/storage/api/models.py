@@ -59,11 +59,11 @@ class StorageStatus(NodeStatus):
 
 class StorageFileInfo(BaseModel):
     hash: str
-    file_extension: str
+    file_ext: str
     file_size: int  # in MB
 
     def __repr__(self) -> str:
-        return self.hash + self.file_extension
+        return self.hash + self.file_ext
 
     def __str__(self) -> str:
         return repr(self)

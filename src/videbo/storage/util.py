@@ -31,25 +31,25 @@ VALID_EXTENSIONS = frozenset(FILE_EXT_WHITELIST + (JPG_EXT,))
 
 
 class HashedVideoFile:
-    __slots__ = 'hash', 'file_extension'
+    __slots__ = 'hash', 'file_ext'
 
-    def __init__(self, file_hash: str, file_extension: str) -> None:
+    def __init__(self, file_hash: str, file_ext: str) -> None:
         self.hash = file_hash
-        self.file_extension = file_extension
+        self.file_ext = file_ext
 
         # Extension has to start with a dot.
-        if file_extension[0] != '.':
-            raise HashedFileInvalidExtensionError(file_extension)
+        if file_ext[0] != '.':
+            raise HashedFileInvalidExtensionError(file_ext)
 
     def __str__(self) -> str:
-        return self.hash + self.file_extension
+        return self.hash + self.file_ext
 
 
 class StoredHashedVideoFile(HashedVideoFile):
     __slots__ = 'file_size', 'views', 'nodes'
 
-    def __init__(self, file_hash: str, file_extension: str) -> None:
-        super().__init__(file_hash, file_extension)
+    def __init__(self, file_hash: str, file_ext: str) -> None:
+        super().__init__(file_hash, file_ext)
         self.file_size: int = -1  # in bytes
         self.views: int = 0
         self.nodes: FileNodes = FileNodes()
@@ -135,8 +135,8 @@ class FileStorage:
             log.exception(f"{str(e)} in load_file_list")
         log.info(f"Found {len(self._cached_files)} videos in storage")
 
-    def _add_video_to_cache(self, file_hash: str, file_extension: str, file_path: Path) -> StoredHashedVideoFile:
-        file = StoredHashedVideoFile(file_hash, file_extension)
+    def _add_video_to_cache(self, file_hash: str, file_ext: str, file_path: Path) -> StoredHashedVideoFile:
+        file = StoredHashedVideoFile(file_hash, file_ext)
         try:
             stat = file_path.stat()
         except FileNotFoundError:
@@ -189,7 +189,7 @@ class FileStorage:
             raise ValueError(f"Invalid file type(s): {invalid_types}")
 
         for file in self._cached_files.values():
-            if file.file_extension not in extensions:
+            if file.file_ext not in extensions:
                 continue
             if hashes_orphaned and hashes_orphaned[file.hash] != orphaned:
                 continue
@@ -224,10 +224,10 @@ class FileStorage:
             hash_orphaned_dict[key] = not existing[idx]
         return hash_orphaned_dict
 
-    async def get_file(self, file_hash: str, file_extension: str) -> StoredHashedVideoFile:
+    async def get_file(self, file_hash: str, file_ext: str) -> StoredHashedVideoFile:
         """Get video file in storage and check that it really exists."""
         file = self._cached_files.get(file_hash)
-        if file and file.file_extension == file_extension:
+        if file and file.file_ext == file_ext:
             return file
 
         raise FileNotFoundError()
@@ -312,7 +312,7 @@ class FileStorage:
         # Run in another thread as there is blocking io.
         await asyncio.get_event_loop().run_in_executor(None, self._move_file, temp_path, new_file_path)
         log.info("Added file with hash %s permanently to storage.", file.hash)
-        self._add_video_to_cache(file.hash, file.file_extension, new_file_path)
+        self._add_video_to_cache(file.hash, file.file_ext, new_file_path)
 
     async def add_thumbs_from_temp(self, file: HashedVideoFile, thumb_count: int) -> None:
         """Add thumbnails to the video that are currently stored in the temp dir."""
@@ -483,7 +483,7 @@ class TempFile:
 
     @classmethod
     def get_path(cls, temp_dir: Path, file: HashedVideoFile) -> Path:
-        return Path(temp_dir, file.hash + file.file_extension)
+        return Path(temp_dir, file.hash + file.file_ext)
 
     @classmethod
     def get_thumb_path(cls, temp_dir: Path, file: HashedVideoFile, thumb_nr: int) -> Path:
@@ -542,7 +542,7 @@ async def lms_has_file(file: StoredHashedVideoFile, origin: Optional[str] = None
             continue
         log.debug(f"Checking LMS {site.api_url} for file {file}.")
         try:
-            exists = await site.video_exists(file.hash, file.file_extension)
+            exists = await site.video_exists(file.hash, file.file_ext)
         except LMSInterfaceError as e:
             log.warning(f"{e} occurred on {site.api_url}.")
             raise
