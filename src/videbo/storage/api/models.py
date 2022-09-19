@@ -68,6 +68,9 @@ class StorageFileInfo(JSONBaseModel):
     def __str__(self) -> str:
         return repr(self)
 
+    class Config:
+        orm_mode = True
+
 
 class StorageFilesList(JSONBaseModel):
     files: list[StorageFileInfo]

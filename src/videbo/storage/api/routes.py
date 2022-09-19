@@ -492,18 +492,16 @@ async def get_status(_request: Request, _jwt_data: RequestJWTData) -> Response:
 @routes.get(r'/api/storage/files')  # type: ignore[arg-type]
 @ensure_auth(Role.admin)
 async def get_files_list(request: Request, _jwt_data: RequestJWTData) -> Response:
-    files = []
-    storage = FileStorage.get_instance()
+    orphaned: Optional[bool] = None
     if request.query:
-        orphaned: Optional[bool] = None
         orphaned_arg = request.query.get('orphaned')
         if orphaned_arg:
             orphaned = bool(strtobool(orphaned_arg.lower()))
-        files_dict = await storage.filtered_files(orphaned=orphaned)
-    else:
-        files_dict = storage.all_files()
-    for file in files_dict.values():
-        files.append(StorageFileInfo(hash=file.hash, file_extension=file.file_extension, file_size=file.file_size))
+    files = [
+        StorageFileInfo.from_orm(file)
+        async for file
+        in FileStorage.get_instance().filtered_files(orphaned=orphaned)
+    ]
     return StorageFilesList(files=files).json_response()
 
 

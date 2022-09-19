@@ -13,6 +13,7 @@ class StorageSettings(CommonSettings):
     listen_port: int = 9020
     files_path: Path = Path('/tmp/videbo/storage')
     public_base_url: str = 'http://localhost:9020'
+    lms_api_urls: list[str] = []
     max_file_size_mb: float = 200.0
     thumb_suggestion_count: int = 3
     thumb_height: int = 90
@@ -39,4 +40,5 @@ class StorageSettings(CommonSettings):
         return max(freq, 1)
 
     _norm_public_base_url = validator('public_base_url', allow_reuse=True)(normalize_url)
+    _norm_lms_api_urls = validator('lms_api_urls', each_item=True, allow_reuse=True)(normalize_url)
     _norm_dist_node_urls = validator('static_dist_node_base_urls', each_item=True, allow_reuse=True)(normalize_url)

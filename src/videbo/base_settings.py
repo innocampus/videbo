@@ -71,7 +71,6 @@ class CommonSettings(AbstractBaseSettings):
     internal_api_secret: str = ''
     external_api_secret: str = ''
     forbid_admin_via_proxy: bool = True
-    lms_base_urls: list[str] = []
     dev_mode: bool = False
     tx_max_rate_mbit: float = 20.0
     network_info_fetch_interval: float = 10.0
@@ -96,10 +95,6 @@ class CommonSettings(AbstractBaseSettings):
             if isinstance(v, set):
                 return {element for element in v if element != ''}
         return v
-
-    @validator('lms_base_urls', each_item=True)
-    def normalize_lms_base_urls(cls, url: str) -> str:
-        return normalize_url(url)
 
     _norm_nginx_x_accel_location = validator('nginx_x_accel_location', allow_reuse=True)(normalize_url)
 

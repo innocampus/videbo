@@ -1,6 +1,7 @@
 import logging
 import shutil
 import time
+from collections.abc import Iterator
 from unittest.mock import patch, MagicMock, call, Mock
 from pathlib import Path
 from typing import TypeVar, Type
@@ -243,84 +244,73 @@ class FileStorageTestCase(BaseTestCase):
         out = self.storage.get_files_count()
         self.assertEqual(out, expected_count)
 
-    @patch(TESTED_MODULE_PATH + '.deepcopy', return_value='test')
-    def test_all_files(self, mock_deepcopy):
-        out = self.storage.all_files()
-        mock_deepcopy.assert_called_once_with(self.storage._cached_files)
-        self.assertEqual(out, 'test')
+    def test_iter_files(self):
+        self.storage._cached_files = {n: f'foo{n}' for n in range(5)}
+        iterator = self.storage.iter_files()
+        self.assertIsInstance(iterator, Iterator)
+        self.assertListEqual(list(iterator), list(self.storage._cached_files.values()))
 
     @async_test
     @patch.object(util.FileStorage, '_file_hashes_orphaned_dict', new_callable=AsyncMock)
-    @patch.object(util.FileStorage, 'all_files')
-    async def test_filtered_files(self, mock_all_files, mock__file_hashes_orphaned_dict):
+    async def test_filtered_files(self, mock__file_hashes_orphaned_dict):
         test_extensions, test_types = ['.mp4'], ['video', 'video_temp']
-        wrong_ext_file = MagicMock(file_extension='.webm')
-        expected_file = MagicMock(file_extension='.mp4')
         expected_file_hash = 'abc'
-        expected_output = {expected_file_hash: expected_file}
-        mock_all_files.return_value = {'foo': wrong_ext_file, expected_file_hash: expected_file}
+        expected_file = MagicMock(file_extension='.mp4', hash=expected_file_hash)
+        wrong_ext_file = MagicMock(file_extension='.webm')
+        self.storage._cached_files = {'foo': wrong_ext_file, expected_file_hash: expected_file}
         mock__file_hashes_orphaned_dict.return_value = {expected_file_hash: True}
 
         # Test regular filter case without orphan status
-        out = await self.storage.filtered_files(extensions=test_extensions, types=test_types)
-        self.assertEqual(out, expected_output)
-        mock_all_files.assert_called_once_with()
+        out = [f async for f in self.storage.filtered_files(extensions=test_extensions, types=test_types)]
+        self.assertListEqual(out, [expected_file])
         mock__file_hashes_orphaned_dict.assert_not_awaited()
 
         # Test with orphan status True
-        mock_all_files.reset_mock()
         mock__file_hashes_orphaned_dict.reset_mock()
-        out = await self.storage.filtered_files(orphaned=True, extensions=test_extensions, types=test_types)
-        self.assertEqual(out, expected_output)
-        mock_all_files.assert_called_once_with()
-        mock__file_hashes_orphaned_dict.assert_awaited_once_with(mock_all_files.return_value)
+        out = [
+            f async for f in self.storage.filtered_files(orphaned=True, extensions=test_extensions, types=test_types)
+        ]
+        self.assertEqual(out, [expected_file])
+        mock__file_hashes_orphaned_dict.assert_awaited_once_with()
 
         # Test with orphan status False
-        mock_all_files.reset_mock()
         mock__file_hashes_orphaned_dict.reset_mock()
-        out = await self.storage.filtered_files(orphaned=False, extensions=test_extensions, types=test_types)
-        self.assertEqual(out, {})
-        mock_all_files.assert_called_once_with()
-        mock__file_hashes_orphaned_dict.assert_awaited_once_with(mock_all_files.return_value)
+        out = [
+            f async for f in self.storage.filtered_files(orphaned=False, extensions=test_extensions, types=test_types)
+        ]
+        self.assertEqual(out, [])
+        mock__file_hashes_orphaned_dict.assert_awaited_once_with()
 
         # Test exception raising
-        mock_all_files.reset_mock()
         mock__file_hashes_orphaned_dict.reset_mock()
         with self.assertRaises(ValueError):
-            await self.storage.filtered_files(extensions=['wrong'])
-        mock_all_files.assert_called_once_with()
+            _ = [f async for f in self.storage.filtered_files(extensions=['wrong'])]
         mock__file_hashes_orphaned_dict.assert_not_awaited()
 
-        mock_all_files.reset_mock()
         with self.assertRaises(ValueError):
-            await self.storage.filtered_files(types=['wrong'])
-        mock_all_files.assert_called_once_with()
+            _ = [f async for f in self.storage.filtered_files(types=['wrong'])]
         mock__file_hashes_orphaned_dict.assert_not_awaited()
 
     @async_test
     @patch.object(util, 'gather_in_batches', new_callable=AsyncMock)
     @patch.object(util, 'lms_has_file', new_callable=MagicMock)  # no async; to be used in gather-like function
-    @patch.object(util.FileStorage, 'all_files')
-    async def test__file_hashes_orphaned_dict(self, mock_all_files, mock_lms_has_file, mock_gather_in_batches):
+    async def test__file_hashes_orphaned_dict(self, mock_lms_has_file, mock_gather_in_batches):
         test_dict = {'foo': MagicMock(), 'bar': MagicMock()}
-        mock_all_files.return_value = test_dict
+        self.storage._cached_files = test_dict
         mock_lms_has_file.return_value = 'test'
         mock_gather_in_batches.return_value = [True, False]
 
         expected_output = {'foo': False, 'bar': True}
         output = await self.storage._file_hashes_orphaned_dict()
         self.assertEqual(output, expected_output)
-        mock_all_files.assert_called_once_with()
         self.assertListEqual(mock_lms_has_file.call_args_list, [call(v) for v in test_dict.values()])
         mock_gather_in_batches.assert_awaited_once_with(20, *('test' for _ in test_dict))
 
-        mock_all_files.reset_mock()
         mock_lms_has_file.reset_mock()
         mock_gather_in_batches.reset_mock()
 
         output = await self.storage._file_hashes_orphaned_dict(test_dict)
         self.assertEqual(output, expected_output)
-        mock_all_files.assert_not_called()
         self.assertListEqual(mock_lms_has_file.call_args_list, [call(v) for v in test_dict.values()])
         mock_gather_in_batches.assert_awaited_once_with(20, *('test' for _ in test_dict))
 
@@ -672,7 +662,7 @@ class FileStorageTestCase(BaseTestCase):
         mock_lms_has_file.reset_mock()
         mock_remove_thumbs.reset_mock()
         mock_remove.reset_mock()
-        mock_lms_has_file.side_effect = util.LMSAPIError
+        mock_lms_has_file.side_effect = util.LMSInterfaceError
 
         output = await self.storage.check_lms_and_remove_file(mock_file, mock_origin)
         self.assertFalse(output)
@@ -956,17 +946,17 @@ class FunctionsTestCase(BaseTestCase):
         mock_check_lms_and_remove_file.assert_not_awaited()
 
     @async_test
-    @patch.object(util, 'LMSSitesCollection')
-    async def test_lms_has_file(self, mock_sites_collection_cls):
+    @patch.object(util, 'LMS')
+    async def test_lms_has_file(self, mock_lms_cls):
         test_hash, test_ext, test_origin = 'abc', 'xyz', 'foo'
 
         mock_exists1 = AsyncMock(return_value=False)
-        mock_site1 = MagicMock(video_exists=mock_exists1, base_url=test_origin + 'bar')  # Should be skipped
+        mock_site1 = MagicMock(video_exists=mock_exists1, api_url=test_origin + 'bar')  # Should be skipped
         mock_exists2 = AsyncMock(return_value=False)
-        mock_site2 = MagicMock(video_exists=mock_exists2, base_url='other2')
+        mock_site2 = MagicMock(video_exists=mock_exists2, api_url='other2')
         mock_exists3 = AsyncMock(return_value=True)
-        mock_site3 = MagicMock(video_exists=mock_exists3, base_url='other3')
-        mock_sites_collection_cls.get_all.return_value = MagicMock(sites=[mock_site1, mock_site2, mock_site3])
+        mock_site3 = MagicMock(video_exists=mock_exists3, api_url='other3')
+        mock_lms_cls.iter_all.return_value = [mock_site1, mock_site2, mock_site3]
 
         mock_file = MagicMock(hash=test_hash, file_extension=test_ext)
         output = await util.lms_has_file(mock_file, test_origin)
@@ -977,7 +967,7 @@ class FunctionsTestCase(BaseTestCase):
 
         mock_exists1.reset_mock()
         mock_exists2.reset_mock()
-        mock_sites_collection_cls.get_all.return_value = MagicMock(sites=[mock_site1, mock_site2])
+        mock_lms_cls.iter_all.return_value = [mock_site1, mock_site2]
         output = await util.lms_has_file(mock_file, origin=None)
         self.assertFalse(output)
         mock_exists1.assert_awaited_once_with(test_hash, test_ext)
@@ -985,8 +975,8 @@ class FunctionsTestCase(BaseTestCase):
 
         mock_exists1.reset_mock()
         mock_exists2.reset_mock()
-        mock_exists1.side_effect = util.LMSAPIError
-        with self.assertRaises(util.LMSAPIError), self.assertLogs(util.log):
+        mock_exists1.side_effect = util.LMSInterfaceError
+        with self.assertRaises(util.LMSInterfaceError), self.assertLogs(util.log):
             await util.lms_has_file(mock_file, origin=None)
         self.assertFalse(output)
         mock_exists1.assert_awaited_once_with(test_hash, test_ext)

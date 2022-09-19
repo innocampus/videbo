@@ -90,5 +90,9 @@ class UnknownServerStatusFormatError(NetworkInfoError):
     pass
 
 
+class LMSInterfaceError(VideboBaseException):
+    pass
+
+
 class SizeError(VideboBaseException):
     pass

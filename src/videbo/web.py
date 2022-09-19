@@ -255,6 +255,7 @@ class HTTPClient:
     async def close_all(cls) -> None:
         await cls.session.close()
 
+    # TODO: Rework type annotations; overload to indicate return type dependence
     @classmethod
     async def videbo_request(cls, method: str, url: str, jwt_data: Union[RequestJWTData, str, None] = None,
                              json_data: Optional[JSONBaseModel] = None,

@@ -1,5 +1,6 @@
 from enum import Enum, IntEnum
-from typing import Any, Optional, Type, TypeVar, Union
+from time import time
+from typing import Any, ClassVar, Optional, Type, TypeVar, Union
 
 import jwt
 from aiohttp.web import Response
@@ -15,7 +16,10 @@ __all__ = [
     'Role',
     'BaseJWTData',
     'RequestJWTData',
-    'NodeStatus'
+    'LMSRequestJWTData',
+    'VideoExistsRequest',
+    'VideoExistsResponse',
+    'NodeStatus',
 ]
 
 J = TypeVar('J', bound='BaseJWTData')
@@ -146,11 +150,51 @@ class RequestJWTData(BaseJWTData):
         raise TypeError(f"{repr(v)} is not a valid role type")
 
     @validator('role')
-    def role_appropriate_for_external(cls, v: Role, values: dict[str, Any]) -> Role:
+    def role_appropriate(cls, v: Role, values: dict[str, Any]) -> Role:
         """Ensures that the role level is not greater than `lms`, if the issuer is supposed to be external."""
         if values.get('iss') == TokenIssuer.external and v > Role.lms:
-            raise ValueError("External tokens can only be issued for a role up to LMS")
+            raise ValueError("External tokens can only be issued for a role up to `lms`")
         return v
+
+
+class LMSRequestJWTData(RequestJWTData):
+    # Cache to avoid encoding a new token for each request:
+    _current_token: ClassVar[tuple[str, int]] = '', 0
+
+    @validator('role')
+    def role_appropriate(cls, v: Role, values: dict[str, Any]) -> Role:
+        """Ensures that the role level is `node`."""
+        if v != Role.node:
+            raise ValueError("Tokens for accessing the LMS API must have the role `node`")
+        return v
+
+    @validator('iss')
+    def only_external_issuer(cls, v: TokenIssuer) -> TokenIssuer:
+        if v != TokenIssuer.external:
+            raise ValueError("Tokens for accessing the LMS API must be `external`")
+        return v
+
+    @classmethod
+    def get_standard_token(cls) -> str:
+        current_time = int(time())
+        if cls._current_token[1] < current_time:
+            new_expiration = current_time + 4 * 3600
+            data = cls(
+                exp=new_expiration,
+                iss=TokenIssuer.external,
+                role=Role.node,
+            )
+            cls._current_token = data.encode(), new_expiration
+        return cls._current_token[0]
+
+
+class VideoExistsRequest(JSONBaseModel):
+    hash: str
+    file_ext: str
+
+
+class VideoExistsResponse(JSONBaseModel):
+    exists: bool
 
 
 class NodeStatus(JSONBaseModel):

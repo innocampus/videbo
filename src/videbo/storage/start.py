@@ -3,6 +3,7 @@ from collections.abc import AsyncIterator
 from aiohttp.web_app import Application
 
 from videbo import storage_settings as settings
+from videbo.lms_api import LMS
 from videbo.network import NetworkInterfaces
 from videbo.web import start_web_server
 
@@ -14,6 +15,11 @@ async def network_context(_app: Application) -> AsyncIterator[None]:
     NetworkInterfaces.get_instance().start_fetching(settings)
     yield
     NetworkInterfaces.get_instance().stop_fetching()
+
+
+async def lms_api_context(_app: Application) -> AsyncIterator[None]:
+    LMS.add(*settings.lms_api_urls)
+    yield
 
 
 async def storage_context(_app: Application) -> AsyncIterator[None]:
@@ -33,5 +39,13 @@ async def monitoring_context(_app: Application) -> AsyncIterator[None]:
 
 def start() -> None:
     settings.files_path.mkdir(parents=True, exist_ok=True)
-    start_web_server(routes, network_context, storage_context, monitoring_context, address=settings.listen_address,
-                     port=settings.listen_port, verbose=settings.dev_mode)
+    start_web_server(
+        routes,
+        network_context,
+        lms_api_context,
+        storage_context,
+        monitoring_context,
+        address=settings.listen_address,
+        port=settings.listen_port,
+        verbose=settings.dev_mode,
+    )
