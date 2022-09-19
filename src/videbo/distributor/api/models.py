@@ -1,4 +1,4 @@
-from videbo.models import JSONBaseModel, NodeStatus
+from videbo.models import BaseModel, BaseRequestModel, BaseResponseModel, NodeStatus
 from videbo.types import FileID
 
 
@@ -12,7 +12,7 @@ __all__ = [
 ]
 
 
-class DistributorCopyFileStatus(JSONBaseModel):
+class DistributorCopyFileStatus(BaseModel):
     hash: str
     file_ext: str
     loaded: int  # in bytes
@@ -26,20 +26,20 @@ class DistributorStatus(NodeStatus):
     copy_files_status: list[DistributorCopyFileStatus]
 
 
-class DistributorCopyFile(JSONBaseModel):
+class DistributorCopyFile(BaseRequestModel):
     from_base_url: str
     file_size: int  # in bytes
 
 
-class DistributorDeleteFiles(JSONBaseModel):
+class DistributorDeleteFiles(BaseRequestModel):
     files: list[FileID]  # (hash, file extension)
     safe: bool  # if True, recently requested files will not be deleted
 
 
-class DistributorDeleteFilesResponse(JSONBaseModel):
+class DistributorDeleteFilesResponse(BaseResponseModel):
     files_skipped: list[FileID]  # (hash, file extension)
     free_space: float  # in MB
 
 
-class DistributorFileList(JSONBaseModel):
+class DistributorFileList(BaseResponseModel):
     files: list[FileID]  # (hash, file extension)

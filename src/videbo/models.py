@@ -4,14 +4,16 @@ from typing import Any, ClassVar, Optional, Type, TypeVar, Union
 
 import jwt
 from aiohttp.web import Response
-from pydantic import BaseModel, validator
+from pydantic import BaseModel as PydanticBaseModel, validator
 
 from videbo import storage_settings
 
 
 __all__ = [
     'DEFAULT_JWT_ALG',
-    'JSONBaseModel',
+    'BaseModel',
+    'BaseRequestModel',
+    'BaseResponseModel',
     'TokenIssuer',
     'Role',
     'BaseJWTData',
@@ -27,7 +29,15 @@ J = TypeVar('J', bound='BaseJWTData')
 DEFAULT_JWT_ALG = 'HS256'
 
 
-class JSONBaseModel(BaseModel):
+class BaseModel(PydanticBaseModel):
+    pass
+
+
+class BaseRequestModel(BaseModel):
+    pass
+
+
+class BaseResponseModel(BaseModel):
     def json_response(self, status_code: int = 200, **kwargs: Any) -> Response:
         return Response(text=self.json(**kwargs), status=status_code, content_type='application/json')
 
@@ -188,16 +198,16 @@ class LMSRequestJWTData(RequestJWTData):
         return cls._current_token[0]
 
 
-class VideoExistsRequest(JSONBaseModel):
+class VideoExistsRequest(BaseRequestModel):
     hash: str
     file_ext: str
 
 
-class VideoExistsResponse(JSONBaseModel):
+class VideoExistsResponse(BaseResponseModel):
     exists: bool
 
 
-class NodeStatus(JSONBaseModel):
+class NodeStatus(BaseResponseModel):
     tx_current_rate: float  # in Mbit/s
     tx_max_rate: float  # in Mbit/s
     rx_current_rate: float  # in Mbit/s

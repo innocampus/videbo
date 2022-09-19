@@ -23,7 +23,7 @@ from videbo.exceptions import HTTPResponseError
 from videbo.misc import MEGA
 from videbo.misc.functions import sanitize_filename, get_route_model_param
 from videbo.misc.task_manager import TaskManager
-from videbo.models import JSONBaseModel, TokenIssuer, Role, RequestJWTData
+from videbo.models import BaseRequestModel, BaseResponseModel, RequestJWTData, Role, TokenIssuer
 from videbo.types import CleanupContext, RouteHandler
 from videbo.video import get_content_type_for_extension
 
@@ -96,7 +96,7 @@ def ensure_json_body(_func: Optional[RouteHandler] = None, *,
     Decorator function used to ensure that there is a json body in the request and that this json
     corresponds to the model given as a type annotation in func.
 
-    Use `JSONBaseModel` as base class for your models.
+    Use `BaseRequestModel` as base class for your models.
 
     Args:
         _func:
@@ -107,7 +107,7 @@ def ensure_json_body(_func: Optional[RouteHandler] = None, *,
     """
     def decorator(function: RouteHandler) -> RouteHandler:
         """internal decorator function"""
-        param_name, param_class = get_route_model_param(function, JSONBaseModel)
+        param_name, param_class = get_route_model_param(function, BaseRequestModel)
 
         @functools.wraps(function)
         async def wrapper(request: Request, *args: Any, **kwargs: Any) -> Any:
@@ -258,8 +258,8 @@ class HTTPClient:
     # TODO: Rework type annotations; overload to indicate return type dependence
     @classmethod
     async def videbo_request(cls, method: str, url: str, jwt_data: Union[RequestJWTData, str, None] = None,
-                             json_data: Optional[JSONBaseModel] = None,
-                             expected_return_type: Optional[Type[JSONBaseModel]] = None,
+                             json_data: Optional[BaseRequestModel] = None,
+                             expected_return_type: Optional[Type[BaseResponseModel]] = None,
                              timeout: Union[ClientTimeout, int, None] = None,
                              external: bool = False,
                              print_connection_exception: bool = True) -> tuple[int, Any]:
@@ -313,8 +313,8 @@ class HTTPClient:
 
     @classmethod
     async def internal_request_node(cls, method: str, url: str,
-                                    json_data: Optional[JSONBaseModel] = None,
-                                    expected_return_type: Optional[Type[JSONBaseModel]] = None,
+                                    json_data: Optional[BaseRequestModel] = None,
+                                    expected_return_type: Optional[Type[BaseResponseModel]] = None,
                                     timeout: Union[ClientTimeout, int, None] = None,
                                     print_connection_exception: bool = True) -> tuple[int, Any]:
         """Do an internal request with the node role (without having to specify jwt_data)."""
@@ -324,8 +324,8 @@ class HTTPClient:
 
     @classmethod
     async def internal_request_admin(cls, method: str, url: str,
-                                     json_data: Optional[JSONBaseModel] = None,
-                                     expected_return_type: Optional[Type[JSONBaseModel]] = None,
+                                     json_data: Optional[BaseRequestModel] = None,
+                                     expected_return_type: Optional[Type[BaseResponseModel]] = None,
                                      timeout: Union[ClientTimeout, int, None] = None,
                                      print_connection_exception: bool = True) -> tuple[int, Any]:
         """Do an internal request with the node role (without having to specify jwt_data)."""

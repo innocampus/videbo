@@ -4,7 +4,7 @@ from typing import Any, Optional, Type
 from urllib.parse import urlencode
 
 from videbo.exceptions import HTTPResponseError, LMSInterfaceError
-from videbo.models import JSONBaseModel, LMSRequestJWTData, VideoExistsRequest, VideoExistsResponse
+from videbo.models import BaseRequestModel, BaseResponseModel, LMSRequestJWTData, VideoExistsRequest, VideoExistsResponse
 from videbo.web import HTTPClient
 
 
@@ -29,8 +29,8 @@ class LMS:
         self.api_url = api_url
         self.__class__._collection[api_url] = self
 
-    async def _post_request(self, function: str, json_data: JSONBaseModel,
-                            expected_return_type: Optional[Type[JSONBaseModel]] = None) -> tuple[int, Any]:
+    async def _post_request(self, function: str, json_data: BaseRequestModel,
+                            expected_return_type: Optional[Type[BaseResponseModel]] = None) -> tuple[int, Any]:
         query = urlencode({self.FUNCTION_QUERY_PARAMETER: function})
         url = f"{self.api_url}?{query}"
         jwt = LMSRequestJWTData.get_standard_token()

@@ -1,7 +1,7 @@
 from enum import Enum
 from typing import Optional
 
-from videbo.models import BaseJWTData, RequestJWTData, JSONBaseModel, NodeStatus
+from videbo.models import BaseJWTData, BaseModel, BaseRequestModel, BaseResponseModel, RequestJWTData, NodeStatus
 from videbo.distributor.api.models import DistributorStatus
 
 
@@ -57,7 +57,7 @@ class StorageStatus(NodeStatus):
     num_current_uploads: int
 
 
-class StorageFileInfo(JSONBaseModel):
+class StorageFileInfo(BaseModel):
     hash: str
     file_extension: str
     file_size: int  # in MB
@@ -72,19 +72,19 @@ class StorageFileInfo(JSONBaseModel):
         orm_mode = True
 
 
-class StorageFilesList(JSONBaseModel):
+class StorageFilesList(BaseResponseModel):
     files: list[StorageFileInfo]
 
 
-class DistributorNodeInfo(JSONBaseModel):
+class DistributorNodeInfo(BaseRequestModel):
     base_url: str
 
 
-class DistributorStatusDict(JSONBaseModel):
+class DistributorStatusDict(BaseResponseModel):
     nodes: dict[str, DistributorStatus]  # keys are base urls
 
 
-class DeleteFilesList(JSONBaseModel):
+class DeleteFilesList(BaseRequestModel):
     hashes: list[str]
 
 

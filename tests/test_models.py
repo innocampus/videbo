@@ -13,10 +13,10 @@ TESTED_MODULE_PATH = 'videbo.models'
 SETTINGS_PATH = TESTED_MODULE_PATH + '.storage_settings'
 
 
-class JSONBaseModelTestCase(TestCase):
+class BaseResponseModelTestCase(TestCase):
 
     def test_json_response(self) -> None:
-        class ModelForTesting(models.JSONBaseModel):
+        class ModelForTesting(models.BaseResponseModel):
             foo: int
             bar: str
             baz: Optional[str] = None
