@@ -1,3 +1,4 @@
+from __future__ import annotations
 import logging
 from collections.abc import Callable, Container
 from pathlib import Path
@@ -24,10 +25,10 @@ class Monitoring:
     DOC_PLACEHOLDER = '...'
     NODE_TYPE, BASE_URL = 'node_type', 'base_url'
 
-    _instance: Optional['Monitoring'] = None
+    _instance: Optional[Monitoring] = None
 
     @classmethod
-    def get_instance(cls) -> 'Monitoring':
+    def get_instance(cls) -> Monitoring:
         if cls._instance is None:
             cls._instance = Monitoring()
         return cls._instance

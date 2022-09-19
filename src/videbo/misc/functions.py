@@ -40,7 +40,7 @@ async def get_free_disk_space(path: str) -> float:
 
 
 def sanitize_filename(filename: str) -> str:
-    filename = re.sub(r"[^\w \d\-_~,;\[\]().]", "", filename, 0, re.ASCII)  # \w should only match ASCII letters
+    filename = re.sub(r"[^\w \-_~,;\[\]().]", "", filename, 0, re.ASCII)  # \w should only match ASCII letters
     filename = re.sub(r"[.]{2,}", "..", filename)
     return filename
 

@@ -1,3 +1,4 @@
+from __future__ import annotations
 import logging
 import sys
 from collections.abc import Callable
@@ -59,7 +60,7 @@ class AbstractBaseSettings(BaseSettings):
                 init_settings: SettingsSourceCallable,
                 env_settings: SettingsSourceCallable,
                 file_secret_settings: SettingsSourceCallable
-        ) -> tuple[Callable[['CommonSettings'], dict[str, Any]], ...]:
+        ) -> tuple[Callable[[CommonSettings], dict[str, Any]], ...]:
             return init_settings, env_settings, ini_config_settings_source
 
 

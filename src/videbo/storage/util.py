@@ -1,3 +1,4 @@
+from __future__ import annotations
 import asyncio
 import hashlib
 import logging
@@ -53,7 +54,7 @@ class StoredHashedVideoFile(HashedVideoFile):
         self.views: int = 0
         self.nodes: FileNodes = FileNodes()
 
-    def __lt__(self, other: 'StoredHashedVideoFile') -> bool:
+    def __lt__(self, other: StoredHashedVideoFile) -> bool:
         """Compare videos by their view counters."""
         return self.views < other.views
 
@@ -76,7 +77,7 @@ def create_dir_if_not_exists(path: Union[Path, str], mode: int = 0o777, explicit
 
 class FileStorage:
     """Manages all stored files with their hashes as file names."""
-    _instance: Optional['FileStorage'] = None
+    _instance: Optional[FileStorage] = None
 
     # garbage collector
     GC_TEMP_FILES_SECS = 12 * 3600
@@ -104,7 +105,7 @@ class FileStorage:
         TaskManager.fire_and_forget_task(self._garbage_collector_task)
 
     @classmethod
-    def get_instance(cls) -> 'FileStorage':
+    def get_instance(cls) -> FileStorage:
         if cls._instance is None:
             cls._instance = FileStorage(settings.files_path)
             cls._instance._load_file_list()
@@ -255,7 +256,7 @@ class FileStorage:
         """Get hashing method that is used for all files in the video."""
         return hashlib.sha256()
 
-    def create_temp_file(self) -> 'TempFile':
+    def create_temp_file(self) -> TempFile:
         """Create a space where we can write data to."""
         fd, path = tempfile.mkstemp(prefix='upload_', dir=self.temp_dir)  # actually blocking io
         os.chmod(path, 0o644)  # Make readable for check_user

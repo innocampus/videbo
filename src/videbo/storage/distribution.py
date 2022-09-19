@@ -1,3 +1,4 @@
+from __future__ import annotations
 import asyncio
 import logging
 from collections.abc import Callable, Iterable
@@ -32,13 +33,13 @@ class DownloadScheduler:
         pass
 
     def __init__(self) -> None:
-        self.files_from_urls: set[tuple['StoredHashedVideoFile', str]] = set()
+        self.files_from_urls: set[tuple[StoredHashedVideoFile, str]] = set()
 
-    def schedule(self, file: 'StoredHashedVideoFile', from_url: str) -> None:
+    def schedule(self, file: StoredHashedVideoFile, from_url: str) -> None:
         self.files_from_urls.add((file, from_url))
         log.info(f"File {file} from {from_url} now scheduled for download")
 
-    def next(self) -> tuple['StoredHashedVideoFile', str]:
+    def next(self) -> tuple[StoredHashedVideoFile, str]:
         """
         If any files are left to be downloaded, chose the one with the highest number of views.
         Note that the `StoredHashedVideoFile` class compares objects by their `.views` attribute.
@@ -52,7 +53,7 @@ class DownloadScheduler:
             log.info(f"Next file to download: {tup[0]} from {tup[1]}")
             return tup
 
-    def __contains__(self, item: 'StoredHashedVideoFile') -> bool:
+    def __contains__(self, item: StoredHashedVideoFile) -> bool:
         for file, _ in self.files_from_urls:
             if file == item:
                 return True
@@ -66,14 +67,14 @@ class DistributionNodeInfo:
     def __init__(self, base_url: str):
         self.base_url: str = base_url
         self.status: Optional[DistributorStatus] = None
-        self.stored_videos: set['StoredHashedVideoFile'] = set()
-        self.loading: set['StoredHashedVideoFile'] = set()  # Node is currently downloading these files.
+        self.stored_videos: set[StoredHashedVideoFile] = set()
+        self.loading: set[StoredHashedVideoFile] = set()  # Node is currently downloading these files.
         self.awaiting_download = DownloadScheduler()  # Files waiting to be downloaded
         self.watcher_task: Optional[asyncio.Task[None]] = None
         self._good: bool = False  # node is reachable
         self._enabled: bool = True
 
-    def __lt__(self, other: 'DistributionNodeInfo') -> bool:
+    def __lt__(self, other: DistributionNodeInfo) -> bool:
         return self.tx_load < other.tx_load
 
     @property
@@ -191,7 +192,7 @@ class DistributionNodeInfo:
             if remove_unknown_files:
                 await self._remove_files(remove_unknown_files)
 
-    def put_video(self, file: 'StoredHashedVideoFile', from_node: Optional['DistributionNodeInfo'] = None) -> None:
+    def put_video(self, file: StoredHashedVideoFile, from_node: Optional[DistributionNodeInfo] = None) -> None:
         """Copy a video from one node to another. If `from_node` is None, copy from the storage node."""
         if file in self.loading or file in self.awaiting_download:
             return
@@ -201,7 +202,7 @@ class DistributionNodeInfo:
         else:
             self.awaiting_download.schedule(file, from_url)
 
-    async def _copy_file_task(self, file: 'StoredHashedVideoFile', from_url: str) -> None:
+    async def _copy_file_task(self, file: StoredHashedVideoFile, from_url: str) -> None:
         file.nodes.add_node(self)
         file.nodes.copying = True
         self.loading.add(file)
@@ -256,7 +257,7 @@ class DistributionNodeInfo:
             log.error(f"Error removing {number} file(s) from {self.base_url}, http status {code}")
         return ret
 
-    async def remove_videos(self, files: Iterable['StoredHashedVideoFile'], safe: bool = True) -> None:
+    async def remove_videos(self, files: Iterable[StoredHashedVideoFile], safe: bool = True) -> None:
         hashes_extensions, to_discard = [], {}
         for file in files:
             hashes_extensions.append((file.hash, file.file_extension))
@@ -338,7 +339,7 @@ class FileNodes:
     def remove_node(self, node: DistributionNodeInfo) -> None:
         self.nodes.discard(node)
 
-    def find_good_node(self, file: 'StoredHashedVideoFile') -> tuple[Optional[DistributionNodeInfo], bool]:
+    def find_good_node(self, file: StoredHashedVideoFile) -> tuple[Optional[DistributionNodeInfo], bool]:
         """
         Find a node that can serve the file and that is not too busy. May also return a node that is currently
         loading the file (if there is no other node).
@@ -368,7 +369,7 @@ class DistributionController:
 
     def __init__(self) -> None:
         self._client_accessed: set[tuple[str, str]] = set()  # tuple of video hash and user's rid
-        self._videos_sorted: list['StoredHashedVideoFile'] = []
+        self._videos_sorted: list[StoredHashedVideoFile] = []
         self._dist_nodes: list[DistributionNodeInfo] = []
 
     def _reset(self) -> None:
@@ -393,7 +394,7 @@ class DistributionController:
             log.info(f"Periodic reset task finished (took {(timer() - start):.2f}s)")
         Periodic(task)(interval_seconds=settings.reset_views_every_hours * 3600)
 
-    def count_file_access(self, file: 'StoredHashedVideoFile', rid: str) -> None:
+    def count_file_access(self, file: StoredHashedVideoFile, rid: str) -> None:
         """Increment the video views counter if this is the first time the user viewed the video."""
         file_rid = (file.hash, rid)
         if file_rid in self._client_accessed:
@@ -405,17 +406,17 @@ class DistributionController:
         self._client_accessed.add(file_rid)
         file.views += 1
 
-    def add_video(self, file: 'StoredHashedVideoFile') -> None:
+    def add_video(self, file: StoredHashedVideoFile) -> None:
         """Used by the FileStorage to notify this class about the file."""
         self._videos_sorted.append(file)
 
-    def remove_video(self, file: 'StoredHashedVideoFile') -> None:
+    def remove_video(self, file: StoredHashedVideoFile) -> None:
         self._videos_sorted.remove(file)
         # Remove all copies from the video.
         for node in file.nodes.nodes:
             TaskManager.fire_and_forget_task(asyncio.create_task(node.remove_videos([file], False)))
 
-    def copy_file_to_one_node(self, file: 'StoredHashedVideoFile') -> Optional[DistributionNodeInfo]:
+    def copy_file_to_one_node(self, file: StoredHashedVideoFile) -> Optional[DistributionNodeInfo]:
         # Get a node with tx_load < 0.95, that doesn't already have the file and that has enough space left.
         self._dist_nodes.sort()
         mb_size = file.file_size / MEGA  # to MB

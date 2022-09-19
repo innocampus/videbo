@@ -1,3 +1,4 @@
+from __future__ import annotations
 from collections.abc import Iterator
 from typing import Any, Optional, Type
 from urllib.parse import urlencode
@@ -13,7 +14,7 @@ __all__ = ['LMS']
 class LMS:
     FUNCTION_QUERY_PARAMETER = "function"
 
-    _collection: dict[str, 'LMS'] = {}
+    _collection: dict[str, LMS] = {}
 
     @classmethod
     def add(cls, *urls: str) -> None:
@@ -21,7 +22,7 @@ class LMS:
             cls(url)
 
     @classmethod
-    def iter_all(cls) -> Iterator['LMS']:
+    def iter_all(cls) -> Iterator[LMS]:
         yield from iter(cls._collection.values())
 
     def __init__(self, api_url: str) -> None:

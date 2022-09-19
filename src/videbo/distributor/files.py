@@ -1,3 +1,4 @@
+from __future__ import annotations
 import asyncio
 import logging
 import os
@@ -43,7 +44,7 @@ class DistributorHashedVideoFile(HashedVideoFile):
 
 
 class DistributorFileController:
-    _instance: Optional['DistributorFileController'] = None
+    _instance: Optional[DistributorFileController] = None
 
     MAX_WAITING_CLIENTS = 60
 
@@ -56,7 +57,7 @@ class DistributorFileController:
         self.waiting: int = 0  # number of clients waiting for a file being downloaded
 
     @classmethod
-    def get_instance(cls) -> 'DistributorFileController':
+    def get_instance(cls) -> DistributorFileController:
         if cls._instance is None:
             cls._instance = DistributorFileController(settings.files_path)
             cls._instance._load_file_list()

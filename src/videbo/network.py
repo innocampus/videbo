@@ -1,3 +1,4 @@
+from __future__ import annotations
 import re
 from asyncio import Task, create_task, sleep
 from enum import Enum
@@ -82,7 +83,7 @@ class NetworkInterfaces:
     NetworkInterfaces: a class to monitor your interfaces
     """
     # make _interfaces a singleton since they can be shared on one system
-    _instance: Optional["NetworkInterfaces"] = None
+    _instance: Optional[NetworkInterfaces] = None
     _interfaces: dict[str, NetworkInterface] = {}
 
     def __init__(self) -> None:
@@ -91,7 +92,7 @@ class NetworkInterfaces:
         self._server_status: Optional[StubStatus] = None
 
     @staticmethod
-    def get_instance() -> 'NetworkInterfaces':
+    def get_instance() -> NetworkInterfaces:
         if NetworkInterfaces._instance is None:
             NetworkInterfaces._instance = NetworkInterfaces()
         return NetworkInterfaces._instance
