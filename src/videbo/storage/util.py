@@ -33,6 +33,9 @@ VALID_EXTENSIONS = frozenset(FILE_EXT_WHITELIST + (JPG_EXT,))
 class HashedVideoFile:
     __slots__ = 'hash', 'file_ext'
 
+    hash: str
+    file_ext: str
+
     def __init__(self, file_hash: str, file_ext: str) -> None:
         self.hash = file_hash
         self.file_ext = file_ext
@@ -44,15 +47,27 @@ class HashedVideoFile:
     def __str__(self) -> str:
         return self.hash + self.file_ext
 
+    def __hash__(self) -> int:
+        return int(self.hash, 16)
+
+    def __eq__(self, other: object) -> bool:
+        if not isinstance(other, HashedVideoFile) or type(self) is not type(other):
+            return NotImplemented
+        return self.hash == other.hash
+
 
 class StoredHashedVideoFile(HashedVideoFile):
     __slots__ = 'file_size', 'views', 'nodes'
 
+    file_size: int  # in bytes
+    views: int
+    nodes: FileNodes
+
     def __init__(self, file_hash: str, file_ext: str) -> None:
         super().__init__(file_hash, file_ext)
-        self.file_size: int = -1  # in bytes
-        self.views: int = 0
-        self.nodes: FileNodes = FileNodes()
+        self.file_size = -1
+        self.views = 0
+        self.nodes = FileNodes()
 
     def __lt__(self, other: StoredHashedVideoFile) -> bool:
         """Compare videos by their view counters."""

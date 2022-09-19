@@ -18,7 +18,7 @@ STORAGE_SETTINGS_PATH = TESTED_MODULE_PATH + '.settings'
 
 class HashedVideoFileTestCase(BaseTestCase):
 
-    def test_init(self):
+    def test___init__(self) -> None:
         test_hash, test_ext = 'test', '.ext'
         obj = util.HashedVideoFile(file_hash=test_hash, file_ext=test_ext)
         self.assertEqual(obj.hash, test_hash)
@@ -28,10 +28,25 @@ class HashedVideoFileTestCase(BaseTestCase):
         with self.assertRaises(util.HashedFileInvalidExtensionError):
             util.HashedVideoFile(file_hash=test_hash, file_ext='ext')
 
-    def test_str(self):
+    def test___str__(self) -> None:
         test_hash, test_ext = 'test', '.ext'
         obj = util.HashedVideoFile(file_hash=test_hash, file_ext=test_ext)
         self.assertEqual(str(obj), test_hash + test_ext)
+
+    def test___hash__(self) -> None:
+        test_hash, test_ext = 12345, ".foo"
+        obj = util.HashedVideoFile(file_hash=f"{test_hash:x}", file_ext=test_ext)
+        self.assertEqual(hash(obj), test_hash)
+
+    def test___eq__(self) -> None:
+        test_hash = "foobarbaz"
+        file1 = util.HashedVideoFile(file_hash=test_hash, file_ext=".foo")
+        file2 = util.HashedVideoFile(file_hash=test_hash, file_ext=".bar")
+        file3 = util.HashedVideoFile(file_hash="somethingelse", file_ext=".bar")
+        self.assertEqual(file1, file2)
+        self.assertNotEqual(file3, file2)
+        file4 = util.StoredHashedVideoFile("foo", ".bar")
+        same = file1 == file4
 
 
 class StoredHashedVideoFileTestCase(BaseTestCase):
