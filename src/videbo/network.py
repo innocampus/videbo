@@ -22,7 +22,7 @@ HTML_PATTERN = re.compile(r"\s*<(!DOCTYPE|html).*>.*")
 # All regex group names except `name` must match
 # the field names of the `InterfaceStats` model exactly!
 INTERFACE_STATS_PATTERN = re.compile(
-    r"(?:^\s*(?P<name>\w+):\s+)?"
+    r"(?:^\s*(?P<name>[^\s/]{1,15}):\s+)?"
     r"(?P<bytes>\d+)\s+"
     r"(?P<packets>\d+)\s+"
     r"(?P<errs>\d+)\s+"
