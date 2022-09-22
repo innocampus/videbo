@@ -12,7 +12,7 @@ from typing import BinaryIO, Optional, Union
 from videbo import storage_settings as settings
 from videbo.exceptions import PendingWriteOperationError, CouldNotCreateDir, LMSInterfaceError
 from videbo.lms_api import LMS
-from videbo.misc.functions import gather_in_batches, get_free_disk_space, rel_path
+from videbo.misc.functions import get_free_disk_space, rel_path
 from videbo.misc.lru_dict import BytesLimitLRU
 from videbo.misc.task_manager import TaskManager
 from videbo.network import NetworkInterfaces
@@ -44,6 +44,7 @@ class HashedVideoFile:
         if file_ext[0] != '.':
             raise HashedFileInvalidExtensionError(file_ext)
 
+    # TODO: Add __repr__
     def __str__(self) -> str:
         return self.hash + self.file_ext
 
@@ -172,13 +173,14 @@ class FileStorage:
     def iter_files(self) -> Iterator[StoredHashedVideoFile]:
         return iter(self._cached_files.values())
 
+    # TODO: Allow actually passing `None` for any filter parameter
     async def filtered_files(self, orphaned: Optional[bool] = None, extensions: Iterable[str] = VALID_EXTENSIONS,
                              types: Iterable[str] = FileType.values()) -> AsyncIterator[StoredHashedVideoFile]:
         """
         Yields `StoredHashedVideoFile` instances that match the filter criteria.
 
         All parameters act as filters;
-        if None is passed as an argument, no filtering is applied with respect to that parameter.
+        if `None` is passed as an argument, no filtering is applied with respect to that parameter.
 
         This method only ever actually awaits, if filtering by orphan status is applied.
 
@@ -191,7 +193,10 @@ class FileStorage:
             types (optional):
                 Iterable of strings representing the FileType members the filtered files should correspond to
         """
-        hashes_orphaned = {} if orphaned is None else await self._file_hashes_orphaned_dict()
+        if orphaned is None:
+            matching_orphan_status = set(self._cached_files.values())
+        else:
+            matching_orphan_status = await self._filter_by_orphan_status(self._cached_files.values(), orphaned)
 
         extensions = set(extensions)
         invalid_extensions = extensions.difference(VALID_EXTENSIONS)
@@ -206,38 +211,38 @@ class FileStorage:
         for file in self._cached_files.values():
             if file.file_ext not in extensions:
                 continue
-            if hashes_orphaned and hashes_orphaned[file.hash] != orphaned:
+            if file not in matching_orphan_status:
                 continue
             # TODO: Filter by file type; this is a placeholder:
             assert types is not None
             yield file
 
-    async def _file_hashes_orphaned_dict(self, hashed_files_dict: Optional[_StoredFilesDict] = None) -> dict[str, bool]:
+    async def _filter_by_orphan_status(self, files: Iterable[StoredHashedVideoFile], orphaned: bool
+                                       ) -> set[StoredHashedVideoFile]:
         """
-        Checks the orphan status for stored files.
-        A file is defined to be orphaned, iff not a single LMS knows about its existence.
+        Checks all registered LMS for the orphan status of the provided `files`.
 
         Args:
-            hashed_files_dict (optional):
-                If passed a dictionary of stored files (with keys being their hashes), only they are checked;
-                by default all stored files (at the moment of the method call) are checked.
+            files:
+                An iterable of `StoredHashedVideoFile` objects.
+                They should all be files that are actually managed by the `FileStorage`.
+            orphaned:
+                If `True` the method returns only the subset of `files` that are orphaned;
+                if `False` the method returns only the subset of `files` that are not orphaned.
 
         Returns:
-            Dictionary with keys being hashes of the files that were checked, and values being booleans
-            indicating whether the file with the corresponding hash is an orphan.
+            Subset of the provided `files` that are managed by the `FileStorage` and match the desired `orphan` status.
         """
-        hash_orphaned_dict: dict[str, bool] = {}  # Output
-        # Copy currently cached files, if none were passed, and disregard storage changes from here on
-        if hashed_files_dict is None:
-            hashed_files_dict = self._cached_files
-        log.info(f"Checking {len(hashed_files_dict)} files for their orphan status...")
-        # Gather calls to lms_has_file(...) coroutines for each file; the awaited result is a list of booleans.
-        existing: list[bool] = await gather_in_batches(20, *(lms_has_file(f) for f in hashed_files_dict.values()))
-        # Both the `files` dictionary (since Python 3.6) and the `asyncio.gather` function preserve order,
-        # therefore each hash's index in `files.keys()` can be used to get the corresponding `existing` value.
-        for idx, key in enumerate(hashed_files_dict.keys()):
-            hash_orphaned_dict[key] = not existing[idx]
-        return hash_orphaned_dict
+        videos = await LMS.filter_orphaned_videos(*files)
+        orphaned_files = set()
+        for video in videos:
+            try:
+                orphaned_files.add(self._cached_files[video.hash])
+            except KeyError:
+                log.warning(f"File not managed by this storage node: {video.hash}")
+        if orphaned:
+            return orphaned_files
+        return set(files).difference(orphaned_files)
 
     async def get_file(self, file_hash: str, file_ext: str) -> StoredHashedVideoFile:
         """Get video file in storage and check that it really exists."""
@@ -373,41 +378,44 @@ class FileStorage:
 
         log.info(f"Removed {thumb_nr} thumbnails for file with hash {file.hash} permanently from storage.")
 
-    async def remove_files(self, *hashes: str) -> list[bool]:
+    async def remove_files(self, *hashes: str, origin: Optional[str] = None) -> set[str]:
         """
-        Gathers and awaits calls to the check_lms_and_remove_file method,
-        passing one of the files into each call.
-        Returns a list of booleans, the value of which signifies whether the file with the corresponding index
-        was successfully deleted.
-        """
-        return await gather_in_batches(20, *(self.check_lms_and_remove_file(self._cached_files[h]) for h in hashes))
+        Checks all registered LMS for the provided files and removes those that are orphaned.
 
-    async def check_lms_and_remove_file(self, file: StoredHashedVideoFile, origin: Optional[str] = None) -> bool:
-        """
-        If lms_has_file(...) returns False, indicating that the no site (except the origin, if passed) knows the file,
-        the file is removed.
+        Returns the subset of `*hashes` corresponding to those files that were _not_ deleted.
 
         Args:
-            file:
-                Self-explanatory
+            *hashes:
+                Any number of hashes representing stored files.
+                They should all be files that are actually managed by the `FileStorage`.
             origin (optional):
-                Passed to lms_has_file(...)
+                If provided a LMS API address, that LMS is _not_ checked.
+                This means any file _only_ known to that LMS will be removed.
 
         Returns:
-            True, if removal of the video file (and its thumbnails) was successful; False otherwise.
+            Subset of `*hashes` corresponding to those files that were _not_ deleted.
         """
+        files = []
+        for file_hash in hashes:
+            try:
+                files.append(self._cached_files[file_hash])
+            except KeyError:
+                log.warning(f"File not managed by this storage node: {file_hash}")
+        log.info(f"{len(files)} files will be checked.")
         try:
-            file_is_known = await lms_has_file(file, origin=origin)
+            orphaned = await LMS.filter_orphaned_videos(*files, origin=origin)
         except LMSInterfaceError:
-            log.info(f"Video delete: Could not check all LMS for file: {file}. Not deleting.")
-            return False
-        if file_is_known:
-            log.info("Video delete: One LMS still has the video. Do not delete.")
-            return False
-        await self.remove_thumbs(file)
-        await self.remove(file)
-        log.info(f"Deleted video {file} permanently")
-        return True
+            log.warning("Could not check all LMS for files. Not deleting anything.")
+            return set()
+        hashes_set = set(hashes)
+        log.info(f"{len(orphaned)} files are being deleted.")
+        for video in orphaned:
+            file = self._cached_files[video.hash]
+            await self.remove_thumbs(file)
+            await self.remove(file)
+            log.info(f"Deleted video {video.hash} permanently")
+            hashes_set.discard(video.hash)
+        return hashes_set
 
     def garbage_collect_temp_dir(self) -> int:
         """Delete files older than GC_TEMP_FILES_SECS."""
@@ -533,36 +541,4 @@ async def _video_delete_task(file_hash: str, file_ext: str, origin: Optional[str
     except FileNotFoundError:
         log.info(f"Video delete: file not found: {file_hash}{file_ext}.")
         return
-    await file_storage.check_lms_and_remove_file(file, origin=origin)
-
-
-async def lms_has_file(file: StoredHashedVideoFile, origin: Optional[str] = None) -> bool:
-    """
-    Checks LMS sites for the existence of a stored file on one of them.
-    Assuming all LMS sites of interest are checked and this returns False, the file is referred to as *orphaned*.
-    Re-raises `LMSInterfaceError` after logging it.
-
-    Args:
-        file:
-            Instance of a stored video file (StoredHashedVideoFile class), the existence of which should be checked
-        origin (optional):
-            If passed a string, the site with a matching base url is excluded from the check, presumably because
-            it is the site requesting the deletion and thus still has the file in question.
-
-    Returns:
-        True, if the video file in question exists on **at least one** of the LMS sites; False otherwise.
-    """
-    for site in LMS.iter_all():
-        if origin and site.api_url.startswith(origin):
-            continue
-        log.debug(f"Checking LMS {site.api_url} for file {file}.")
-        try:
-            exists = await site.video_exists(file.hash, file.file_ext)
-        except LMSInterfaceError as e:
-            log.warning(f"{e} occurred on {site.api_url}.")
-            raise
-        else:
-            if exists:  # Else, continue looping through sites
-                log.debug(f"The site {site.api_url} has video {file}")
-                return True
-    return False
+    await file_storage.remove_files(file.hash, origin=origin)

@@ -2,6 +2,7 @@ import sys
 import asyncio
 import unittest.mock
 
+# TODO: Get rid of this module
 
 # Python 3.8 and greater has support for TestCases with `async` test methods
 # as well as AsyncMock and other helpers. Therefore depending on the version used,

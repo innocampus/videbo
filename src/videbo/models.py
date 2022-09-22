@@ -1,3 +1,4 @@
+from __future__ import annotations
 from enum import Enum, IntEnum
 from time import time
 from typing import Any, ClassVar, Optional, Type, TypeVar, Union
@@ -19,8 +20,9 @@ __all__ = [
     'BaseJWTData',
     'RequestJWTData',
     'LMSRequestJWTData',
-    'VideoExistsRequest',
-    'VideoExistsResponse',
+    'VideoModel',
+    'VideosMissingRequest',
+    'VideosMissingResponse',
     'NodeStatus',
 ]
 
@@ -198,13 +200,26 @@ class LMSRequestJWTData(RequestJWTData):
         return cls._current_token[0]
 
 
-class VideoExistsRequest(BaseRequestModel):
+class VideoModel(BaseModel):
     hash: str
     file_ext: str
 
+    class Config:
+        orm_mode = True
 
-class VideoExistsResponse(BaseResponseModel):
-    exists: bool
+
+class VideosMissingRequest(BaseRequestModel):
+    videos: list[VideoModel]
+
+    @validator("videos")
+    def at_least_one_video(cls, v: list[VideoModel]) -> list[VideoModel]:
+        if len(v) == 0:
+            raise ValueError("Videos list must contain at least one video")
+        return v
+
+
+class VideosMissingResponse(BaseResponseModel):
+    videos: list[VideoModel]  # i.e. not known/managed by the LMS
 
 
 class NodeStatus(BaseResponseModel):

@@ -265,7 +265,7 @@ async def delete_file(request: Request, jwt_data: DeleteFileJWTData) -> Response
         raise HTTPForbidden()
 
     origin = request.headers.getone("Origin", None)
-    schedule_video_delete(request.match_info['hash'], request.match_info['file_ext'], origin)
+    schedule_video_delete(request.match_info['hash'], request.match_info['file_ext'], origin=origin)
     return json_response({"status": "ok"})  # always succeeds
 
 
@@ -510,9 +510,7 @@ async def get_files_list(request: Request, _jwt_data: RequestJWTData) -> Respons
 @ensure_json_body
 async def batch_delete_files(_request: Request, _jwt_data: RequestJWTData, data: DeleteFilesList) -> Response:
     storage = FileStorage.get_instance()
-    removed_list = await storage.remove_files(*data.hashes)
-    results = zip(data.hashes, removed_list)
-    not_deleted = [file_hash for file_hash, success in results if not success]
+    not_deleted = list(await storage.remove_files(*data.hashes))
     if not_deleted:
         return json_response({'status': 'incomplete', 'not_deleted': not_deleted})
     return json_response({'status': 'ok'})

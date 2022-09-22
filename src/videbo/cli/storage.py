@@ -29,6 +29,15 @@ async def find_orphaned_files(delete: bool) -> None:
     either deletes or simply lists all orphaned files currently in storage,
     by calling the delete_files coroutine or list_files function respectively.
     """
+    confirm = input(
+        "You are about to start searching for/identifying orphaned files. "
+        "This may request each LMS for knowledge of all the stored files. "
+        "Depending on the number of files stored and the number of LMS registered, "
+        "this may take a long time.\nProceed? (yes/no) "
+    )
+    if not strtobool(confirm):
+        print("Aborted.")
+        return
     print("Querying storage for orphaned files...")
     files = await get_filtered_files(orphaned=True)
     if files is None:
@@ -84,7 +93,7 @@ def list_files(*files: StorageFileInfo) -> None:
     print(horizontal_sep)
     for file in files:
         size_str = f"{round(file.file_size / 1024 / 1024, 1)} MB"
-        print(f"| {file} | {size_str:>{size_length}} |")
+        print(f"| {str(file):{name_length}} | {size_str:>{size_length}} |")
     print(horizontal_sep)
 
 
