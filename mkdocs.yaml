@@ -35,4 +35,5 @@ markdown_extensions:
 nav:
   - Home: index.md
   - usage.md
+  - Advanced configuration: advanced-config.md
   - Reverse proxy: reverse-proxy.md
