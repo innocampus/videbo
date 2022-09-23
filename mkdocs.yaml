@@ -1,5 +1,7 @@
+copyright: "© 2022 innoCampus, Technische Universität Berlin"
 site_name: Videbo
 site_description: Distributed video hosting for Moodle and other LMS
+site_url: https://innocampus.github.io/videbo
 repo_name: innocampus/videbo
 repo_url: https://github.com/innocampus/videbo
 

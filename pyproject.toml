@@ -62,6 +62,7 @@ dev = [
 [project.urls]
 repository = "https://github.com/innocampus/videbo"
 bug_tracker = "https://github.com/innocampus/videbo/issues"
+documentation = "https://innocampus.github.io/videbo"
 
 [tool.setuptools.dynamic]
 readme = { file = ["README.md"] }

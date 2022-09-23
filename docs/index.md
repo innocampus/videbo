@@ -4,24 +4,24 @@
 
 ---
 
-**Documentation**: [tba](#)
+**Documentation**: <a href="https://innocampus.github.io/videbo" target="_blank"> https://innocampus.github.io/videbo </a>
 
-**Source Code**: [https://github.com/innocampus/videbo](https://github.com/innocampus/videbo){.external-link target=_blank}
+**Source Code**: <a href="https://github.com/innocampus/videbo" target="_blank"> https://github.com/innocampus/videbo </a>
 
 ---
 
-**Videbo** is a video hosting server specifically designed for [**Moodle**](https://moodle.org/) and other learning management systems (LMS).
+**Videbo** is a video hosting server specifically designed for <a href="https://moodle.org" target="_blank" class="external-link">**Moodle**</a> and other learning management systems (LMS).
 
-It exposes an intuitive API for uploading, downloading, and streaming videos, which can be accessed via Moodle [**`mod_videoservice`**](https://github.com/innocampus/moodle-mod_videoservice){.external-link target=_blank} and similar plugins.
+It exposes an intuitive API for uploading, downloading, and streaming videos, which can be accessed via Moodle <a href="https://github.com/innocampus/moodle-mod_videoservice" target="_blank" class="external-link">**`mod_videoservice`**</a> and similar plugins.
 
-**Videbo** is written in Python, and it is powered by [`aiohttp`](https://docs.aiohttp.org/en/stable/index.html){.external-link target=_blank}, [`Pydantic`](https://pydantic-docs.helpmanual.io/){.external-link target=_blank}, and [`PyJWT`](https://pyjwt.readthedocs.io/en/latest/){.external-link target=_blank}.
+**Videbo** is written in Python, and it is powered by <a href="https://docs.aiohttp.org/en/stable/index.html" target="_blank" class="external-link">`aiohttp`</a>, <a href="https://pydantic-docs.helpmanual.io" target="_blank" class="external-link">`Pydantic`</a>, and <a href="https://pyjwt.readthedocs.io/en/latest" target="_blank" class="external-link">`PyJWT`</a>.
 
 ## Key Features
 
 * **Performant**: Asynchronous HTTP server that can easily handle large request loads.
 * **Reliable**: Built-in distribution and load balancing capabilities. Dynamically enable/disable distributor nodes at any time.
 * **Integrated**: Designed to be compatible with **`mod_videoservice`** out of the box.
-* **Well-tested**: Used in production continuously since **2020** at the [**Technical University of Berlin**](https://www.tu.berlin/){.external-link target=_blank} (approx. 35k students) and during the peak of the remote-learning period.
+* **Well-tested**: Used in production continuously since **2020** at the <a href="https://www.tu.berlin" target="_blank" class="external-link">**Technical University of Berlin**</a> (approx. 35k students) and during the peak of the remote-learning period.
 * **Secure**: Authentication via industry standard JSON Web Tokens.
 
 ## Installation
@@ -36,7 +36,7 @@ To install **Videbo** including all optional features:
 pip install 'videbo[full]'
 ```
 
-The latter includes monitoring capabilities for the [Prometheus Node Exporter](https://github.com/prometheus/node_exporter){.external-link target=_blank}.
+The latter includes monitoring capabilities for the <a href="https://github.com/prometheus/node_exporter" target="_blank" class="external-link">Prometheus Node Exporter</a>.
 
 ## System dependencies
 
