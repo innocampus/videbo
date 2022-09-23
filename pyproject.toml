@@ -22,7 +22,7 @@ keywords = [
     "moodle",
     "server",
     "streaming",
-    "video"
+    "video",
 ]
 license = { text = "GNU General Public License v3 or later (GPLv3+)" }
 classifiers = [
@@ -50,12 +50,13 @@ dynamic = ["version", "readme", "dependencies"]
 [project.optional-dependencies]
 full = ["prometheus-client==0.14.1"]
 dev = [
-    "prometheus-client==0.14.1",
+    "build==0.8.0",
     "coverage==6.4.4",
     "flake8==5.0.4",
     "mkdocs-material==8.4.2",
     "mkdocstrings[python]==0.19.0",
     "mypy==0.971",
+    "prometheus-client==0.14.1",
 ]
 
 [project.urls]
@@ -65,3 +66,4 @@ bug_tracker = "https://github.com/innocampus/videbo/issues"
 [tool.setuptools.dynamic]
 readme = { file = ["README.md"] }
 dependencies = { file = "requirements/common.txt" }
+version = {attr = "videbo.__version__"}

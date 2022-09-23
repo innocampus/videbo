@@ -1,3 +1,11 @@
+"""
+Entry point script for starting a node and executing videbo commands.
+
+Run videbo from the CLI with the `-h` flag to receive usage instructions.
+Global settings are loaded from all defined sources in this script,
+and saved in `videbo.storage_settings` and `videbo.distributor_settings`.
+"""
+
 import logging
 import sys
 from argparse import ArgumentParser, SUPPRESS
