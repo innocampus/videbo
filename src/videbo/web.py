@@ -4,10 +4,8 @@ import urllib.parse
 from collections.abc import AsyncIterator, Callable, Iterable
 from pathlib import Path
 from json import JSONDecodeError
-from time import time
-from typing import Any, Optional, Type, Union, cast, overload
+from typing import Any, Optional, Union, cast, overload
 
-from aiohttp.client import ClientSession, ClientError, ClientTimeout
 from aiohttp.log import access_logger as aiohttp_access_logger
 from aiohttp.typedefs import LooseHeaders
 from aiohttp.web import run_app
@@ -19,11 +17,11 @@ from aiohttp.web_response import Response
 from aiohttp.web_routedef import RouteTableDef
 from pydantic import ValidationError
 
-from videbo.exceptions import HTTPResponseError
+from videbo.client import Client
 from videbo.misc import MEGA
 from videbo.misc.functions import sanitize_filename, get_route_model_param
 from videbo.misc.task_manager import TaskManager
-from videbo.models import BaseRequestModel, BaseResponseModel, RequestJWTData, Role, TokenIssuer
+from videbo.models import BaseRequestModel
 from videbo.types import CleanupContext, RouteHandler
 from videbo.video import get_content_type_for_extension
 
@@ -33,12 +31,11 @@ log = logging.getLogger(__name__)
 
 async def session_context(_app: Application) -> AsyncIterator[None]:
     """
-    Creates the singleton session instance on the first iteration, and closes it on the second.
-    This coroutine can be used in the `.cleanup_ctx` list of the aiohttp `Application`.
+    Ensures that all HTTP client sessions are closed on the second iteration.
+    Can be used in the `.cleanup_ctx` list of the aiohttp `Application`.
     """
-    HTTPClient.create_client_session()
-    yield
-    await HTTPClient.close_all()
+    yield  # no start-up needed
+    await Client.close_all()
 
 
 async def cancel_tasks(_app: Application) -> None:
@@ -241,118 +238,3 @@ def route_with_cors(routes: RouteTableDef, path: str, *allow_methods: str,
 
         return cast(RouteHandler, wrapper)
     return decorator
-
-
-class HTTPClient:
-    session: ClientSession
-    _cached_jwt: dict[tuple[Role, TokenIssuer], tuple[str, float]] = {}  # (role, int|ext) -> (jwt, expiration date)
-
-    @classmethod
-    def create_client_session(cls) -> None:
-        cls.session = ClientSession()  # TODO use TCPConnector and use limit_per_host option
-
-    @classmethod
-    async def close_all(cls) -> None:
-        await cls.session.close()
-
-    # TODO: Rework type annotations; overload to indicate return type dependence
-    @classmethod
-    async def videbo_request(cls, method: str, url: str, jwt_data: Union[RequestJWTData, str, None] = None,
-                             json_data: Optional[BaseRequestModel] = None,
-                             expected_return_type: Optional[Type[BaseResponseModel]] = None,
-                             timeout: Union[ClientTimeout, int, None] = None,
-                             external: bool = False,
-                             print_connection_exception: bool = True) -> tuple[int, Any]:
-        """Do a HTTP request, i.e. a request to another node with a JWT using the internal or external secret.
-
-        You may transmit json data and specify the expected return type."""
-
-        headers = {}
-        data = None
-        if jwt_data:
-            if isinstance(jwt_data, RequestJWTData):
-                jwt = jwt_data.encode()
-            else:
-                # Then it is a string. Assume it is a valid jwt.
-                jwt = jwt_data
-
-            if external:
-                headers["X-Authorization"] = "Bearer " + jwt
-            else:
-                headers["Authorization"] = "Bearer " + jwt
-
-        if json_data:
-            headers['Content-Type'] = 'application/json'
-            data = json_data.json()
-
-        if isinstance(timeout, int):
-            timeout_obj = ClientTimeout(total=timeout)
-        elif isinstance(timeout, ClientTimeout):
-            timeout_obj = timeout
-        else:
-            timeout_obj = ClientTimeout(total=15 * 60)
-
-        try:
-            async with cls.session.request(method, url, data=data, headers=headers, timeout=timeout_obj) as response:
-                if response.content_type == 'application/json':
-                    json = await response.json()
-                    if expected_return_type:
-                        return response.status, expected_return_type.parse_obj(json)
-                    else:
-                        return response.status, json
-                elif expected_return_type:
-                    log.warning(f"Got unexpected data while internal web request ({url}).")
-                    raise HTTPResponseError()
-                else:
-                    some_data = await response.read()
-                    return response.status, some_data
-        except (ClientError, UnicodeDecodeError, ValidationError, JSONDecodeError, ConnectionError):
-            if print_connection_exception:
-                log.exception(f"Error while internal web request ({url}).")
-            raise HTTPResponseError()
-
-    @classmethod
-    async def internal_request_node(cls, method: str, url: str,
-                                    json_data: Optional[BaseRequestModel] = None,
-                                    expected_return_type: Optional[Type[BaseResponseModel]] = None,
-                                    timeout: Union[ClientTimeout, int, None] = None,
-                                    print_connection_exception: bool = True) -> tuple[int, Any]:
-        """Do an internal request with the node role (without having to specify jwt_data)."""
-        jwt = cls.get_standard_jwt_with_role(Role.node)
-        return await cls.videbo_request(method, url, jwt, json_data, expected_return_type, timeout,
-                                        print_connection_exception=print_connection_exception)
-
-    @classmethod
-    async def internal_request_admin(cls, method: str, url: str,
-                                     json_data: Optional[BaseRequestModel] = None,
-                                     expected_return_type: Optional[Type[BaseResponseModel]] = None,
-                                     timeout: Union[ClientTimeout, int, None] = None,
-                                     print_connection_exception: bool = True) -> tuple[int, Any]:
-        """Do an internal request with the node role (without having to specify jwt_data)."""
-        jwt = cls.get_standard_jwt_with_role(Role.admin)
-        return await cls.videbo_request(method, url, jwt, json_data, expected_return_type, timeout,
-                                        print_connection_exception=print_connection_exception)
-
-    @classmethod
-    def get_standard_jwt_with_role(cls, role: Role, external: bool = False) -> str:
-        """Return a JWT with the BaseJWTData and just the role.
-
-        Implements a caching mechanism."""
-
-        if external:
-            iss = TokenIssuer.external
-        else:
-            iss = TokenIssuer.internal
-        current_time = time()
-        jwt, expiration = cls._cached_jwt.get((role, iss), ('', 0))
-        if jwt and current_time < expiration:
-            return jwt
-
-        jwt = RequestJWTData(
-            exp=int(time()) + 4 * 3600,  # expires in 4 hours
-            iss=iss,
-            role=role
-        ).encode()
-        # Don't cache until the expiration time is reached:
-        cls._cached_jwt[(role, iss)] = (jwt, current_time + 3 * 3600)
-        return jwt

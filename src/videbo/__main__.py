@@ -6,6 +6,7 @@ Global settings are loaded from all defined sources in this script,
 and saved in `videbo.storage_settings` and `videbo.distributor_settings`.
 """
 
+import asyncio
 import logging
 import sys
 from argparse import ArgumentParser, SUPPRESS
@@ -13,7 +14,7 @@ from pathlib import Path
 from typing import Any, Union
 
 from .base_settings import DEFAULT_CONFIG_FILE_PATHS, CONFIG_FILE_PATHS_PARAM
-from .cli.args import setup_cli_args, run
+from .cli.args import setup_cli_args, run_cli_command
 
 import videbo
 from videbo.storage.start import start as start_storage
@@ -71,7 +72,7 @@ def main() -> None:
     if app == CLI:
         init_kwargs = {key: cli_kwargs[key] for key in _VALID_SETTINGS_KWARGS if key in cli_kwargs.keys()}
         setattr(videbo, 'storage_settings', StorageSettings(**init_kwargs))
-        run(**cli_kwargs)
+        asyncio.run(run_cli_command(**cli_kwargs))
         return
     settings: Union[StorageSettings, DistributorSettings]
     if app == STORAGE:

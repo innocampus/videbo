@@ -7,14 +7,12 @@ from pathlib import Path
 from time import time
 from typing import Optional
 
-from aiohttp import ClientTimeout
-
 from videbo import distributor_settings as settings
+from videbo.client import Client
 from videbo.misc import MEGA
 from videbo.misc.functions import get_free_disk_space, rel_path
 from videbo.misc.task_manager import TaskManager
 from videbo.models import Role, TokenIssuer
-from videbo.web import HTTPClient
 from videbo.storage.util import HashedVideoFile
 from videbo.storage.api.models import RequestFileJWTData, FileType
 from videbo.distributor.api.models import DistributorCopyFileStatus
@@ -55,6 +53,7 @@ class DistributorFileController:
         self.files_being_copied: set[DistributorHashedVideoFile] = set()
         self.base_path: Path = path
         self.waiting: int = 0  # number of clients waiting for a file being downloaded
+        self.http_client: Client = Client()
 
     @classmethod
     def get_instance(cls) -> DistributorFileController:
@@ -169,55 +168,44 @@ class DistributorFileController:
                 file_obj = await get_running_loop().run_in_executor(None, temp_path.open, 'wb', 0)
                 free_space = await self.get_free_space()
 
-                # prepare request
-                jwt_data = RequestFileJWTData(
+                # Check if we have enough space for this file.
+                new_file.file_size = expected_file_size
+                file_size_mb = new_file.file_size / MEGA
+                if file_size_mb > free_space:
+                    log.error(f"Error when copying file {file} from {from_url}: Not enough space, "
+                              f"free space {free_space:.1f} MB, file is {file_size_mb:.1f} MB")
+                    raise CopyFileError()
+
+                jwt = RequestFileJWTData(
                     exp=int(time()) + 300,  # expires in 5 minutes
                     iss=TokenIssuer.internal,
                     role=Role.node,
                     type=FileType.VIDEO,
                     hash=file.hash,
                     file_ext=file.file_ext,
-                    rid=''
+                    rid='',
                 )
-                headers = {"Authorization": "Bearer " + jwt_data.encode()}
-                timeout = ClientTimeout(total=120 * 60)
-
-                async with HTTPClient.session.request("GET", from_url + "/file", headers=headers,
-                                                      timeout=timeout) as response:
-                    if response.status != 200:
-                        log.error(f"Error when copying file {file} from {from_url}: got http status {response.status}")
-                        raise CopyFileError()
-
-                    # Check if we have enough space for this file.
-                    new_file.file_size = expected_file_size
-                    file_size_mb = new_file.file_size / MEGA
-                    if file_size_mb > free_space:
-                        log.error(f"Error when copying file {file} from {from_url}: Not enough space, "
-                                  f"free space {free_space:.1f} MB, file is {file_size_mb:.1f} MB")
-                        raise CopyFileError()
-
-                    # Load file
-                    last_update_time = time()
-                    while True:
-                        data = await response.content.read(MEGA)
-                        if len(data) == 0:
-                            break
-                        copy_status.loaded_bytes += len(data)
-                        await get_running_loop().run_in_executor(None, file_obj.write, data)
-
-                        # If the download is taking much time, periodically print status.
-                        if (time() - last_update_time) > 120:
-                            last_update_time = time()
-                            loaded_mb = copy_status.loaded_bytes / MEGA
-                            percent = 100 * (copy_status.loaded_bytes / expected_file_size)
-                            log.info(f"Still copying, copied {loaded_mb:.1f}/{file_size_mb:.1f} MB "
-                                     f"({percent:.1f} %) until now of file {file}")
-
-                    if copy_status.loaded_bytes != expected_file_size:
-                        log.error(f"Error when copying file {file} from {from_url}: Loaded "
-                                  f"{copy_status.loaded_bytes} bytes, but expected {expected_file_size} bytes.")
-                        raise CopyFileError()
-                    log.info(f"Copied file {file} ({file_size_mb:.1f} MB) from {from_url}")
+                last_update_time = time()
+                async for data in self.http_client.request_file_read(
+                    from_url + "/file",
+                    jwt,
+                    chunk_size=MEGA,
+                    timeout=2. * 60 * 60,
+                ):
+                    copy_status.loaded_bytes += len(data)
+                    await get_running_loop().run_in_executor(None, file_obj.write, data)
+                    # If the download is taking a lot of time, periodically print status.
+                    if (time() - last_update_time) > 120:
+                        last_update_time = time()
+                        loaded_mb = copy_status.loaded_bytes / MEGA
+                        percent = 100 * (copy_status.loaded_bytes / expected_file_size)
+                        log.info(f"Still copying, copied {loaded_mb:.1f}/{file_size_mb:.1f} MB "
+                                 f"({percent:.1f} %) until now of file {file}")
+                if copy_status.loaded_bytes != expected_file_size:
+                    log.error(f"Error when copying file {file} from {from_url}: Loaded "
+                              f"{copy_status.loaded_bytes} bytes, but expected {expected_file_size} bytes.")
+                    raise CopyFileError()
+                log.info(f"Copied file {file} ({file_size_mb:.1f} MB) from {from_url}")
             except Exception:
                 # Set event to wake up all waiting tasks even though we don't have the file.
                 copy_status.event.set()

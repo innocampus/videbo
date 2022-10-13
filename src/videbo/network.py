@@ -8,12 +8,12 @@ from typing import Optional, Union
 
 from pydantic import BaseModel
 
+from videbo.client import Client
 from videbo.distributor.settings import DistributorSettings
 from videbo.exceptions import HTTPResponseError, UnknownServerStatusFormatError
 from videbo.misc import MEGA
 from videbo.models import NodeStatus
 from videbo.storage.settings import StorageSettings
-from videbo.web import HTTPClient
 
 
 log = getLogger(__name__)
@@ -87,6 +87,7 @@ class NetworkInterfaces:
     _interfaces: dict[str, NetworkInterface] = {}
 
     def __init__(self) -> None:
+        self.http_client: Client = Client()
         self._last_time_network_proc: float = 0.0
         self._fetch_task: Optional[Task[None]] = None
         self._server_status: Optional[StubStatus] = None
@@ -158,12 +159,9 @@ class NetworkInterfaces:
         http_code: int
         response_data: bytes
         try:
-            http_code, response_data = await HTTPClient.videbo_request("GET", url, external=True)
-        except HTTPResponseError:
-            log.warning("error while handling internal request")
-            return
-        except ConnectionRefusedError:
-            log.warning(f"could not connect to {url}")
+            http_code, response_data = await self.http_client.request("GET", url)
+        except (HTTPResponseError, ConnectionRefusedError) as e:
+            log.warning("Error requesting %s: %s", url, repr(e))
             return
         if http_code != 200:
             log.warning(f"unexpected response from {url} (return code {http_code})")

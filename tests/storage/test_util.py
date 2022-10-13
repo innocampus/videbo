@@ -104,6 +104,9 @@ class FileStorageTestCase(BaseTestCase):
         self.dist_controller_patcher = patch(TESTED_MODULE_PATH + '.DistributionController')
         self.mock_dist_controller_cls = self.dist_controller_patcher.start()
 
+        self.client_patcher = patch(TESTED_MODULE_PATH + '.Client')
+        self.mock_client_cls = self.client_patcher.start()
+
         self.create_dir_patcher = patch(TESTED_MODULE_PATH + '.create_dir_if_not_exists')
         self.mock_create_dir = self.create_dir_patcher.start()
 
@@ -129,6 +132,7 @@ class FileStorageTestCase(BaseTestCase):
         self.asyncio_create_task_patcher.stop()
         self.gc_cron_patcher.stop()
         self.create_dir_patcher.stop()
+        self.client_patcher.stop()
         self.dist_controller_patcher.stop()
         self.settings_patcher.stop()
 
@@ -339,7 +343,7 @@ class FileStorageTestCase(BaseTestCase):
         expected_output = {file2}
         output = await self.storage._filter_by_orphan_status((file1, file2), orphaned=orphaned)
         self.assertEqual(expected_output, output)
-        mock_filter_orphaned_videos.assert_awaited_once_with(file1, file2)
+        mock_filter_orphaned_videos.assert_awaited_once_with(file1, file2, client=self.storage.http_client)
 
         mock_filter_orphaned_videos.reset_mock()
         mock_filter_orphaned_videos.return_value = [file2]
@@ -347,7 +351,7 @@ class FileStorageTestCase(BaseTestCase):
         expected_output = {file1}
         output = await self.storage._filter_by_orphan_status((file1, file2), orphaned=orphaned)
         self.assertEqual(expected_output, output)
-        mock_filter_orphaned_videos.assert_awaited_once_with(file1, file2)
+        mock_filter_orphaned_videos.assert_awaited_once_with(file1, file2, client=self.storage.http_client)
 
     @async_test
     async def test_get_file(self) -> None:
@@ -667,7 +671,9 @@ class FileStorageTestCase(BaseTestCase):
 
         output = await self.storage.remove_files(*test_hashes, origin=test_origin)
         self.assertSetEqual({BAR, BAZ}, output)
-        mock_filter_orphaned_videos.assert_awaited_once_with(mock_file_foo, mock_file_bar, origin=test_origin)
+        mock_filter_orphaned_videos.assert_awaited_once_with(
+            mock_file_foo, mock_file_bar, client=self.storage.http_client, origin=test_origin
+        )
         mock_remove_thumbs.assert_awaited_once_with(mock_file_foo)
         mock_remove.assert_awaited_once_with(mock_file_foo)
 
@@ -678,7 +684,9 @@ class FileStorageTestCase(BaseTestCase):
         mock_filter_orphaned_videos.side_effect = util.LMSInterfaceError
         output = await self.storage.remove_files(*test_hashes, origin=test_origin)
         self.assertSetEqual(set(), output)
-        mock_filter_orphaned_videos.assert_awaited_once_with(mock_file_foo, mock_file_bar, origin=test_origin)
+        mock_filter_orphaned_videos.assert_awaited_once_with(
+            mock_file_foo, mock_file_bar, client=self.storage.http_client, origin=test_origin
+        )
         mock_remove_thumbs.assert_not_called()
         mock_remove.assert_not_called()
 

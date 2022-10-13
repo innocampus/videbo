@@ -1,29 +1,25 @@
-import json
 from distutils.util import strtobool
-from typing import Optional, Union
-from urllib.parse import urlencode
 
-from videbo import storage_settings
-from videbo.web import HTTPClient
-from videbo.storage.api.models import (StorageFilesList, StorageFileInfo, DeleteFilesList, DistributorNodeInfo,
-                                       StorageStatus)
+from videbo.storage.api.client import StorageClient as Client
+from videbo.storage.api.models import StorageFileInfo
 
 
-def get_storage_url(path: str) -> str:
-    return f'http://{storage_settings.listen_address}:{storage_settings.listen_port}{path}'
-
-
-async def get_status() -> None:
-    url = get_storage_url('/api/storage/status')
-    # We parse the model back and forth to have the dictionary in the correct order:
-    http_code, ret = await HTTPClient.internal_request_admin('GET', url, None, StorageStatus)
+def print_response(http_code: int) -> None:
     if http_code == 200:
-        print(json.dumps(ret.dict(), indent=4))
+        print("Successful! Please check storage log output.")
     else:
-        print_response(http_code)
+        print(f"HTTP response code {http_code}! Please check storage log output.")
 
 
-async def find_orphaned_files(delete: bool) -> None:
+async def print_storage_status(client: Client) -> None:
+    status, data = await client.get_status()
+    if status == 200:
+        print(data.json(indent=4))
+    else:
+        print_response(status)
+
+
+async def find_orphaned_files(client: Client, *, delete: bool) -> None:
     """
     Awaits results from the filtered files request and depending on arguments passed,
     either deletes or simply lists all orphaned files currently in storage,
@@ -39,7 +35,7 @@ async def find_orphaned_files(delete: bool) -> None:
         print("Aborted.")
         return
     print("Querying storage for orphaned files...")
-    files = await get_filtered_files(orphaned=True)
+    files = await client.get_filtered_files(orphaned=True)
     if files is None:
         print("Error requesting filtered files list from storage node!")
         return
@@ -49,30 +45,26 @@ async def find_orphaned_files(delete: bool) -> None:
         return
     total_size = round(sum(file.file_size for file in files) / 1024 / 1024, 1)
     print(f"Found {num_files} orphaned files with a total size of {total_size} MB.")
-    if delete:
-        confirm = input("Are you sure, you want to delete them from storage? (yes/no) ")
-        if not strtobool(confirm):
-            print("Aborted.")
-            return
-        await delete_files(*files)
-    else:
+    if not delete:
         list_files(*files)
         print("\nIf you want to delete all orphaned files, use the command with the --delete flag.")
+        return
 
-
-async def get_filtered_files(**kwargs: Union[str, int, bool]) -> Optional[list[StorageFileInfo]]:
-    """
-    Makes a GET request to the storage node's files endpoint to receive a list of stored files.
-    Any keyword arguments passed are encoded into the url query string, and may be used to filter the results.
-    If a 200 response is received, a list of files (matching filter parameters) is returned.
-    Any other response causes None to be returned.
-    """
-    url = get_storage_url(f'/api/storage/files?{urlencode(kwargs)}')
-    ret: StorageFilesList
-    status, ret = await HTTPClient.internal_request_admin('GET', url, None, StorageFilesList)
-    if status == 200:
-        return ret.files
-    return None
+    confirm = input("Are you sure, you want to delete them from storage? (yes/no) ")
+    if not strtobool(confirm):
+        print("Aborted.")
+        return
+    status, data = await client.delete_files(*files)
+    if status != 200:
+        print("Request failed. Please check the storage logs.")
+        return
+    if data['status'] == 'ok':
+        print("All files have been successfully deleted from storage.")
+        return
+    print("Error! The following files could not be deleted from storage:")
+    for file_hash in data['not_deleted']:
+        print(file_hash)
+    print("Please check the storage logs for more information.")
 
 
 def list_files(*files: StorageFileInfo) -> None:
@@ -97,51 +89,21 @@ def list_files(*files: StorageFileInfo) -> None:
     print(horizontal_sep)
 
 
-async def delete_files(*files: StorageFileInfo) -> None:
-    """
-    Makes a POST request to perform a batch deletion of files in storage.
-    Prints out hashes of any files that could not be deleted.
-    """
-    url = get_storage_url('/api/storage/delete')
-    data = DeleteFilesList(hashes=[f.hash for f in files])
-    status_code, ret = await HTTPClient.internal_request_admin('POST', url, data)
-    if status_code != 200:
-        print("Request failed. Please check the storage logs.")
-        return
-    if ret['status'] == 'ok':
-        print("All files have been successfully deleted from storage.")
-        return
-    print("Error! The following files could not be deleted from storage:")
-    for file_hash in ret['not_deleted']:
-        print(file_hash)
-    print("Please check the storage logs for more information.")
-
-
-async def get_distributor_nodes() -> None:
-    url = get_storage_url('/api/storage/distributor/status')
-    http_code, ret = await HTTPClient.internal_request_admin('GET', url)
-    if http_code == 200:
-        print(json.dumps(ret['nodes'], indent=4))
+async def print_distributor_nodes(client: Client) -> None:
+    status, data = await client.get_distributor_nodes()
+    if status == 200:
+        print(data.json(indent=4))
     else:
-        print_response(http_code)
+        print_response(status)
 
 
-async def set_distributor_state(base_url: str, enabled: bool) -> None:
-    url = get_storage_url(f'/api/storage/distributor/{"en" if enabled else "dis"}able')
-    http_code, ret = await HTTPClient.internal_request_admin('POST', url, DistributorNodeInfo(base_url=base_url))
-    print_response(http_code)
+async def disable_distributor_node(client: Client, base_url: str) -> None:
+    print_response(
+        await client.set_distributor_state(base_url, enabled=False)
+    )
 
 
-async def disable_distributor_node(base_url: str) -> None:
-    await set_distributor_state(base_url, enabled=False)
-
-
-async def enable_distributor_node(base_url: str) -> None:
-    await set_distributor_state(base_url, enabled=True)
-
-
-def print_response(http_code: int) -> None:
-    if http_code == 200:
-        print("Successful! Please check storage log output.")
-    else:
-        print(f"HTTP response code {http_code}! Please check storage log output.")
+async def enable_distributor_node(client: Client, base_url: str) -> None:
+    print_response(
+        await client.set_distributor_state(base_url, enabled=True)
+    )

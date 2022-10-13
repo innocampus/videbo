@@ -1,6 +1,5 @@
 import sys
 from argparse import ArgumentParser
-from asyncio import get_event_loop
 from typing import Any
 
 
@@ -48,25 +47,26 @@ def setup_cli_args(parser: ArgumentParser) -> None:
     )
 
 
-def run(**kwargs: Any) -> None:
-    from videbo.web import HTTPClient
-    from .storage import (get_status, find_orphaned_files, get_distributor_nodes, enable_distributor_node,
-                          disable_distributor_node)
-    HTTPClient.create_client_session()
-    if kwargs[CMD] == SHOW_STATUS:
-        fut = get_status()
-    elif kwargs[CMD] == FIND_ORPHANS:
-        fut = find_orphaned_files(kwargs[DELETE])
-    elif kwargs[CMD] == SHOW_DIST_NODES:
-        fut = get_distributor_nodes()
-    elif kwargs[CMD] == DISABLE_DIST:
-        fut = disable_distributor_node(kwargs[URL])
-    elif kwargs[CMD] == ENABLE_DIST:
-        fut = enable_distributor_node(kwargs[URL])
-    else:
-        print("Invalid cli command argument given.")
-        sys.exit(3)
-    try:
-        get_event_loop().run_until_complete(fut)
-    finally:
-        get_event_loop().run_until_complete(HTTPClient.close_all())
+async def run_cli_command(**kwargs: Any) -> None:
+    from videbo.storage.api.client import StorageClient
+    from .storage import (
+        disable_distributor_node,
+        enable_distributor_node,
+        find_orphaned_files,
+        print_distributor_nodes,
+        print_storage_status,
+    )
+    async with StorageClient() as client:
+        if kwargs[CMD] == SHOW_STATUS:
+            await print_storage_status(client)
+        elif kwargs[CMD] == FIND_ORPHANS:
+            await find_orphaned_files(client, delete=kwargs[DELETE])
+        elif kwargs[CMD] == SHOW_DIST_NODES:
+            await print_distributor_nodes(client)
+        elif kwargs[CMD] == DISABLE_DIST:
+            await disable_distributor_node(client, kwargs[URL])
+        elif kwargs[CMD] == ENABLE_DIST:
+            await enable_distributor_node(client, kwargs[URL])
+        else:
+            print("Invalid cli command argument given.")
+            sys.exit(3)

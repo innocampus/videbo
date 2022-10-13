@@ -10,6 +10,7 @@ from pathlib import Path
 from typing import BinaryIO, Optional, Union
 
 from videbo import storage_settings as settings
+from videbo.client import Client
 from videbo.exceptions import PendingWriteOperationError, CouldNotCreateDir, LMSInterfaceError
 from videbo.lms_api import LMS
 from videbo.misc.functions import get_free_disk_space, rel_path
@@ -112,7 +113,8 @@ class FileStorage:
         self._cached_files_total_size: int = 0  # in bytes
         self.num_current_uploads: int = 0
         self.thumb_memory_cache = BytesLimitLRU(settings.thumb_cache_max_mb * 1024 * 1024)
-        self.distribution_controller: DistributionController = DistributionController()
+        self.http_client: Client = Client()
+        self.distribution_controller: DistributionController = DistributionController(http_client=self.http_client)
 
         create_dir_if_not_exists(self.temp_dir, 0o755)
         create_dir_if_not_exists(self.temp_out_dir, 0o777, explicit_chmod=True)
@@ -233,7 +235,7 @@ class FileStorage:
         Returns:
             Subset of the provided `files` that are managed by the `FileStorage` and match the desired `orphan` status.
         """
-        videos = await LMS.filter_orphaned_videos(*files)
+        videos = await LMS.filter_orphaned_videos(*files, client=self.http_client)
         orphaned_files = set()
         for video in videos:
             try:
@@ -403,7 +405,7 @@ class FileStorage:
                 log.warning(f"File not managed by this storage node: {file_hash}")
         log.info(f"{len(files)} files will be checked.")
         try:
-            orphaned = await LMS.filter_orphaned_videos(*files, origin=origin)
+            orphaned = await LMS.filter_orphaned_videos(*files, client=self.http_client, origin=origin)
         except LMSInterfaceError:
             log.warning("Could not check all LMS for files. Not deleting anything.")
             return set()

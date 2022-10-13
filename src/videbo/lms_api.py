@@ -1,13 +1,18 @@
 from __future__ import annotations
 import logging
 from collections.abc import Iterator
-from typing import Any, Optional, Type, TYPE_CHECKING
+from typing import Optional, TYPE_CHECKING
 from urllib.parse import urlencode
 
+from videbo.client import Client
 from videbo.exceptions import HTTPResponseError, LMSInterfaceError
-from videbo.models import (BaseRequestModel, BaseResponseModel, LMSRequestJWTData,
-                           VideoModel, VideosMissingRequest, VideosMissingResponse)
-from videbo.web import HTTPClient
+from videbo.models import (
+    LMSRequestJWTData,
+    VideoModel,
+    VideosMissingRequest,
+    VideosMissingResponse,
+)
+
 if TYPE_CHECKING:
     from videbo.storage.util import StoredHashedVideoFile as StoredFile
 
@@ -40,21 +45,23 @@ class LMS:
         self.api_url = api_url
         self.__class__._collection[api_url] = self
 
-    async def _post_request(self, function: str, data: BaseRequestModel,
-                            expected_return_type: Optional[Type[BaseResponseModel]] = None) -> tuple[int, Any]:
-        """Sends a request with the provided `data` to the LMS' API with the specified `function`."""
+    def _get_function_url(self, function: str) -> str:
         query = urlencode({self.FUNCTION_QUERY_PARAMETER: function})
-        url = f"{self.api_url}?{query}"
-        jwt = LMSRequestJWTData.get_standard_token()
-        return await HTTPClient.videbo_request("POST", url, jwt, data, expected_return_type, timeout=30, external=True)
+        return f"{self.api_url}?{query}"
 
-    async def videos_missing(self, *videos: VideoModel) -> VideosMissingResponse:
+    async def videos_missing(self, *videos: VideoModel, client: Client) -> VideosMissingResponse:
         """Checks if the provided videos are known to the LMS."""
-        function = "videos_missing"
         request_data = VideosMissingRequest(videos=list(videos))
-        response_data: VideosMissingResponse
         try:
-            http_code, response_data = await self._post_request(function, request_data, VideosMissingResponse)
+            http_code, response_data = await client.request(
+                "POST",
+                self._get_function_url("videos_missing"),
+                LMSRequestJWTData.get_standard_token(),
+                data=request_data,
+                return_model=VideosMissingResponse,
+                timeout=30,
+                external=True,
+            )
         except HTTPResponseError as e:
             raise LMSInterfaceError(
                 f"Error trying to check video existence on {self.api_url}"
@@ -67,7 +74,12 @@ class LMS:
         return response_data
 
     @classmethod
-    async def filter_orphaned_videos(cls, *files: StoredFile, origin: Optional[str] = None) -> list[VideoModel]:
+    async def filter_orphaned_videos(
+        cls,
+        *files: StoredFile,
+        client: Client,
+        origin: Optional[str] = None,
+    ) -> list[VideoModel]:
         """
         Checks LMS sites for their knowledge of the provided `*files`.
 
@@ -75,6 +87,8 @@ class LMS:
             *files:
                 Any number of `StoredHashedVideoFile` objects to check for their orphan status.
                 They should all be files that are actually managed by the central `FileStorage`.
+            client:
+                The client to use for performing requests to the LMS sites.
             origin (optional):
                 If passed a string, any LMS with a matching URL is _not_ checked.
 
@@ -98,7 +112,7 @@ class LMS:
                     continue
                 log.debug(f"Checking LMS {site.api_url} for {len(videos)} files.")
                 try:
-                    response = await site.videos_missing(*videos)
+                    response = await site.videos_missing(*videos, client=client)
                 except LMSInterfaceError as e:
                     log.warning(f"{e} occurred on {site.api_url}.")
                     raise

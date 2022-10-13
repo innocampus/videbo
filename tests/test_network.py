@@ -34,7 +34,13 @@ class NetworkInterfacesTestCase(IsolatedAsyncioTestCase):
         main_log.setLevel(cls.log_lvl)
 
     def setUp(self) -> None:
-        self.ni = network.NetworkInterfaces.get_instance()
+        self.mock_client_request = AsyncMock()
+        self.client_patcher = patch.object(network, "Client", return_value=MagicMock(request=self.mock_client_request))
+        self.mock_client_cls = self.client_patcher.start()
+        self.ni = network.NetworkInterfaces()
+
+    def tearDown(self) -> None:
+        self.client_patcher.stop()
 
     def test___init__(self) -> None:
         self.assertEqual(0., self.ni._last_time_network_proc)
@@ -43,7 +49,8 @@ class NetworkInterfacesTestCase(IsolatedAsyncioTestCase):
 
     def test_get_instance(self) -> None:
         instance = network.NetworkInterfaces.get_instance()
-        self.assertIs(self.ni, instance)
+        self.assertIs(network.NetworkInterfaces._instance, instance)
+        self.assertIs(instance, network.NetworkInterfaces.get_instance())
 
     def test_is_fetching(self) -> None:
         self.assertFalse(self.ni.is_fetching)
@@ -145,40 +152,39 @@ class NetworkInterfacesTestCase(IsolatedAsyncioTestCase):
 
     @patch.object(network.NetworkInterfaces, "_update_nginx_status")
     @patch.object(network.NetworkInterfaces, "_update_apache_status")
-    @patch.object(network, "HTTPClient")
-    async def test__fetch_server_status(self, mock_client_cls: MagicMock, mock__update_apache_status: MagicMock,
+    async def test__fetch_server_status(self, mock__update_apache_status: MagicMock,
                                         mock__update_nginx_status: MagicMock) -> None:
         mock_url = "foo"
         self.ni._server_status = None
 
         # Test response error:
-        mock_client_cls.videbo_request = AsyncMock(side_effect=HTTPResponseError)
+        self.mock_client_request.side_effect = HTTPResponseError
         await self.ni._fetch_server_status(mock_url)
         self.assertIsNone(self.ni._server_status)
-        mock_client_cls.videbo_request.assert_awaited_once_with("GET", mock_url, external=True)
-        mock_client_cls.reset_mock()
+        self.mock_client_request.assert_awaited_once_with("GET", mock_url)
+        self.mock_client_request.reset_mock()
 
         # Test connection error:
-        mock_client_cls.videbo_request.side_effect = ConnectionRefusedError
+        self.mock_client_request.side_effect = ConnectionRefusedError
         await self.ni._fetch_server_status(mock_url)
         self.assertIsNone(self.ni._server_status)
-        mock_client_cls.videbo_request.assert_awaited_once_with("GET", mock_url, external=True)
-        mock_client_cls.reset_mock()
+        self.mock_client_request.assert_awaited_once_with("GET", mock_url)
+        self.mock_client_request.reset_mock()
 
         # Test non-200 response:
-        mock_client_cls.videbo_request.side_effect = None
-        mock_client_cls.videbo_request.return_value = 404, b"foo"
+        self.mock_client_request.side_effect = None
+        self.mock_client_request.return_value = 404, b"foo"
         await self.ni._fetch_server_status(mock_url)
         self.assertIsNone(self.ni._server_status)
-        mock_client_cls.videbo_request.assert_awaited_once_with("GET", mock_url, external=True)
-        mock_client_cls.reset_mock()
+        self.mock_client_request.assert_awaited_once_with("GET", mock_url)
+        self.mock_client_request.reset_mock()
 
         # Test less than 4 lines of response data:
-        mock_client_cls.videbo_request.return_value = 200, b"foo"
+        self.mock_client_request.return_value = 200, b"foo"
         with self.assertRaises(network.UnknownServerStatusFormatError):
             await self.ni._fetch_server_status(mock_url)
-        mock_client_cls.videbo_request.assert_awaited_once_with("GET", mock_url, external=True)
-        mock_client_cls.reset_mock()
+        self.mock_client_request.assert_awaited_once_with("GET", mock_url)
+        self.mock_client_request.reset_mock()
 
         mock__update_apache_status.assert_not_called()
         mock__update_nginx_status.assert_not_called()
@@ -187,17 +193,17 @@ class NetworkInterfacesTestCase(IsolatedAsyncioTestCase):
 
         # Test nginx stats:
         mock_nginx_stats = "fake nginx stats"
-        mock_client_cls.videbo_request.return_value = 200, b"foo\nbar\nbaz\n" + mock_nginx_stats.encode()
+        self.mock_client_request.return_value = 200, b"foo\nbar\nbaz\n" + mock_nginx_stats.encode()
         await self.ni._fetch_server_status(mock_url)
-        mock_client_cls.videbo_request.assert_awaited_once_with("GET", mock_url, external=True)
-        mock_client_cls.reset_mock()
+        self.mock_client_request.assert_awaited_once_with("GET", mock_url)
+        self.mock_client_request.reset_mock()
         mock__update_apache_status.assert_not_called()
         mock__update_nginx_status.assert_called_once_with(mock_nginx_stats)
         mock__update_nginx_status.reset_mock()
         mock__update_apache_status.return_value = False
 
         # Test apache stats, but unexpected format:
-        mock_client_cls.videbo_request.return_value = _, test_data = 200, b"<html>\nfoo\nbar"
+        self.mock_client_request.return_value = _, test_data = 200, b"<html>\nfoo\nbar"
         with self.assertRaises(network.UnknownServerStatusFormatError):
             await self.ni._fetch_server_status(mock_url)
         mock__update_nginx_status.assert_not_called()

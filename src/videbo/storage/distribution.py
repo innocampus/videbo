@@ -6,14 +6,19 @@ from timeit import default_timer as timer
 from typing import Optional, TYPE_CHECKING
 
 from videbo import storage_settings as settings
+from videbo.client import Client
 from videbo.exceptions import HTTPResponseError, NoRunningTask
 from videbo.misc import MEGA
 from videbo.misc.periodic import Periodic
 from videbo.misc.task_manager import TaskManager
 from videbo.types import FileID
-from videbo.web import HTTPClient
-from videbo.distributor.api.models import (DistributorCopyFile, DistributorDeleteFiles, DistributorDeleteFilesResponse,
-                                           DistributorStatus, DistributorFileList)
+from videbo.distributor.api.models import (
+    DistributorCopyFile,
+    DistributorDeleteFiles,
+    DistributorDeleteFilesResponse,
+    DistributorStatus,
+    DistributorFileList,
+)
 from .exceptions import DistStatusUnknown, DistAlreadyEnabled, DistAlreadyDisabled, UnknownDistURL
 if TYPE_CHECKING:
     from videbo.storage.util import StoredHashedVideoFile
@@ -64,8 +69,9 @@ class DownloadScheduler:
 
 
 class DistributionNodeInfo:
-    def __init__(self, base_url: str):
+    def __init__(self, base_url: str, http_client: Optional[Client] = None) -> None:
         self.base_url: str = base_url
+        self.http_client: Client = Client() if http_client is None else http_client
         self.status: Optional[DistributorStatus] = None
         self.stored_videos: set[StoredHashedVideoFile] = set()
         self.loading: set[StoredHashedVideoFile] = set()  # Node is currently downloading these files.
@@ -126,8 +132,13 @@ class DistributionNodeInfo:
         ret: DistributorStatus
         while True:
             try:
-                code, ret = await HTTPClient.internal_request_node('GET', url, expected_return_type=DistributorStatus,
-                                                                   print_connection_exception=print_exception)
+                code, ret = await self.http_client.request(
+                    "GET",
+                    url,
+                    self.http_client.get_jwt_node(),
+                    return_model=DistributorStatus,
+                    log_connection_error=print_exception,
+                )
             except HTTPResponseError:
                 print_exception = False
                 if self.is_good:
@@ -172,7 +183,12 @@ class DistributionNodeInfo:
         url = self.base_url + '/api/distributor/files'
         ret: DistributorFileList
         try:
-            code, ret = await HTTPClient.internal_request_node('GET', url, expected_return_type=DistributorFileList)
+            code, ret = await self.http_client.request(
+                "GET",
+                url,
+                self.http_client.get_jwt_node(),
+                return_model=DistributorFileList,
+            )
         except HTTPResponseError:
             log.exception(f"<Distribution watcher {self.base_url}> http error")
         else:
@@ -210,7 +226,13 @@ class DistributionNodeInfo:
         data = DistributorCopyFile(from_base_url=from_url, file_size=file.file_size)
         log.info(f"Asking distributor to copy `{file}` from {from_url} to {self.base_url}")
         try:
-            code, ret = await HTTPClient.internal_request_node('POST', url, data, timeout=1800)
+            code, ret = await self.http_client.request(
+                "POST",
+                url,
+                self.http_client.get_jwt_node(),
+                data=data,
+                timeout=30. * 60,
+            )
         except Exception as e:
             file.nodes.remove_node(self)  # This node cannot serve the file
             log.exception(f"Error when copying `{file}` from {from_url} to {self.base_url}")
@@ -243,9 +265,13 @@ class DistributionNodeInfo:
         ret: DistributorDeleteFilesResponse
         log.info(f"Asking distributor to remove {number} file(s) from {self.base_url}")
         try:
-            code, ret = await asyncio.wait_for(
-                HTTPClient.internal_request_node('POST', url, data, DistributorDeleteFilesResponse),
-                timeout=60
+            code, ret = await self.http_client.request(
+                "POST",
+                url,
+                self.http_client.get_jwt_node(),
+                data=data,
+                return_model=DistributorDeleteFilesResponse,
+                timeout=60.,
             )
         except Exception as e:
             log.exception(f"{e} removing {number} file(s) from {self.base_url}")
@@ -367,10 +393,11 @@ class FileNodes:
 class DistributionController:
     TRACK_MAX_CLIENTS_ACCESSES = 50000
 
-    def __init__(self) -> None:
+    def __init__(self, http_client: Optional[Client] = None) -> None:
         self._client_accessed: set[tuple[str, str]] = set()  # tuple of video hash and user's rid
         self._videos_sorted: list[StoredHashedVideoFile] = []
         self._dist_nodes: list[DistributionNodeInfo] = []
+        self.http_client: Client = Client() if http_client is None else http_client
 
     def _reset(self) -> None:
         self._client_accessed.clear()
