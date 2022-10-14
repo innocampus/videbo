@@ -72,7 +72,7 @@ def jwt_kid_internal(token: str) -> bool:
         `InvalidAuthData` if the "kid" header is missing or its value is anything other than the two valid options.
     """
     try:
-        kid: str = jwt.get_unverified_header(token)['kid']  # type: ignore[no-untyped-call]
+        kid: str = jwt.get_unverified_header(token)['kid']
     except KeyError:
         raise InvalidAuthData("JWT missing key ID header")
     try:
