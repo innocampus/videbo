@@ -84,11 +84,24 @@ def main() -> None:
     else:
         print("Application must be storage or distributor")
         sys.exit(2)
+    settings_path = Path(".", f".videbo_{settings.get_section()}_settings.json")
     if settings.dev_mode:
         main_log = logging.getLogger("videbo")
         main_log.setLevel(logging.DEBUG)
-        main_log.warning("Development mode is enabled!")
-    start()
+        try:
+            with settings_path.open("w") as f:
+                f.write(settings.json(indent=4))
+        except PermissionError:
+            main_log.warning("Development mode is enabled!")
+        else:
+            main_log.warning(
+                "Development mode is enabled! Settings visible at %s",
+                str(settings_path.resolve()),
+            )
+    try:
+        start()
+    finally:
+        settings_path.unlink(missing_ok=True)
 
 
 if __name__ == '__main__':
