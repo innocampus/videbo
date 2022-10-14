@@ -19,21 +19,22 @@ async def print_storage_status(client: Client) -> None:
         print_response(status)
 
 
-async def find_orphaned_files(client: Client, *, delete: bool) -> None:
+async def find_orphaned_files(client: Client, *, delete: bool, yes_all: bool = False) -> None:
     """
     Awaits results from the filtered files request and depending on arguments passed,
     either deletes or simply lists all orphaned files currently in storage,
     by calling the delete_files coroutine or list_files function respectively.
     """
-    confirm = input(
-        "You are about to start searching for/identifying orphaned files. "
-        "This may request each LMS for knowledge of all the stored files. "
-        "Depending on the number of files stored and the number of LMS registered, "
-        "this may take a long time.\nProceed? (yes/no) "
-    )
-    if not strtobool(confirm):
-        print("Aborted.")
-        return
+    if not yes_all:
+        confirm = input(
+            "You are about to start searching for/identifying orphaned files. "
+            "This may request each LMS for knowledge of all the stored files. "
+            "Depending on the number of files stored and the number of LMS registered, "
+            "this may take a long time.\nProceed? (yes/no) "
+        )
+        if not strtobool(confirm):
+            print("Aborted.")
+            return
     print("Querying storage for orphaned files...")
     files = await client.get_filtered_files(orphaned=True)
     if files is None:
@@ -50,10 +51,11 @@ async def find_orphaned_files(client: Client, *, delete: bool) -> None:
         print("\nIf you want to delete all orphaned files, use the command with the --delete flag.")
         return
 
-    confirm = input("Are you sure, you want to delete them from storage? (yes/no) ")
-    if not strtobool(confirm):
-        print("Aborted.")
-        return
+    if not yes_all:
+        confirm = input("Are you sure, you want to delete them from storage? (yes/no) ")
+        if not strtobool(confirm):
+            print("Aborted.")
+            return
     status, data = await client.delete_files(*files)
     if status != 200:
         print("Request failed. Please check the storage logs.")

@@ -5,6 +5,7 @@ from typing import Any
 
 # CLI commands:
 CMD = 'cmd'
+YES = 'yes_all'
 SHOW_STATUS = 'status'
 FIND_ORPHANS = 'find-orphaned-files'
 DELETE = 'delete'
@@ -13,6 +14,11 @@ URL = 'url'
 
 
 def setup_cli_args(parser: ArgumentParser) -> None:
+    parser.add_argument(
+        '-y', f'--{YES.replace("_", "-")}',
+        action='store_true',
+        help="If this flag is set, every confirmation prompt (yes/no) will automatically be passed with `yes`."
+    )
     subparsers = parser.add_subparsers(title="Available CLI commands", dest=CMD, required=True)
     subparsers.add_parser(
         name=SHOW_STATUS,
@@ -33,14 +39,16 @@ def setup_cli_args(parser: ArgumentParser) -> None:
     )
     disable_dist_node = subparsers.add_parser(
         name=DISABLE_DIST,
-        help="Disable a distributor node (do not redirect more requests to this node).")
+        help="Disable a distributor node (do not redirect more requests to this node)."
+    )
     disable_dist_node.add_argument(
         URL,
         help="Base URL of the distributor node"
     )
     enable_dist_node = subparsers.add_parser(
         name=ENABLE_DIST,
-        help="Enable a previously disabled distributor node.")
+        help="Enable a previously disabled distributor node."
+    )
     enable_dist_node.add_argument(
         URL,
         help="Base URL of the distributor node"
@@ -60,7 +68,7 @@ async def run_cli_command(**kwargs: Any) -> None:
         if kwargs[CMD] == SHOW_STATUS:
             await print_storage_status(client)
         elif kwargs[CMD] == FIND_ORPHANS:
-            await find_orphaned_files(client, delete=kwargs[DELETE])
+            await find_orphaned_files(client, delete=kwargs[DELETE], yes_all=kwargs[YES])
         elif kwargs[CMD] == SHOW_DIST_NODES:
             await print_distributor_nodes(client)
         elif kwargs[CMD] == DISABLE_DIST:
