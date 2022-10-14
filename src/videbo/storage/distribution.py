@@ -1,7 +1,8 @@
 from __future__ import annotations
 import asyncio
 import logging
-from collections.abc import Callable, Iterable
+from collections.abc import Callable, Container, Iterable
+from functools import partial
 from timeit import default_timer as timer
 from typing import Optional, TYPE_CHECKING
 
@@ -80,6 +81,11 @@ class DistributionNodeInfo:
         self._good: bool = False  # node is reachable
         self._enabled: bool = True
 
+    def __eq__(self, other: object) -> bool:
+        if not isinstance(other, DistributionNodeInfo):
+            return NotImplemented
+        return self.base_url == other.base_url
+
     def __lt__(self, other: DistributionNodeInfo) -> bool:
         return self.tx_load < other.tx_load
 
@@ -124,6 +130,20 @@ class DistributionNodeInfo:
     @property
     def can_serve(self) -> bool:
         return self.is_enabled and self.tx_load < 0.95 and self.is_good
+
+    def can_host_additional(self, min_space_mb: float) -> bool:
+        try:
+            return self.can_serve and self.free_space > min_space_mb
+        except DistStatusUnknown as e:
+            log.error(
+                "%s while checking viability of distributor %s",
+                e.__class__.__name__,
+                self.base_url,
+            )
+            return False
+
+    def can_provide_copy(self, file: StoredHashedVideoFile) -> bool:
+        return self.is_enabled and file not in self.loading and self.is_good
 
     async def watcher(self) -> None:
         url = self.base_url + '/api/distributor/status'
@@ -353,17 +373,17 @@ class FileNodes:
     __slots__ = 'nodes', 'copying'
 
     def __init__(self) -> None:
-        self.nodes: set[DistributionNodeInfo] = set()  # A list of all nodes that have the file or are loading the file.
+        self.nodes: list[DistributionNodeInfo] = []  # A list of all nodes that have the file or are loading the file.
         self.copying: bool = False  # File is currently being copied to a node.
 
     def get_least_busy_nodes(self) -> list[DistributionNodeInfo]:
         return sorted(self.nodes)
 
     def add_node(self, node: DistributionNodeInfo) -> None:
-        self.nodes.add(node)
+        self.nodes.append(node)
 
     def remove_node(self, node: DistributionNodeInfo) -> None:
-        self.nodes.discard(node)
+        self.nodes.remove(node)
 
     def find_good_node(self, file: StoredHashedVideoFile) -> tuple[Optional[DistributionNodeInfo], bool]:
         """
@@ -404,12 +424,16 @@ class DistributionController:
         for video in self._videos_sorted:
             video.views = 0
 
-    def _find_node(self, matches: Callable[[DistributionNodeInfo], bool],
-                   nodes: Optional[Iterable[DistributionNodeInfo]] = None) -> Optional[DistributionNodeInfo]:
-        if nodes is None:
-            nodes = self._dist_nodes
-        for node in nodes:
-            if matches(node):
+    def _find_node(
+        self,
+        matches: Callable[[DistributionNodeInfo], bool],
+        check_nodes: Optional[Iterable[DistributionNodeInfo]] = None,
+        exclude_nodes: Container[DistributionNodeInfo] = (),
+    ) -> Optional[DistributionNodeInfo]:
+        if check_nodes is None:
+            check_nodes = self._dist_nodes
+        for node in check_nodes:
+            if node not in exclude_nodes and matches(node):
                 return node
         return None
 
@@ -446,20 +470,21 @@ class DistributionController:
     def copy_file_to_one_node(self, file: StoredHashedVideoFile) -> Optional[DistributionNodeInfo]:
         # Get a node with tx_load < 0.95, that doesn't already have the file and that has enough space left.
         self._dist_nodes.sort()
-        mb_size = file.file_size / MEGA  # to MB
-
-        def _is_viable_target_node(node: DistributionNodeInfo) -> bool:
-            return node.can_serve and node not in file.nodes.nodes and node.free_space > mb_size
-        to_node = self._find_node(_is_viable_target_node)
+        matches = partial(
+            DistributionNodeInfo.can_host_additional,
+            min_space_mb=file.file_size / MEGA,
+        )
+        to_node = self._find_node(matches, exclude_nodes=file.nodes.nodes)
         if to_node is None:
             # There is no node the file can be copied to.
             return None
-
         # Get a node that already has the file.
-        def _is_viable_source_node(node: DistributionNodeInfo) -> bool:
-            return node.is_enabled and file not in node.loading and node.is_good
-        from_node = self._find_node(_is_viable_source_node, nodes=file.nodes.get_least_busy_nodes())
-        # When there is no from_node, take this storage node.
+        matches = partial(
+            DistributionNodeInfo.can_provide_copy,
+            file=file,
+        )
+        from_node = self._find_node(matches, check_nodes=file.nodes.get_least_busy_nodes())
+        # When there is no `from_node`, storage will serve as source.
         to_node.put_video(file, from_node)
         return to_node
 
