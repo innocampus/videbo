@@ -1,9 +1,11 @@
-# Configuration file:
-/config.ini
+# Configuration files:
+/config*.yaml
 
 # Python virtual environment:
 /.venv/
 /venv/
+/.env/
+/env/
 
 # IDE settings:
 /.idea/
@@ -13,13 +15,14 @@
 *.egg-info/
 /dist/
 /docs/build/
+/site/
 
 # Python cache / compiled files:
 __pycache__/
 *.py[cod]
 
 # Testing:
-.coverage
+/.coverage
 
 # mypy:
 .mypy_cache/
