@@ -7,7 +7,7 @@ import jwt
 from aiohttp.web import Response
 from pydantic import BaseModel as PydanticBaseModel, validator
 
-from videbo import storage_settings
+from videbo import settings
 
 
 __all__ = [
@@ -100,9 +100,9 @@ class BaseJWTData(BaseModel):
             The JWT string containing the model instance's data.
         """
         if self.iss == TokenIssuer.internal:
-            secret = storage_settings.internal_api_secret
+            secret = settings.internal_api_secret
         else:
-            secret = storage_settings.external_api_secret
+            secret = settings.external_api_secret
         return jwt.encode(self.dict(exclude_unset=True), secret, algorithm=algorithm, headers={'kid': self.iss.value})
 
     @classmethod
@@ -124,9 +124,9 @@ class BaseJWTData(BaseModel):
             Instance of the calling class containing the data that was encoded in the JWT.
         """
         if internal:
-            secret, issuer = storage_settings.internal_api_secret, TokenIssuer.internal
+            secret, issuer = settings.internal_api_secret, TokenIssuer.internal
         else:
-            secret, issuer = storage_settings.external_api_secret, TokenIssuer.external
+            secret, issuer = settings.external_api_secret, TokenIssuer.external
         decoded = jwt.decode(encoded, secret, algorithms=[algorithm], issuer=issuer.value)
         return cls.parse_obj(decoded)
 

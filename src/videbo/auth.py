@@ -9,7 +9,7 @@ from aiohttp.web_request import Request
 from aiohttp.web_exceptions import HTTPBadRequest, HTTPUnauthorized, HTTPForbidden
 from pydantic import ValidationError
 
-from videbo import storage_settings as settings
+from videbo import settings
 from videbo.exceptions import InvalidAuthData, NotAuthorized
 from videbo.misc.functions import get_route_model_param
 from videbo.models import TokenIssuer, Role, RequestJWTData

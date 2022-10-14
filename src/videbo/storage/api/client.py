@@ -1,7 +1,7 @@
 from typing import Optional, Union
 from urllib.parse import urlencode
 
-from videbo import storage_settings as settings
+from videbo import settings
 from videbo.client import Client
 from .models import (
     DeleteFilesList,

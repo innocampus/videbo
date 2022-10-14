@@ -6,7 +6,7 @@ from functools import partial
 from timeit import default_timer as timer
 from typing import Optional, TYPE_CHECKING
 
-from videbo import storage_settings as settings
+from videbo import settings
 from videbo.client import Client
 from videbo.exceptions import HTTPResponseError, NoRunningTask
 from videbo.misc import MEGA
@@ -233,7 +233,7 @@ class DistributionNodeInfo:
         if file in self.loading or file in self.awaiting_download:
             return
         from_url = from_node.base_url if from_node else settings.public_base_url
-        if len(self.loading) < settings.max_parallel_copying_tasks:
+        if len(self.loading) < settings.distribution.max_parallel_copying_tasks:
             TaskManager.fire_and_forget_task(asyncio.create_task(self._copy_file_task(file, from_url)))
         else:
             self.awaiting_download.schedule(file, from_url)
@@ -269,7 +269,7 @@ class DistributionNodeInfo:
             # and set the file's FileNodes `.copying` attribute to `False`.
             self.loading.discard(file)
             file.nodes.copying = False
-            if len(self.loading) >= settings.max_parallel_copying_tasks:
+            if len(self.loading) >= settings.distribution.max_parallel_copying_tasks:
                 return
             # Check if other files are scheduled for download and if they are, fire off the next copying task.
             try:
@@ -337,12 +337,12 @@ class DistributionNodeInfo:
         if not self.is_good:
             log.info(f"Distributor {self.base_url} is not in a good state. Skip freeing space.")
             return
-        assert 0 <= settings.dist_free_space_target_ratio <= 1
-        if self.free_space_ratio >= settings.dist_free_space_target_ratio:
+        assert 0 <= settings.distribution.free_space_target_ratio <= 1
+        if self.free_space_ratio >= settings.distribution.free_space_target_ratio:
             log.debug(f"{int(self.free_space)} MB ({round(self.free_space_ratio * 100, 1)} %) "
                       f"of free space available on {self.base_url}")
             return
-        target_gain = (settings.dist_free_space_target_ratio * self.total_space - self.free_space) * MEGA
+        target_gain = (settings.distribution.free_space_target_ratio * self.total_space - self.free_space) * MEGA
         to_remove, space_gain = [], 0
         sorted_videos = sorted(self.stored_videos, reverse=True)
         while space_gain < target_gain:
@@ -443,7 +443,7 @@ class DistributionController:
             start = timer()
             self._reset()
             log.info(f"Periodic reset task finished (took {(timer() - start):.2f}s)")
-        Periodic(task)(interval_seconds=settings.reset_views_every_hours * 3600)
+        Periodic(task)(interval_seconds=settings.distribution.reset_views_every_minutes * 60)
 
     def count_file_access(self, file: StoredHashedVideoFile, rid: str) -> None:
         """Increment the video views counter if this is the first time the user viewed the video."""

@@ -77,6 +77,7 @@ def start_web_server(routes: RouteTableDef, *cleanup_contexts: CleanupContext, a
     run_app(app, host=address, port=port, access_log=access_logger)
 
 
+# TODO: Annotate with `ParamSpec`
 @overload
 def ensure_json_body(_func: RouteHandler) -> RouteHandler:
     ...

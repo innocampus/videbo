@@ -158,7 +158,7 @@ class FileStorageTestCase(BaseTestCase):
 
     def test_get_instance(self) -> None:
         url1, url2 = 'foo', 'bar'
-        self.mock_settings.static_dist_node_base_urls = [url1, url2]
+        self.mock_settings.distribution.static_node_base_urls = [url1, url2]
         obj = util.FileStorage.get_instance()
         self.assertIsInstance(obj.distribution_controller, MagicMock)
         obj.distribution_controller.add_new_dist_node.assert_has_calls([call(url1), call(url2)])
@@ -380,9 +380,9 @@ class FileStorageTestCase(BaseTestCase):
 
         mock_file = MagicMock(hash=mock_file_hash)
         mock_vid_info = MagicMock(get_length=MagicMock(return_value=test_video_length), video_file=mock_video_file)
-        self.mock_settings.thumb_height = test_thumb_height
-        self.mock_settings.thumb_suggestion_count = test_thumb_count
-        self.mock_settings.check_user = test_video_check_user
+        self.mock_settings.thumbnails.height = test_thumb_height
+        self.mock_settings.thumbnails.suggestion_count = test_thumb_count
+        self.mock_settings.video.check_user = test_video_check_user
         mock_get_thumb_path_in_temp.return_value = mock_thumb_path
         mock_video_config_cls.return_value = mock_init_vid_config
         mock_save_thumbnail = MagicMock()
@@ -403,7 +403,7 @@ class FileStorageTestCase(BaseTestCase):
         mock_video_cls.reset_mock()
         mock_video_config_cls.reset_mock()
         mock_save_thumbnail.reset_mock()
-        self.mock_settings.check_user = None
+        self.mock_settings.video.check_user = None
         output = await self.storage.generate_thumbs(mock_file, mock_vid_info)
         self.assertEqual(output, test_thumb_count)
         mock_get_thumb_path_in_temp.assert_called_once_with(mock_file, thumb_number)

@@ -9,7 +9,7 @@ from aiohttp.web_exceptions import HTTPNotFound, HTTPOk, HTTPServiceUnavailable,
 from aiohttp.web_response import Response
 from aiohttp.web_fileresponse import FileResponse
 
-from videbo import distributor_settings as settings
+from videbo import settings
 from videbo.auth import ensure_auth
 from videbo.misc import MEGA
 from videbo.misc.functions import rel_path
@@ -41,7 +41,7 @@ async def get_status(_request: Request, _jwt_data: RequestJWTData) -> Response:
     # Specific to distributor nodes:
     status.copy_files_status = file_controller.get_copy_file_status()
     status.waiting_clients = file_controller.waiting
-    status.bound_to_storage_node_base_url = settings.bound_to_storage_base_url
+    status.bound_to_storage_node_base_url = settings.public_base_url
     return status.json_response()
 
 
@@ -104,11 +104,11 @@ async def request_file(request: Request, jwt_data: RequestFileJWTData) -> Union[
         log.info(f"Too many waiting users, file {file_hash}")
         raise HTTPServiceUnavailable()
     video.last_requested = int(time())
-    if settings.nginx_x_accel_location:
-        path = Path(settings.nginx_x_accel_location, rel_path(str(video)))
+    if settings.webserver.x_accel_location:
+        path = Path(settings.webserver.x_accel_location, rel_path(str(video)))
     else:
         path = file_controller.get_path(video)
     dl = request.query.get('downloadas')
     # The 'X-Accel-Limit-Rate' header value should be non-zero, only if the request is not internal:
-    limit_rate = float(jwt_data.iss != TokenIssuer.internal and settings.nginx_x_accel_limit_rate_mbit)
-    return file_serve_response(path, bool(settings.nginx_x_accel_location), dl, limit_rate)
+    limit_rate = float(jwt_data.iss != TokenIssuer.internal and settings.webserver.x_accel_limit_rate_mbit)
+    return file_serve_response(path, bool(settings.webserver.x_accel_location), dl, limit_rate)

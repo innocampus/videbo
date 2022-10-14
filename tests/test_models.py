@@ -10,7 +10,7 @@ from videbo import models
 
 
 TESTED_MODULE_PATH = 'videbo.models'
-SETTINGS_PATH = TESTED_MODULE_PATH + '.storage_settings'
+SETTINGS_PATH = TESTED_MODULE_PATH + '.settings'
 
 
 class BaseResponseModelTestCase(TestCase):

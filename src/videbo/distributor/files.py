@@ -7,7 +7,7 @@ from pathlib import Path
 from time import time
 from typing import Optional
 
-from videbo import distributor_settings as settings
+from videbo import settings
 from videbo.client import Client
 from videbo.misc import MEGA
 from videbo.misc.functions import get_free_disk_space, rel_path
@@ -252,7 +252,7 @@ class DistributorFileController:
         dist_file = self.files.get(file_hash)
         if dist_file is None:
             raise NoSuchFile()
-        cutoff_time = time() - (settings.last_request_safety_hours * 3600)
+        cutoff_time = time() - (settings.last_request_safety_minutes * 60)
         if safe and dist_file.last_requested > cutoff_time:
             raise NotSafeToDelete()
         del self.files[file_hash]

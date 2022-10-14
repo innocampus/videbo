@@ -1,0 +1,205 @@
+from __future__ import annotations
+import logging
+from collections.abc import Callable
+from pathlib import Path
+from typing import Any, ClassVar, Optional, TypeVar, Union
+
+from pydantic import BaseModel as PydanticBaseModel
+from pydantic import BaseSettings as PydanticBaseSettings
+from pydantic.class_validators import validator
+from pydantic.env_settings import SettingsSourceCallable
+from pydantic.fields import ModelField, SHAPE_LIST, SHAPE_SET
+from yaml import safe_load
+
+from videbo.misc.functions import ensure_url_does_not_end_with_slash as normalize_url
+from videbo.types import PathT
+
+
+__all__ = [
+    'PROJECT_DIR',
+    'DEFAULT_CONFIG_FILE_NAME',
+    'DEFAULT_CONFIG_FILE_PATHS',
+    'CONFIG_FILE_PATHS_PARAM',
+    'WebserverSettings',
+    'ThumbnailSettings',
+    'VideoSettings',
+    'DistributionSettings',
+    'MonitoringSettings',
+    'Settings',
+]
+
+M = TypeVar("M", bound=PydanticBaseModel)
+
+log = logging.getLogger(__name__)
+
+_THIS_DIR = Path(__file__).parent
+PROJECT_DIR = _THIS_DIR.parent.parent
+DEFAULT_CONFIG_FILE_NAME = 'config.yaml'
+DEFAULT_CONFIG_FILE_PATHS = [
+    Path('/etc/videbo', DEFAULT_CONFIG_FILE_NAME),
+    Path(PROJECT_DIR, DEFAULT_CONFIG_FILE_NAME),
+    Path('.', DEFAULT_CONFIG_FILE_NAME),
+]
+CONFIG_FILE_PATHS_PARAM = '_config_file_paths'
+
+
+class SettingsBaseModel(PydanticBaseModel):
+    @validator('*', pre=True)
+    def split_str(cls, v: str, field: ModelField) -> Union[str, list[str], set[str]]:
+        if field.type_ is str and isinstance(v, str):
+            if field.shape == SHAPE_LIST:
+                return [part.strip() for part in v.split(',')]
+            if field.shape == SHAPE_SET:
+                return {part.strip() for part in v.split(',')}
+        return v
+
+    @validator('*')
+    def discard_empty_str_elements(cls, v: str, field: ModelField) -> Union[str, list[str], set[str]]:
+        if field.type_ is str:
+            if isinstance(v, list):
+                return [element for element in v if element != '']
+            if isinstance(v, set):
+                return {element for element in v if element != ''}
+        return v
+
+
+class BaseSettings(PydanticBaseSettings, SettingsBaseModel):
+    _config_file_paths: ClassVar[list[Path]] = DEFAULT_CONFIG_FILE_PATHS
+
+    def __init__(self, *args: Any, **kwargs: Any) -> None:
+        config_paths = kwargs.pop(CONFIG_FILE_PATHS_PARAM, [])
+        self._config_file_paths.extend(Path(path) for path in config_paths)
+        super().__init__(*args, **kwargs)
+
+    def get_config_file_paths(self) -> list[Path]:
+        return self._config_file_paths
+
+    @validator("*", pre=True)
+    def none_to_model_defaults(cls, v: Any, field: ModelField) -> Any:
+        """Replaces `None` on `SettingsBaseModel` fields with model default"""
+        if issubclass(field.type_, SettingsBaseModel) and v is None:
+            v = field.type_()
+        return v
+
+    class Config:
+        env_prefix = 'videbo_'
+        underscore_attrs_are_private = True
+        validate_assignment = True
+
+        @classmethod
+        def customise_sources(
+                cls,
+                init_settings: SettingsSourceCallable,
+                env_settings: SettingsSourceCallable,
+                file_secret_settings: SettingsSourceCallable
+        ) -> tuple[Callable[[BaseSettings], dict[str, Any]], ...]:
+            return init_settings, env_settings, config_file_settings
+
+
+class WebserverSettings(SettingsBaseModel):
+    status_page: Optional[str] = None
+    x_accel_location: Optional[str] = None
+    x_accel_limit_rate_mbit: float = 0.0
+
+    _norm_x_accel_location = validator('x_accel_location', allow_reuse=True)(normalize_url)
+
+
+class ThumbnailSettings(SettingsBaseModel):
+    suggestion_count: int = 3
+    height: int = 90
+    cache_max_mb: int = 30
+
+
+class VideoSettings(SettingsBaseModel):
+    binary_file: str = 'file'
+    binary_ffmpeg: str = 'ffmpeg'
+    binary_ffprobe: str = 'ffprobe'
+    check_user: Optional[str] = None
+    mime_types_allowed: set[str] = {'video/mp4', 'video/webm'}
+    container_formats_allowed: set[str] = {'mp4', 'webm'}
+    video_codecs_allowed: set[str] = {'h264', 'vp8'}
+    audio_codecs_allowed: set[str] = {'aac', 'vorbis'}
+
+
+class DistributionSettings(SettingsBaseModel):
+    static_node_base_urls: list[str] = []
+    copy_views_threshold: int = 3
+    reset_views_every_minutes: float = 4. * 60
+    free_space_target_ratio: float = 0.1
+    max_parallel_copying_tasks: int = 20
+
+    @validator('reset_views_every_minutes')
+    def ensure_min_reset_freq(cls, freq: int) -> int:
+        return max(freq, 1)
+
+    _norm_node_urls = validator('static_node_base_urls', each_item=True, allow_reuse=True)(normalize_url)
+
+
+class MonitoringSettings(SettingsBaseModel):
+    prom_text_file: Optional[Path] = None
+    update_freq_sec: float = 15.0
+
+
+class Settings(BaseSettings):
+    # Relevant for any node:
+    listen_address: str = '127.0.0.1'
+    listen_port: int = 9020
+    files_path: Path = Path('/tmp/videbo')
+    internal_api_secret: str = ''
+    external_api_secret: str = ''
+    public_base_url: str = 'http://localhost:9020'
+    forbid_admin_via_proxy: bool = True
+    dev_mode: bool = False
+    tx_max_rate_mbit: float = 20.0
+    network_info_fetch_interval: float = 10.0
+    webserver: WebserverSettings = WebserverSettings()
+
+    # Only relevant for storage node:
+    lms_api_urls: list[str] = []
+    max_file_size_mb: float = 200.0
+    thumbnails: ThumbnailSettings = ThumbnailSettings()
+    video: VideoSettings = VideoSettings()
+    distribution: DistributionSettings = DistributionSettings()
+    monitoring: MonitoringSettings = MonitoringSettings()
+
+    # Only relevant for distributor node:
+    leave_free_space_mb: float = 4000.0
+    last_request_safety_minutes: float = 4. * 60
+
+    # Only relevant for testing:
+    test_video_file_path: Path = Path(PROJECT_DIR, 'tests', 'test_video.mp4')
+
+    # Additional validators:
+    _norm_public_base_url = validator('public_base_url', allow_reuse=True)(normalize_url)
+    _norm_lms_api_urls = validator('lms_api_urls', each_item=True, allow_reuse=True)(normalize_url)
+
+
+def config_file_settings(settings: BaseSettings) -> dict[str, Any]:
+    """
+    Incrementally loads (and updates) settings from all config files.
+
+    Gets the config file paths from `Settings.get_config_file_paths` method.
+    Tries available loaders and returns the result in a dictionary.
+    Intended to be used in the `BaseSettings.Config.customise_sources` method.
+    """
+    config = {}
+    for path in settings.get_config_file_paths():
+        if not path.is_file():
+            log.info("No file found at '%s'", str(path.resolve()))
+            continue
+        log.info("Reading config file '%s'", str(path.resolve()))
+        if path.suffix in {".yaml", ".yml"}:
+            config.update(load_yaml(path))
+        else:
+            log.warning("Unknown config file extension '%s'", path.suffix)
+    return config
+
+
+def load_yaml(path: PathT) -> dict[str, Any]:
+    with Path(path).open("r") as f:
+        config = safe_load(f)
+    if not isinstance(config, dict):
+        raise TypeError(
+            f"Config file has no top-level mapping: {path}"
+        )
+    return config

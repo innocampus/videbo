@@ -4,7 +4,7 @@ import shutil
 from pathlib import Path
 from typing import Any, Optional
 
-from videbo import storage_settings as settings
+from videbo import settings
 from videbo.exceptions import FileCmdError, FFMpegError, FFProbeError, InvalidMimeTypeError, InvalidVideoError
 
 
@@ -14,10 +14,10 @@ FILE, FFPROBE = 'file', 'ffprobe'
 class VideoConfig:
     def __init__(self, user: Optional[str] = None, binary_file: Optional[str] = None,
                  binary_ffmpeg: Optional[str] = None, binary_ffprobe: Optional[str] = None):
-        self.user = user or settings.check_user
-        self.binary_ffmpeg = binary_ffmpeg or settings.binary_ffmpeg
-        self.binary_ffprobe = binary_ffprobe or settings.binary_ffprobe
-        self.binary_file = binary_file or settings.binary_file
+        self.user = user or settings.video.check_user
+        self.binary_ffmpeg = binary_ffmpeg or settings.video.binary_ffmpeg
+        self.binary_ffprobe = binary_ffprobe or settings.video.binary_ffprobe
+        self.binary_file = binary_file or settings.video.binary_file
 
     async def create_sudo_subprocess(self, args: list[str], binary: str,
                                      stdout: int = asyncio.subprocess.DEVNULL,
@@ -127,7 +127,7 @@ class VideoValidator:
 
     def check_valid_mime_type(self) -> Optional[bool]:
         """Check if this is a valid, whitelisted video file type."""
-        if self._info.mime_type.lower() in settings.mime_types_allowed:
+        if self._info.mime_type.lower() in settings.video.mime_types_allowed:
             return True
         raise InvalidMimeTypeError(self._info.mime_type)
 
@@ -141,18 +141,18 @@ class VideoValidator:
         # Check container format, for some reasons ffprobe returns multiple format names.
         formats = self._info.get_file_format_container()
         for file_format in formats:
-            if file_format in settings.container_formats_allowed:
+            if file_format in settings.video.container_formats_allowed:
                 valid_format = True
 
         video_stream = self._info.get_one_stream_type("video")
         if video_stream:
             video_codec = video_stream["codec_name"]
-            valid_video = video_codec in settings.video_codecs_allowed
+            valid_video = video_codec in settings.video.video_codecs_allowed
 
         audio_stream = self._info.get_one_stream_type("audio")
         if audio_stream:
             audio_codec = audio_stream["codec_name"]
-            valid_audio = audio_codec in settings.audio_codecs_allowed
+            valid_audio = audio_codec in settings.video.audio_codecs_allowed
         else:
             # Accept videos without an audio stream.
             valid_audio = True

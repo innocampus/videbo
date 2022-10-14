@@ -1,3 +1,5 @@
+#!/usr/bin/env python3
+
 """
 Entry point script for starting a node and executing videbo commands.
 
@@ -8,25 +10,32 @@ and saved in `videbo.storage_settings` and `videbo.distributor_settings`.
 
 import asyncio
 import logging
-import sys
 from argparse import ArgumentParser, SUPPRESS
 from pathlib import Path
-from typing import Any, Union
+from typing import Any
 
-from .base_settings import DEFAULT_CONFIG_FILE_PATHS, CONFIG_FILE_PATHS_PARAM
-from .cli.args import setup_cli_args, run_cli_command
+import yaml
 
-import videbo
+from videbo import settings
+from videbo.cli.args import execute_cli_command, setup_cli_args
+from videbo.config import DEFAULT_CONFIG_FILE_PATHS, CONFIG_FILE_PATHS_PARAM
 from videbo.storage.start import start as start_storage
-from videbo.storage.settings import StorageSettings
 from videbo.distributor.start import start as start_distributor
-from videbo.distributor.settings import DistributorSettings
 
 # CLI parameters:
-APP = 'app'
+MODE = 'mode'
+FUNCTION = 'function'
 STORAGE, DISTRIBUTOR, CLI = 'storage', 'distributor', 'cli'
 LISTEN_ADDRESS, LISTEN_PORT = 'listen_address', 'listen_port'
 _VALID_SETTINGS_KWARGS = {CONFIG_FILE_PATHS_PARAM, LISTEN_ADDRESS, LISTEN_PORT}
+
+
+def path_list(string: str) -> list[Path]:
+    return [Path(path.strip()) for path in string.split(',')]
+
+
+def cli_run(**cli_kwargs: Any) -> None:
+    asyncio.run(execute_cli_command(**cli_kwargs))
 
 
 def parse_cli() -> dict[str, Any]:
@@ -54,54 +63,49 @@ def parse_cli() -> dict[str, Any]:
         default=SUPPRESS,
         help="The port the node should bind to. Takes precedence over the argument in the config file."
     )
-    subparsers = parser.add_subparsers(title="Available applications", dest=APP)
-    subparsers.add_parser(name=STORAGE, help="Start storage node")
-    subparsers.add_parser(name=DISTRIBUTOR, help="Start distributor node")
-    setup_cli_args(subparsers.add_parser(name=CLI, help="CLI tool"))
+    subparsers = parser.add_subparsers(title="Available modes", dest=MODE)
+    parser_storage = subparsers.add_parser(name=STORAGE, help="Start storage node")
+    parser_storage.set_defaults(**{FUNCTION: start_storage})
+    parser_distributor = subparsers.add_parser(name=DISTRIBUTOR, help="Start distributor node")
+    parser_distributor.set_defaults(**{FUNCTION: start_distributor})
+    parser_cli = subparsers.add_parser(name=CLI, help="CLI tool")
+    parser_cli.set_defaults(**{FUNCTION: cli_run})
+    setup_cli_args(parser_cli)
     return vars(parser.parse_args())
 
 
-def path_list(string: str) -> list[Path]:
-    return [Path(path.strip()) for path in string.split(',')]
+def prepare_settings(**cli_kwargs: Any) -> Path:
+    setting_init_kwargs = {
+        key: cli_kwargs[key]
+        for key in _VALID_SETTINGS_KWARGS
+        if key in cli_kwargs.keys()
+    }
+    settings.__init__(**setting_init_kwargs)  # type: ignore[misc]
+    settings_path = Path(".", f".videbo_{cli_kwargs[MODE]}_settings.yaml")
+    if not settings.dev_mode:
+        return settings_path
+    main_log = logging.getLogger("videbo")
+    main_log.setLevel(logging.DEBUG)
+    try:
+        with settings_path.open("w") as f:
+            yaml.dump(settings.dict(), f, allow_unicode=True, sort_keys=False)
+    except PermissionError:
+        msg = "Development mode enabled, but no permissions to write %s"
+    else:
+        msg = "Development mode enabled! Complete settings visible at %s"
+    main_log.warning(msg, str(settings_path.resolve()))
+    return settings_path
 
 
 def main() -> None:
     logging.basicConfig(level=logging.INFO)
     cli_kwargs = parse_cli()
-    app = cli_kwargs.pop(APP)
-    if app == CLI:
-        init_kwargs = {key: cli_kwargs[key] for key in _VALID_SETTINGS_KWARGS if key in cli_kwargs.keys()}
-        setattr(videbo, 'storage_settings', StorageSettings(**init_kwargs))
-        asyncio.run(run_cli_command(**cli_kwargs))
-        return
-    settings: Union[StorageSettings, DistributorSettings]
-    if app == STORAGE:
-        settings, start = StorageSettings(**cli_kwargs), start_storage
-        setattr(videbo, 'storage_settings', settings)
-    elif app == DISTRIBUTOR:
-        settings, start = DistributorSettings(**cli_kwargs), start_distributor
-        setattr(videbo, 'distributor_settings', settings)
-    else:
-        print("Application must be storage or distributor")
-        sys.exit(2)
-    settings_path = Path(".", f".videbo_{settings.get_section()}_settings.json")
-    if settings.dev_mode:
-        main_log = logging.getLogger("videbo")
-        main_log.setLevel(logging.DEBUG)
-        try:
-            with settings_path.open("w") as f:
-                f.write(settings.json(indent=4))
-        except PermissionError:
-            main_log.warning("Development mode is enabled!")
-        else:
-            main_log.warning(
-                "Development mode is enabled! Settings visible at %s",
-                str(settings_path.resolve()),
-            )
+    run = cli_kwargs.pop(FUNCTION)
+    settings_dump_path = prepare_settings(**cli_kwargs)
     try:
-        start()
+        run(**cli_kwargs)
     finally:
-        settings_path.unlink(missing_ok=True)
+        settings_dump_path.unlink(missing_ok=True)
 
 
 if __name__ == '__main__':

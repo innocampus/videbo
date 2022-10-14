@@ -9,10 +9,11 @@ from collections.abc import AsyncIterator, Iterable, Iterator
 from pathlib import Path
 from typing import BinaryIO, Optional, Union
 
-from videbo import storage_settings as settings
+from videbo import settings
 from videbo.client import Client
 from videbo.exceptions import PendingWriteOperationError, CouldNotCreateDir, LMSInterfaceError
 from videbo.lms_api import LMS
+from videbo.misc import MEGA
 from videbo.misc.functions import get_free_disk_space, rel_path
 from videbo.misc.lru_dict import BytesLimitLRU
 from videbo.misc.task_manager import TaskManager
@@ -112,7 +113,7 @@ class FileStorage:
         self._cached_files: _StoredFilesDict = {}  # map hashes to files
         self._cached_files_total_size: int = 0  # in bytes
         self.num_current_uploads: int = 0
-        self.thumb_memory_cache = BytesLimitLRU(settings.thumb_cache_max_mb * 1024 * 1024)
+        self.thumb_memory_cache = BytesLimitLRU(settings.thumbnails.cache_max_mb * MEGA)
         self.http_client: Client = Client()
         self.distribution_controller: DistributionController = DistributionController(http_client=self.http_client)
 
@@ -127,7 +128,7 @@ class FileStorage:
         if cls._instance is None:
             cls._instance = FileStorage(settings.files_path)
             cls._instance._load_file_list()
-            for url in settings.static_dist_node_base_urls:
+            for url in settings.distribution.static_node_base_urls:
                 cls._instance.distribution_controller.add_new_dist_node(url)
             cls._instance.distribution_controller.start_periodic_reset_task()
         return cls._instance
@@ -257,9 +258,9 @@ class FileStorage:
     async def generate_thumbs(self, file: HashedVideoFile, video: VideoInfo) -> int:
         """Generates thumbnail suggestions."""
         video_length = video.get_length()
-        thumb_height = settings.thumb_height
-        thumb_count = settings.thumb_suggestion_count
-        video_check_user = settings.check_user
+        thumb_height = settings.thumbnails.height
+        thumb_count = settings.thumbnails.suggestion_count
+        video_check_user = settings.video.check_user
         # Generate thumbnails concurrently
         tasks = []
         for thumb_nr in range(thumb_count):

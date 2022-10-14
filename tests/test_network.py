@@ -37,10 +37,13 @@ class NetworkInterfacesTestCase(IsolatedAsyncioTestCase):
         self.mock_client_request = AsyncMock()
         self.client_patcher = patch.object(network, "Client", return_value=MagicMock(request=self.mock_client_request))
         self.mock_client_cls = self.client_patcher.start()
+        self.settings_patcher = patch.object(network, "settings")
+        self.mock_settings = self.settings_patcher.start()
         self.ni = network.NetworkInterfaces()
 
     def tearDown(self) -> None:
         self.client_patcher.stop()
+        self.settings_patcher.stop()
 
     def test___init__(self) -> None:
         self.assertEqual(0., self.ni._last_time_network_proc)
@@ -214,11 +217,9 @@ class NetworkInterfacesTestCase(IsolatedAsyncioTestCase):
     async def test__fetch_loop(self, mock__fetch_proc_info: MagicMock, mock__fetch_server_status: AsyncMock) -> None:
         mock__fetch_proc_info.side_effect = Exception
         mock__fetch_server_status.side_effect = Exception
-        mock_settings = MagicMock(
-            network_info_fetch_interval=0.1,
-            server_status_page=None,
-        )
-        task = create_task(self.ni._fetch_loop(mock_settings))
+        self.mock_settings.network_info_fetch_interval = 0.1
+        self.mock_settings.webserver.status_page = None
+        task = create_task(self.ni._fetch_loop())
         await sleep(0.05)
         task.cancel()
         with self.assertRaises(CancelledError):
@@ -227,8 +228,8 @@ class NetworkInterfacesTestCase(IsolatedAsyncioTestCase):
         mock__fetch_server_status.assert_not_called()
         mock__fetch_proc_info.reset_mock()
 
-        mock_settings.server_status_page = mock_status_url = "foo"
-        task = create_task(self.ni._fetch_loop(mock_settings))
+        self.mock_settings.webserver.status_page = mock_status_url = "foo"
+        task = create_task(self.ni._fetch_loop())
         await sleep(0.05)
         task.cancel()
         with self.assertRaises(CancelledError):
@@ -240,15 +241,14 @@ class NetworkInterfacesTestCase(IsolatedAsyncioTestCase):
     @patch.object(network.NetworkInterfaces, "_fetch_loop", new_callable=MagicMock)
     def test_start_fetching(self, mock__fetch_loop: MagicMock, mock_create_task: MagicMock) -> None:
         mock__fetch_loop.return_value = mock_coroutine = object()
-        mock_settings = MagicMock()
         self.ni._fetch_task = MagicMock()
-        self.ni.start_fetching(mock_settings)
+        self.ni.start_fetching()
         mock__fetch_loop.assert_not_called()
         mock_create_task.assert_not_called()
 
         self.ni._fetch_task = None
-        self.ni.start_fetching(mock_settings)
-        mock__fetch_loop.assert_called_once_with(mock_settings)
+        self.ni.start_fetching()
+        mock__fetch_loop.assert_called_once_with()
         mock_create_task.assert_called_once_with(mock_coroutine)
 
     def test_stop_fetching(self) -> None:

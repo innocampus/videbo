@@ -18,7 +18,7 @@ from aiohttp.web_exceptions import (HTTPBadRequest, HTTPForbidden, HTTPNotFound,
                                     HTTPGone)  # 4xx
 from aiohttp.web_exceptions import HTTPInternalServerError, HTTPServiceUnavailable  # 5xx
 
-from videbo import storage_settings as settings
+from videbo import settings
 from videbo.auth import ensure_auth
 from videbo.exceptions import InvalidMimeTypeError, InvalidVideoError, FFProbeError
 from videbo.misc import MEGA
@@ -248,7 +248,7 @@ async def save_file(request: Request, jwt_data: SaveFileJWTData) -> Response:
     try:
         file_storage = FileStorage.get_instance()
         await file_storage.add_file_from_temp(file)
-        thumb_count = settings.thumb_suggestion_count
+        thumb_count = settings.thumbnails.suggestion_count
         await file_storage.add_thumbs_from_temp(file, thumb_count)
     except FileNotFoundError:
         log.error('Cannot save file with hash %s to video, file does not exist.', file.hash)
@@ -305,12 +305,12 @@ async def request_file(request: Request, jwt_data: RequestFileJWTData) -> Union[
     # If a video file is requested we already know the file should exist.
     if jwt_data.type != FileType.VIDEO:
         await verify_file_exists(path)
-    if settings.nginx_x_accel_location:
-        path = Path(settings.nginx_x_accel_location, rel_path(str(video)))
+    if settings.webserver.x_accel_location:
+        path = Path(settings.webserver.x_accel_location, rel_path(str(video)))
     dl = request.query.get('downloadas')
     # The 'X-Accel-Limit-Rate' header value should be non-zero, only if the request is not internal:
-    limit_rate = float(jwt_data.iss != TokenIssuer.internal and settings.nginx_x_accel_limit_rate_mbit)
-    return file_serve_response(path, bool(settings.nginx_x_accel_location), dl, limit_rate)
+    limit_rate = float(jwt_data.iss != TokenIssuer.internal and settings.webserver.x_accel_limit_rate_mbit)
+    return file_serve_response(path, bool(settings.webserver.x_accel_location), dl, limit_rate)
 
 
 async def video_check_redirect(request: Request, file: StoredHashedVideoFile) -> None:
@@ -326,7 +326,7 @@ async def video_check_redirect(request: Request, file: StoredHashedVideoFile) ->
     node, has_complete_file = file.nodes.find_good_node(file)
     if node is None:
         # There is no distribution node.
-        if file.views >= settings.copy_to_dist_views_threshold:
+        if file.views >= settings.distribution.copy_views_threshold:
             if file.nodes.copying:
                 # When we are here this means that there is no non-busy distribution node. Even the dist node that
                 # is currently loading the file is too busy.
@@ -427,7 +427,7 @@ async def handle_thumbnail_request(jwt_data: RequestFileJWTData) -> Response:
         assert isinstance(bytes_data, bytes)
 
         # Setting cache maximum size to 0 effectively disables keeping the data:
-        if settings.thumb_cache_max_mb > 0:
+        if settings.thumbnails.cache_max_mb > 0:
             file_storage.thumb_memory_cache[path] = bytes_data
     return Response(body=bytes_data, content_type=CONTENT_TYPES[path.suffix], headers=file_serve_headers())
 

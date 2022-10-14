@@ -10,7 +10,7 @@ from hashlib import md5
 from aiohttp import web, FormData
 from aiohttp.test_utils import AioHTTPTestCase
 
-from videbo import storage_settings as settings
+from videbo import settings
 from videbo.misc.functions import rel_path
 from videbo.models import Role, TokenIssuer
 from videbo.storage.api.models import (FileType, UploadFileJWTData, SaveFileJWTData, DeleteFileJWTData,
@@ -21,7 +21,7 @@ from videbo.web import session_context
 
 main_log = logging.getLogger('videbo')
 
-settings.static_dist_node_base_urls = []  # prevent adding distributor nodes (and sending status requests to them)
+settings.distribution.static_node_base_urls = []  # prevent adding nodes (and sending status requests to them)
 
 MEGA = 1024 * 1024
 AUTHORIZATION, BEARER_PREFIX = 'Authorization', 'Bearer '
@@ -267,7 +267,7 @@ class RoutesIntegrationTestCaseCorrect(Base):
             self.assertFalse(Path(temp_dir, data.hash + f'_{i}.{self.THUMBNAIL_EXT}').exists())
 
         # Download (without X-Accel):
-        settings.nginx_x_accel_location = ''
+        settings.webserver.x_accel_location = ''
         method, url = 'GET', '/file'
         headers = self.get_request_file_headers(data.hash, data.file_ext)
         resp = await self.client.request(method, url, headers=headers)
@@ -279,8 +279,8 @@ class RoutesIntegrationTestCaseCorrect(Base):
             self.assertEqual(md5(f.read()).digest(), md5(body.getvalue()).digest())
 
         # Download (with X-Accel):
-        settings.nginx_x_accel_location = mock_location = 'foo/bar'
-        settings.nginx_x_accel_limit_rate_mbit = test_limit_rate = 4.20
+        settings.webserver.x_accel_location = mock_location = 'foo/bar'
+        settings.webserver.x_accel_limit_rate_mbit = test_limit_rate = 4.20
         resp = await self.client.request(method, url, headers=headers)
         self.assertEqual(200, resp.status)
         expected_redirect = str(Path(mock_location, rel_path(hashed_video_file_name)))

@@ -55,7 +55,7 @@ def setup_cli_args(parser: ArgumentParser) -> None:
     )
 
 
-async def run_cli_command(**kwargs: Any) -> None:
+async def execute_cli_command(**kwargs: Any) -> None:
     from videbo.storage.api.client import StorageClient
     from .storage import (
         disable_distributor_node,

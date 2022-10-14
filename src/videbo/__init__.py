@@ -14,17 +14,15 @@ See the GNU General Public License for more details.
 You should have received a copy of the GNU General Public License along with videbo.
 If not, see <https://www.gnu.org/licenses/>."""
 
-__version__ = "0.1.1"
+__version__ = "0.1.2.dev1"
 
 __doc__ = """
-Top-level global variables for settings singletons for convenient imports.
+Top-level global settings object for convenient import.
 
-Settings are overwritten in the `__main__` script.
+Settings are re-initialized in the `__main__` script.
 """
 
-from .distributor.settings import DistributorSettings as _DistributorSettings
-from .storage.settings import StorageSettings as _StorageSettings
+from .config import Settings as _Settings
 
 
-distributor_settings = _DistributorSettings()
-storage_settings = _StorageSettings()
+settings: _Settings = _Settings()

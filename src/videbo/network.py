@@ -4,16 +4,15 @@ from asyncio import Task, create_task, sleep
 from enum import Enum
 from logging import Logger, getLogger
 from time import time
-from typing import Optional, Union
+from typing import Optional
 
 from pydantic import BaseModel
 
+from videbo import settings
 from videbo.client import Client
-from videbo.distributor.settings import DistributorSettings
 from videbo.exceptions import HTTPResponseError, UnknownServerStatusFormatError
 from videbo.misc import MEGA
 from videbo.models import NodeStatus
-from videbo.storage.settings import StorageSettings
 
 
 log = getLogger(__name__)
@@ -192,24 +191,24 @@ class NetworkInterfaces:
             log.error(str(err))
             raise err
 
-    async def _fetch_loop(self, settings: Union[DistributorSettings, StorageSettings]) -> None:
+    async def _fetch_loop(self) -> None:
         while True:
             try:
                 self._fetch_proc_info()
             except Exception as e:
                 log.exception(f"{e} in network _fetch_proc_info")
-            if settings.server_status_page:
+            if settings.webserver.status_page:
                 try:
-                    await self._fetch_server_status(settings.server_status_page)
+                    await self._fetch_server_status(settings.webserver.status_page)
                 except Exception as e:
                     log.exception(f"{e} in network _fetch_server_status")
             await sleep(settings.network_info_fetch_interval)
 
-    def start_fetching(self, settings: Union[DistributorSettings, StorageSettings]) -> None:
+    def start_fetching(self) -> None:
         """Starts the fetching process"""
         if self._fetch_task is not None:
             return
-        self._fetch_task = create_task(self._fetch_loop(settings))
+        self._fetch_task = create_task(self._fetch_loop())
         log.info("Started fetching network resources info")
 
     def stop_fetching(self) -> None:
