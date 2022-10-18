@@ -88,25 +88,48 @@ class BaseJWTData(BaseModel):
                 d[attr_name] = attr_value.value
         return d
 
-    def encode(self, *, algorithm: str = DEFAULT_JWT_ALG) -> str:
+    def encode(
+        self,
+        *,
+        key: Optional[str] = None,
+        algorithm: str = DEFAULT_JWT_ALG,
+    ) -> str:
         """
         Encodes its data in the form of a JWT string.
 
         Args:
+            key (optional):
+                Key to use for signing the token; defaults to the
+                internal/external secret from the global settings
+                depending on the issuer.
             algorithm (optional):
-                JWT signature algorithm to use for encoding; defaults to the constant `DEFAULT_JWT_ALG`.
+                JWT signature algorithm to use for encoding;
+                defaults to the constant `DEFAULT_JWT_ALG`.
 
         Returns:
             The JWT string containing the model instance's data.
         """
-        if self.iss == TokenIssuer.internal:
-            secret = settings.internal_api_secret
-        else:
-            secret = settings.external_api_secret
-        return jwt.encode(self.dict(exclude_unset=True), secret, algorithm=algorithm, headers={'kid': self.iss.value})
+        if key is None:
+            if self.iss == TokenIssuer.internal:
+                key = settings.internal_api_secret
+            else:
+                key = settings.external_api_secret
+        return jwt.encode(
+            self.dict(exclude_unset=True),
+            key,
+            algorithm=algorithm,
+            headers={'kid': self.iss.value},
+        )
 
     @classmethod
-    def decode(cls: Type[J], encoded: str, *, internal: bool = False, algorithm: str = DEFAULT_JWT_ALG) -> J:
+    def decode(
+        cls: Type[J],
+        encoded: str,
+        *,
+        internal: bool = False,
+        key: Optional[str] = None,
+        algorithm: str = DEFAULT_JWT_ALG,
+    ) -> J:
         """
         Decodes a JWT string returning the data as an instance of the calling model.
 
@@ -114,20 +137,37 @@ class BaseJWTData(BaseModel):
             encoded:
                 The JWT string
             internal (optional):
-                If `True` the token is assumed to be encoded with the internal secret and issuer claim, probably coming
-                from another node or the admin CLI; otherwise it is assumed to come from an external party (e.g. a LMS).
-                `False` by default.
+                If `True` the token is assumed to be encoded with the
+                internal secret and issuer claim, probably coming from
+                another node or the admin CLI; if `False` (default) it is
+                assumed to come from an external party (e.g. a LMS).
+                If a `key` argument is provided, the issuer is set to `None`
+                and that argument is used to decode the token.
+            key (optional):
+                Key to use for signing the token; defaults to the
+                internal/external secret from the global settings depending
+                on the issuer. If provided, overrides `internal`.
             algorithm (optional):
-                JWT signature algorithm to assume for decoding; defaults to the constant `DEFAULT_JWT_ALG`.
+                JWT signature algorithm to assume for decoding;
+                defaults to the constant `DEFAULT_JWT_ALG`.
 
         Returns:
             Instance of the calling class containing the data that was encoded in the JWT.
         """
-        if internal:
-            secret, issuer = settings.internal_api_secret, TokenIssuer.internal
-        else:
-            secret, issuer = settings.external_api_secret, TokenIssuer.external
-        decoded = jwt.decode(encoded, secret, algorithms=[algorithm], issuer=issuer.value)
+        issuer = None
+        if key is None:
+            if internal:
+                key = settings.internal_api_secret
+                issuer = TokenIssuer.internal.value
+            else:
+                key = settings.external_api_secret
+                issuer = TokenIssuer.external.value
+        decoded = jwt.decode(
+            encoded,
+            key,
+            algorithms=[algorithm],
+            issuer=issuer,
+        )
         return cls.parse_obj(decoded)
 
 
