@@ -173,6 +173,11 @@ class Settings(BaseSettings):
     _norm_public_base_url = validator('public_base_url', allow_reuse=True)(normalize_url)
     _norm_lms_api_urls = validator('lms_api_urls', each_item=True, allow_reuse=True)(normalize_url)
 
+    def make_url(self, path: str = "/", scheme: str = "http") -> str:
+        if not path.startswith("/"):
+            path = "/" + path
+        return f"{scheme}://{self.listen_address}:{self.listen_port}{path}"
+
 
 def config_file_settings(settings: BaseSettings) -> dict[str, Any]:
     """

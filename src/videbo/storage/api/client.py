@@ -14,14 +14,10 @@ from .models import (
 
 
 class StorageClient(Client):
-    @staticmethod
-    def get_url(path: str) -> str:
-        return f'http://{settings.listen_address}:{settings.listen_port}{path}'
-
     async def get_status(self) -> tuple[int, StorageStatus]:
         return await self.request(
             "GET",
-            self.get_url('/api/storage/status'),
+            settings.make_url("/api/storage/status"),
             self.get_jwt_admin(),
             return_model=StorageStatus,
         )
@@ -38,7 +34,7 @@ class StorageClient(Client):
         """
         status, ret = await self.request(
             "GET",
-            self.get_url(f'/api/storage/files?{urlencode(kwargs)}'),
+            settings.make_url(f"/api/storage/files?{urlencode(kwargs)}"),
             self.get_jwt_admin(),
             return_model=StorageFilesList,
         )
@@ -54,7 +50,7 @@ class StorageClient(Client):
         data = DeleteFilesList(hashes=[f.hash for f in files])
         return await self.request(
             "POST",
-            self.get_url('/api/storage/delete'),
+            settings.make_url("/api/storage/delete"),
             self.get_jwt_admin(),
             data=data,
         )
@@ -62,7 +58,7 @@ class StorageClient(Client):
     async def get_distributor_nodes(self) -> tuple[int, DistributorStatusDict]:
         return await self.request(
             "GET",
-            self.get_url('/api/storage/distributor/status'),
+            settings.make_url("/api/storage/distributor/status"),
             self.get_jwt_admin(),
             return_model=DistributorStatusDict,
         )
@@ -71,7 +67,7 @@ class StorageClient(Client):
         prefix = "en" if enabled else "dis"
         status, _ = await self.request(
             "POST",
-            self.get_url(f'/api/storage/distributor/{prefix}able'),
+            settings.make_url(f"/api/storage/distributor/{prefix}able"),
             self.get_jwt_admin(),
             data=DistributorNodeInfo(base_url=base_url),
         )
