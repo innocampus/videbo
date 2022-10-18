@@ -62,7 +62,7 @@ class LMSTestCase(IsolatedAsyncioTestCase):
 
         test_video1 = lms_api.VideoModel(hash="foo", file_ext=".mp4")
         test_video2 = lms_api.VideoModel(hash="bar", file_ext=".mp4")
-        mock_client = MagicMock(request=AsyncMock(side_effect=lms_api.HTTPResponseError))
+        mock_client = MagicMock(request=AsyncMock(side_effect=lms_api.HTTPClientError))
 
         with self.assertRaises(lms_api.LMSInterfaceError):
             await lms_api.LMS("abc").videos_missing(test_video1, test_video2, client=mock_client)

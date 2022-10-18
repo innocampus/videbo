@@ -62,7 +62,7 @@ class InvalidRouteSignature(RoutingError):
     pass
 
 
-class HTTPResponseError(RoutingError):
+class HTTPClientError(VideboBaseException):
     pass
 
 

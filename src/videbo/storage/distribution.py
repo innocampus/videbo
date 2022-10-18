@@ -8,7 +8,7 @@ from typing import Optional, TYPE_CHECKING
 
 from videbo import settings
 from videbo.client import Client
-from videbo.exceptions import HTTPResponseError, NoRunningTask
+from videbo.exceptions import HTTPClientError, NoRunningTask
 from videbo.misc import MEGA
 from videbo.misc.periodic import Periodic
 from videbo.misc.task_manager import TaskManager
@@ -159,7 +159,7 @@ class DistributionNodeInfo:
                     return_model=DistributorStatus,
                     log_connection_error=print_exception,
                 )
-            except HTTPResponseError:
+            except HTTPClientError:
                 print_exception = False
                 if self.is_good:
                     log.error(f"<Distribution watcher {self.base_url}> http error")
@@ -209,7 +209,7 @@ class DistributionNodeInfo:
                 self.http_client.get_jwt_node(),
                 return_model=DistributorFileList,
             )
-        except HTTPResponseError:
+        except HTTPClientError:
             log.exception(f"<Distribution watcher {self.base_url}> http error")
         else:
             if code != 200:

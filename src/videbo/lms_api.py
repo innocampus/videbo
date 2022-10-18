@@ -5,7 +5,7 @@ from typing import Optional, TYPE_CHECKING
 from urllib.parse import urlencode
 
 from videbo.client import Client
-from videbo.exceptions import HTTPResponseError, LMSInterfaceError
+from videbo.exceptions import HTTPClientError, LMSInterfaceError
 from videbo.models import (
     LMSRequestJWTData,
     VideoModel,
@@ -62,7 +62,7 @@ class LMS:
                 timeout=30,
                 external=True,
             )
-        except HTTPResponseError as e:
+        except HTTPClientError as e:
             raise LMSInterfaceError(
                 f"Error trying to check video existence on {self.api_url}"
             ) from e

@@ -3,7 +3,7 @@ from asyncio import CancelledError, create_task, sleep
 from unittest import IsolatedAsyncioTestCase, TestCase
 from unittest.mock import AsyncMock, MagicMock, call, patch
 
-from videbo.exceptions import HTTPResponseError
+from videbo.exceptions import HTTPClientError
 from videbo.misc import MEGA
 from videbo import network
 
@@ -161,7 +161,7 @@ class NetworkInterfacesTestCase(IsolatedAsyncioTestCase):
         self.ni._server_status = None
 
         # Test response error:
-        self.mock_client_request.side_effect = HTTPResponseError
+        self.mock_client_request.side_effect = HTTPClientError
         await self.ni._fetch_server_status(mock_url)
         self.assertIsNone(self.ni._server_status)
         self.mock_client_request.assert_awaited_once_with("GET", mock_url)

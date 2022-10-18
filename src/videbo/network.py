@@ -10,7 +10,7 @@ from pydantic import BaseModel
 
 from videbo import settings
 from videbo.client import Client
-from videbo.exceptions import HTTPResponseError, UnknownServerStatusFormatError
+from videbo.exceptions import HTTPClientError, UnknownServerStatusFormatError
 from videbo.misc import MEGA
 from videbo.models import NodeStatus
 
@@ -159,7 +159,7 @@ class NetworkInterfaces:
         response_data: bytes
         try:
             http_code, response_data = await self.http_client.request("GET", url)
-        except (HTTPResponseError, ConnectionRefusedError) as e:
+        except (HTTPClientError, ConnectionRefusedError) as e:
             log.warning("Error requesting %s: %s", url, repr(e))
             return
         if http_code != 200:
