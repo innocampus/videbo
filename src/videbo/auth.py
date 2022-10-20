@@ -110,6 +110,7 @@ def check_and_save_jwt_data(request: Request, min_level: int, jwt_model: Type[Re
         raise InvalidAuthData(f"JWT data does not correspond to expected data: {error}")
     if data.role < min_level:
         raise NotAuthorized()
+    # TODO: Don't put the decoded token into the request; return it instead
     request['jwt_data'] = data
 
 

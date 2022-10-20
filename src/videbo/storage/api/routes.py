@@ -374,6 +374,7 @@ async def video_check_redirect(request: Request, file: StoredHashedVideoFile) ->
 
 def video_redirect_to_node(request: Request, node: DistributionNodeInfo, file: StoredHashedVideoFile) -> None:
     log.debug(f"Redirect user to {node.base_url} for video {file}")
+    # TODO: Use `auth.extract_jwt_from_request` here instead
     jwt = request.query['jwt']
     url = f"{node.base_url}/file?jwt={jwt}"
     downloadas = request.query.getone("downloadas", None)

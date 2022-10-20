@@ -1,76 +1,35 @@
 import asyncio
 import json
-import logging
-import os
 import unittest
 from io import StringIO, BytesIO
 from pathlib import Path
 from hashlib import md5
 
-from aiohttp import web, FormData
-from aiohttp.test_utils import AioHTTPTestCase
+from aiohttp import FormData
 
 from videbo import settings
+from videbo.misc import MEGA
 from videbo.misc.functions import rel_path
 from videbo.models import Role, TokenIssuer
-from videbo.storage.api.models import (FileType, UploadFileJWTData, SaveFileJWTData, DeleteFileJWTData,
-                                       RequestFileJWTData, FileUploadedResponseJWT)
-from videbo.storage.api.routes import get_expiration_time, routes
-from videbo.web import session_context
+from videbo.storage.api.models import (
+    UploadFileJWTData,
+    SaveFileJWTData,
+    DeleteFileJWTData,
+    FileUploadedResponseJWT,
+)
+from videbo.storage.api.routes import get_expiration_time
+from .base import BaseE2ETestCase
 
-
-main_log = logging.getLogger('videbo')
 
 settings.distribution.static_node_base_urls = []  # prevent adding nodes (and sending status requests to them)
 
-MEGA = 1024 * 1024
-AUTHORIZATION, BEARER_PREFIX = 'Authorization', 'Bearer '
 CONTENT_TYPE = 'Content-Type'
 
 
-class Base(AioHTTPTestCase):
-    THUMBNAIL_EXT = 'jpg'
-
-    test_vid_exists = settings.test_video_file_path.is_file()
-    skip_reason_no_test_vid = f"Test video file '{settings.test_video_file_path}' not found"
-    test_vid_size_mb = os.path.getsize(settings.test_video_file_path) / MEGA if test_vid_exists else None
-    test_vid_file_ext = settings.test_video_file_path.suffix[1:] if test_vid_exists else None
-
-    log_lvl: int
-
-    async def get_application(self):
-        app = web.Application()
-        app.add_routes(routes)
-        app.cleanup_ctx.append(session_context)
-        return app
-
-    @classmethod
-    def setUpClass(cls) -> None:
-        cls.log_lvl = main_log.level
-        main_log.setLevel(logging.CRITICAL)
-
-    @classmethod
-    def tearDownClass(cls) -> None:
-        main_log.setLevel(cls.log_lvl)
-
-    @staticmethod
-    def get_request_file_headers(file_hash: str, file_ext: str) -> dict:
-        jwt_data = RequestFileJWTData(
-            exp=get_expiration_time(),
-            iss=TokenIssuer.external,
-            role=Role.client,
-            type=FileType.VIDEO,
-            hash=file_hash,
-            file_ext=file_ext,
-            rid='1'
-        )
-        return {AUTHORIZATION: BEARER_PREFIX + jwt_data.encode()}
-
-
-class RoutesIntegrationTestCaseFail(Base):
+class RoutesIntegrationTestCaseFail(BaseE2ETestCase):
     INVALID_EXT = 'm4v'
 
-    @unittest.skipUnless(Base.test_vid_exists, Base.skip_reason_no_test_vid)
+    @unittest.skipUnless(BaseE2ETestCase.test_vid_exists, BaseE2ETestCase.SKIP_REASON_NO_TEST_VID)
     async def test_upload_file(self):
         method, url, headers, payload = 'POST', '/api/upload/file', {}, {}
 
@@ -85,7 +44,7 @@ class RoutesIntegrationTestCaseFail(Base):
             role=Role.client,
             is_allowed_to_upload_file=True
         )
-        headers[AUTHORIZATION] = BEARER_PREFIX + jwt_data.encode()
+        headers |= self.get_auth_header(jwt_data.encode())
         headers[CONTENT_TYPE] = 'something invalid'
         resp = await self.client.request(method, url, data=payload, headers=headers)
         self.assertEqual(406, resp.status)
@@ -97,7 +56,7 @@ class RoutesIntegrationTestCaseFail(Base):
             role=Role.client,
             is_allowed_to_upload_file=False
         )
-        headers[AUTHORIZATION] = BEARER_PREFIX + jwt_data.encode()
+        headers |= self.get_auth_header(jwt_data.encode())
         headers[CONTENT_TYPE] = 'multipart/form-data'
         resp = await self.client.request(method, url, data=payload, headers=headers)
         self.assertEqual(403, resp.status)
@@ -110,7 +69,7 @@ class RoutesIntegrationTestCaseFail(Base):
             role=Role.client,
             is_allowed_to_upload_file=True
         )
-        headers[AUTHORIZATION] = BEARER_PREFIX + jwt_data.encode()
+        headers |= self.get_auth_header(jwt_data.encode())
         with open(settings.test_video_file_path, 'rb') as f:
             # We pass an actual file in the payload to have a well-formed multipart constructed automatically
             payload = {'foo': f, 'bar': 'xyz'}
@@ -149,7 +108,7 @@ class RoutesIntegrationTestCaseFail(Base):
             role=Role.client,
             is_allowed_to_save_file=True
         )
-        headers[AUTHORIZATION] = BEARER_PREFIX + jwt_data.encode()
+        headers |= self.get_auth_header(jwt_data.encode())
         resp = await self.client.request(method, url, headers=headers)
         self.assertEqual(401, resp.status)
 
@@ -160,7 +119,7 @@ class RoutesIntegrationTestCaseFail(Base):
             role=Role.lms,
             is_allowed_to_save_file=False
         )
-        headers[AUTHORIZATION] = BEARER_PREFIX + jwt_data.encode()
+        headers |= self.get_auth_header(jwt_data.encode())
         resp = await self.client.request(method, url, headers=headers)
         self.assertEqual(403, resp.status)
 
@@ -171,7 +130,7 @@ class RoutesIntegrationTestCaseFail(Base):
             role=Role.lms,
             is_allowed_to_save_file=True
         )
-        headers[AUTHORIZATION] = BEARER_PREFIX + jwt_data.encode()
+        headers |= self.get_auth_header(jwt_data.encode())
         resp = await self.client.request(method, url, headers=headers)
         resp_data = await resp.json()
         self.assertEqual(404, resp.status)
@@ -191,7 +150,7 @@ class RoutesIntegrationTestCaseFail(Base):
             role=Role.client,
             is_allowed_to_delete_file=True
         )
-        headers[AUTHORIZATION] = BEARER_PREFIX + jwt_data.encode()
+        headers |= self.get_auth_header(jwt_data.encode())
         resp = await self.client.request(method, url, headers=headers)
         self.assertEqual(401, resp.status)
 
@@ -202,13 +161,12 @@ class RoutesIntegrationTestCaseFail(Base):
             role=Role.lms,
             is_allowed_to_delete_file=False
         )
-        headers[AUTHORIZATION] = BEARER_PREFIX + jwt_data.encode()
+        headers |= self.get_auth_header(jwt_data.encode())
         resp = await self.client.request(method, url, headers=headers)
         self.assertEqual(403, resp.status)
 
 
-class RoutesIntegrationTestCaseCorrect(Base):
-
+class RoutesIntegrationTestCaseCorrect(BaseE2ETestCase):
     async def test_get_max_size(self):
         method, url = 'GET', '/api/upload/maxsize'
         expected_response_text = json.dumps({'max_size': settings.max_file_size_mb})
@@ -216,7 +174,7 @@ class RoutesIntegrationTestCaseCorrect(Base):
         self.assertEqual(resp.status, 200)
         self.assertEqual(await resp.text(), expected_response_text)
 
-    @unittest.skipUnless(Base.test_vid_exists, Base.skip_reason_no_test_vid)
+    @unittest.skipUnless(BaseE2ETestCase.test_vid_exists, BaseE2ETestCase.SKIP_REASON_NO_TEST_VID)
     async def test_real_file_cycle(self):
         temp_dir = Path(settings.files_path, 'temp')
         perm_dir = Path(settings.files_path, 'storage')
@@ -229,7 +187,7 @@ class RoutesIntegrationTestCaseCorrect(Base):
             role=Role.client,
             is_allowed_to_upload_file=True
         )
-        headers = {AUTHORIZATION: BEARER_PREFIX + jwt_data.encode()}
+        headers = self.get_auth_header(jwt_data.encode())
         settings.max_file_size_mb = self.test_vid_size_mb + 1
         with open(settings.test_video_file_path, 'rb') as f:
             payload = FormData()
@@ -256,7 +214,7 @@ class RoutesIntegrationTestCaseCorrect(Base):
             role=Role.lms,
             is_allowed_to_save_file=True
         )
-        headers = {AUTHORIZATION: BEARER_PREFIX + jwt_data.encode()}
+        headers = self.get_auth_header(jwt_data.encode())
         resp = await self.client.request(method, url, headers=headers)
         self.assertEqual(200, resp.status)
         # Check that video and thumbnail files were moved:
@@ -269,7 +227,8 @@ class RoutesIntegrationTestCaseCorrect(Base):
         # Download (without X-Accel):
         settings.webserver.x_accel_location = ''
         method, url = 'GET', '/file'
-        headers = self.get_request_file_headers(data.hash, data.file_ext)
+        jwt_data = self.get_request_file_jwt_data(data.hash, data.file_ext)
+        headers = self.get_auth_header(jwt_data.encode())
         resp = await self.client.request(method, url, headers=headers)
         self.assertEqual(200, resp.status)
         # Check integrity (compare hash of downloaded bytes with original test file):
@@ -296,7 +255,7 @@ class RoutesIntegrationTestCaseCorrect(Base):
             role=Role.lms,
             is_allowed_to_delete_file=True
         )
-        headers = {AUTHORIZATION: BEARER_PREFIX + jwt_data.encode()}
+        headers = self.get_auth_header(jwt_data.encode())
         resp = await self.client.request(method, url, headers=headers)
         self.assertEqual(200, resp.status)
         # TODO: Find a more elegant way to prevent a race condition here.
@@ -307,6 +266,7 @@ class RoutesIntegrationTestCaseCorrect(Base):
 
         # Request again, expected 404:
         method, url = 'GET', '/file'
-        headers = self.get_request_file_headers(data.hash, data.file_ext)
+        jwt_data = self.get_request_file_jwt_data(data.hash, data.file_ext)
+        headers = self.get_auth_header(jwt_data.encode())
         resp = await self.client.request(method, url, headers=headers)
         self.assertEqual(404, resp.status)

@@ -1,0 +1,107 @@
+import logging
+import sys
+import warnings
+from shutil import rmtree
+from typing import Optional
+
+from aiohttp.test_utils import AioHTTPTestCase
+from aiohttp.web import Application
+
+from videbo import settings
+from videbo.misc import MEGA
+from videbo.models import Role, TokenIssuer
+from videbo.storage.api.models import FileType, RequestFileJWTData
+from videbo.storage.api.routes import get_expiration_time, routes
+from videbo.web import session_context
+
+
+main_log = logging.getLogger('videbo')
+
+AUTHORIZATION, BEARER_PREFIX = 'Authorization', 'Bearer '
+
+test_vid_path = settings.test_video_file_path.resolve()
+
+
+class BaseE2ETestCase(AioHTTPTestCase):
+    THUMBNAIL_EXT = 'jpg'
+
+    test_vid_exists: bool = test_vid_path.is_file()
+    test_vid_size_mb: Optional[float]
+    test_vid_file_ext: Optional[str]
+    SKIP_REASON_NO_TEST_VID: str = f"Test video '{test_vid_path}' not found"
+
+    log_lvl: int
+
+    @classmethod
+    def setUpClass(cls) -> None:
+        cls.log_lvl = main_log.level
+        main_log.setLevel(logging.CRITICAL)
+
+        if not sys.warnoptions:
+            warnings.simplefilter("always")
+
+        cls.test_vid_size_mb = (
+            test_vid_path.stat().st_size / MEGA
+            if cls.test_vid_exists
+            else None
+        )
+        cls.test_vid_file_ext = (
+            test_vid_path.suffix[1:]
+            if cls.test_vid_exists
+            else None
+        )
+
+        settings.files_path.mkdir(parents=True, exist_ok=True)
+        super().setUpClass()
+
+    @classmethod
+    def tearDownClass(cls) -> None:
+        if any(p.is_file() for p in settings.files_path.glob("**/*")):
+            warnings.warn(
+                f"Test case is finished, but files were found inside "
+                f"the storage path '{settings.files_path}'",
+                category=RuntimeWarning,
+            )
+        else:
+            rmtree(settings.files_path)
+
+        main_log.setLevel(cls.log_lvl)
+        super().tearDownClass()
+
+    @staticmethod
+    def get_request_file_jwt_data(file_hash: str, file_ext: str) -> RequestFileJWTData:
+        return RequestFileJWTData(
+            exp=get_expiration_time(),
+            iss=TokenIssuer.external,
+            role=Role.client,
+            type=FileType.VIDEO,
+            hash=file_hash,
+            file_ext=file_ext,
+            rid='1'
+        )
+
+    @staticmethod
+    def get_auth_header(token: str) -> dict[str, str]:
+        return {AUTHORIZATION: BEARER_PREFIX + token}
+
+    async def get_application(self) -> Application:
+        app = Application()
+        app.add_routes(routes)
+        app.cleanup_ctx.append(session_context)
+        return app
+
+    def all_tests_passed(self) -> bool:
+        """
+        Returns `True` if no errors/failures occurred at the time of calling.
+
+        Source: https://stackoverflow.com/a/39606065/19770795
+        """
+        outcome = getattr(self, "_outcome")
+        if hasattr(outcome, "errors"):
+            # <=3.10
+            result = self.defaultTestResult()
+            getattr(self, "_feedErrorsToResult")(result, outcome.errors)
+        else:
+            # Python >=3.11
+            result = outcome.result
+        return all(test != self for test, _ in result.errors + result.failures)
