@@ -2,8 +2,8 @@ from unittest import IsolatedAsyncioTestCase
 from unittest.mock import AsyncMock, MagicMock, call, patch
 from urllib.parse import urlencode
 
+from tests.silent_log import SilentLogMixin
 from videbo import lms_api
-from .silent_log import SilentLogMixin
 
 
 class LMSTestCase(SilentLogMixin, IsolatedAsyncioTestCase):

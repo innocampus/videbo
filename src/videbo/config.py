@@ -4,12 +4,12 @@ from collections.abc import Callable
 from pathlib import Path
 from typing import Any, Optional, TypeVar, Union
 
+import yaml
 from pydantic import BaseModel as PydanticBaseModel
 from pydantic import BaseSettings as PydanticBaseSettings
 from pydantic.class_validators import validator
 from pydantic.env_settings import SettingsSourceCallable
 from pydantic.fields import ModelField, SHAPE_LIST, SHAPE_SET
-from yaml import safe_load
 
 from videbo.misc.functions import ensure_url_does_not_end_with_slash as normalize_url
 from videbo.types import PathT
@@ -204,7 +204,7 @@ def config_file_settings(settings: BaseSettings) -> dict[str, Any]:
 
 def load_yaml(path: PathT) -> dict[str, Any]:
     with Path(path).open("r") as f:
-        config = safe_load(f)
+        config = yaml.safe_load(f)
     if not isinstance(config, dict):
         raise TypeError(
             f"Config file has no top-level mapping: {path}"

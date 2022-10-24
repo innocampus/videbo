@@ -11,8 +11,9 @@ and saved in `videbo.storage_settings` and `videbo.distributor_settings`.
 import asyncio
 import logging
 from argparse import ArgumentParser, SUPPRESS
+from collections.abc import Sequence
 from pathlib import Path
-from typing import Any
+from typing import Any, Optional
 
 import yaml
 
@@ -38,7 +39,7 @@ def cli_run(**cli_kwargs: Any) -> None:
     asyncio.run(execute_cli_command(**cli_kwargs))
 
 
-def parse_cli() -> dict[str, Any]:
+def parse_cli(args: Optional[Sequence[str]] = None) -> dict[str, Any]:
     parser = ArgumentParser(
         prog='videbo',
         description="Launch a video server node or interact with one that is already running."
@@ -71,7 +72,7 @@ def parse_cli() -> dict[str, Any]:
     parser_cli = subparsers.add_parser(name=CLI, help="CLI tool")
     parser_cli.set_defaults(**{FUNCTION: cli_run})
     setup_cli_args(parser_cli)
-    return vars(parser.parse_args())
+    return vars(parser.parse_args(args))
 
 
 def prepare_settings(**cli_kwargs: Any) -> Path:

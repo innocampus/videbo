@@ -2,8 +2,8 @@ from pathlib import Path
 from unittest import TestCase
 from unittest.mock import MagicMock, patch
 
+from tests.silent_log import SilentLogMixin
 from videbo import config
-from .silent_log import SilentLogMixin
 
 
 class SettingsBaseModelTestCase(TestCase):
@@ -124,7 +124,7 @@ class FunctionsTestCase(SilentLogMixin, TestCase):
         self.assertDictEqual(expected_output, output)
         mock_load_yaml.assert_called_once_with(path2)
 
-    @patch.object(config, "safe_load")
+    @patch.object(config.yaml, "safe_load")
     @patch.object(config.Path, "open")
     def test_load_yaml(
         self,

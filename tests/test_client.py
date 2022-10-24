@@ -6,8 +6,8 @@ from aiohttp.client import ClientSession, ClientTimeout
 from aiohttp.test_utils import AioHTTPTestCase
 from aiohttp.web import Application, Request, Response
 
+from tests.silent_log import SilentLogMixin
 from videbo import client
-from .silent_log import SilentLogMixin
 
 
 VideboClient = client.Client
