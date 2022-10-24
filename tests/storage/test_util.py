@@ -2,11 +2,11 @@ import logging
 import shutil
 import time
 from collections.abc import Iterator
-from unittest.mock import patch, MagicMock, call, Mock
+from unittest import IsolatedAsyncioTestCase, TestCase
+from unittest.mock import AsyncMock, MagicMock, Mock, call, patch
 from pathlib import Path
 from typing import TypeVar, Type
 
-from tests.base import BaseTestCase, async_test, AsyncMock
 from tests.silent_log import SilentLogMixin
 from videbo.storage import util
 
@@ -19,8 +19,7 @@ STORAGE_SETTINGS_PATH = TESTED_MODULE_PATH + '.settings'
 FOO, BAR, BAZ = 'foo', 'bar', 'baz'
 
 
-class HashedVideoFileTestCase(BaseTestCase):
-
+class HashedVideoFileTestCase(TestCase):
     def test___init__(self) -> None:
         test_hash, test_ext = 'test', '.ext'
         obj = util.HashedVideoFile(file_hash=test_hash, file_ext=test_ext)
@@ -52,8 +51,7 @@ class HashedVideoFileTestCase(BaseTestCase):
         same = file1 == file4
 
 
-class StoredHashedVideoFileTestCase(BaseTestCase):
-
+class StoredHashedVideoFileTestCase(TestCase):
     @patch(TESTED_MODULE_PATH + '.FileNodes')
     @patch(TESTED_MODULE_PATH + '.HashedVideoFile.__init__')
     def test_init(self, mock_superclass_init: MagicMock, mock_file_nodes: MagicMock) -> None:
@@ -78,7 +76,7 @@ class StoredHashedVideoFileTestCase(BaseTestCase):
         self.assertLess(obj, mock_other)
 
 
-class FileStorageTestCase(SilentLogMixin, BaseTestCase):
+class FileStorageTestCase(SilentLogMixin, IsolatedAsyncioTestCase):
     def setUp(self) -> None:
         super().setUp()
         self.path = Path('/tmp/videbo_storage_test')
@@ -271,7 +269,6 @@ class FileStorageTestCase(SilentLogMixin, BaseTestCase):
         self.assertIsInstance(iterator, Iterator)
         self.assertListEqual(list(iterator), list(self.storage._cached_files.values()))
 
-    @async_test
     @patch.object(util.FileStorage, '_filter_by_orphan_status', new_callable=AsyncMock)
     async def test_filtered_files(self, mock__filter_by_orphan_status: AsyncMock) -> None:
         test_extensions, test_types = ['.mp4'], ['video', 'video_temp']
@@ -341,7 +338,6 @@ class FileStorageTestCase(SilentLogMixin, BaseTestCase):
         self.assertEqual(expected_output, output)
         mock_filter_orphaned_videos.assert_awaited_once_with(file1, file2, client=self.storage.http_client)
 
-    @async_test
     async def test_get_file(self) -> None:
         test_hash, test_ext = 'foo', 'bar'
         mock_file = MagicMock(file_ext=test_ext)
@@ -351,7 +347,6 @@ class FileStorageTestCase(SilentLogMixin, BaseTestCase):
         with self.assertRaises(FileNotFoundError):
             await self.storage.get_file('baz', 'ext')
 
-    @async_test
     @patch.object(util, 'asyncio')
     @patch.object(util, 'VideoConfig')
     @patch.object(util, 'Video')
@@ -542,7 +537,6 @@ class FileStorageTestCase(SilentLogMixin, BaseTestCase):
         mock_path.rename.assert_called_once_with(mock_new_file_path)
         mock_new_file_path.chmod.assert_called_once_with(0o644)
 
-    @async_test
     @patch.object(util, 'asyncio')
     @patch.object(util.FileStorage, '_add_video_to_cache')
     @patch.object(util.FileStorage, 'get_path')
@@ -565,7 +559,6 @@ class FileStorageTestCase(SilentLogMixin, BaseTestCase):
         mock_run.assert_awaited_once_with(None, self.storage._move_file, mock_temp_path, mock_new_file_path)
         mock__add_video_to_cache.assert_called_once_with(test_hash, test_ext, mock_new_file_path)
 
-    @async_test
     @patch.object(util, 'asyncio')
     @patch.object(util.FileStorage, 'get_thumb_path')
     @patch.object(util.FileStorage, 'get_thumb_path_in_temp')
@@ -593,7 +586,6 @@ class FileStorageTestCase(SilentLogMixin, BaseTestCase):
         self.assertListEqual(mock_run.call_args_list, expected_calls_list)
         mock_aio.gather.assert_awaited_once_with(*(mock_run.return_value for _ in range(test_count)))
 
-    @async_test
     @patch.object(util, 'asyncio')
     @patch.object(util.FileStorage, 'get_path')
     async def test_remove(self, mock_get_path: MagicMock, mock_aio: MagicMock) -> None:
@@ -626,7 +618,6 @@ class FileStorageTestCase(SilentLogMixin, BaseTestCase):
         mock_run.assert_awaited_once_with(None, self.storage._delete_file, mock_path)
         self.mock_dist_controller_cls().remove_video.assert_not_called()
 
-    @async_test
     @patch.object(util, 'asyncio')
     @patch.object(util.FileStorage, 'get_thumb_path')
     async def test_remove_thumbs(self, mock_get_thumb_path: MagicMock, mock_aio: MagicMock) -> None:
@@ -702,7 +693,6 @@ class FileStorageTestCase(SilentLogMixin, BaseTestCase):
             self.storage.temp_dir.rmdir()
         self.assertEqual(output, 1)
 
-    @async_test
     @patch.object(util, 'asyncio')
     async def test__garbage_collect_cron(self, mock_aio: MagicMock) -> None:
         mock_run = mocked_loop_runner(mock_aio, return_value=1)
@@ -728,7 +718,6 @@ class FileStorageTestCase(SilentLogMixin, BaseTestCase):
 
         self.gc_cron_patcher.start()
 
-    @async_test
     @patch.object(util.StorageStatus, 'construct')
     @patch.object(util.FileStorage, 'get_files_total_size_mb')
     @patch.object(util.FileStorage, 'get_files_count')
@@ -755,8 +744,7 @@ class FileStorageTestCase(SilentLogMixin, BaseTestCase):
         self.assertEqual(self.storage.num_current_uploads, output.num_current_uploads)
 
 
-class TempFileTestCase(BaseTestCase):
-
+class TempFileTestCase(IsolatedAsyncioTestCase):
     def setUp(self) -> None:
         super().setUp()
         self.storage_patcher = patch.object(util, 'FileStorage')
@@ -769,7 +757,6 @@ class TempFileTestCase(BaseTestCase):
         super().tearDown()
         self.storage_patcher.stop()
 
-    @async_test
     @patch.object(util, 'asyncio')
     async def test_write(self, mock_aio: MagicMock) -> None:
         mock_run = mocked_loop_runner(mock_aio)
@@ -793,14 +780,12 @@ class TempFileTestCase(BaseTestCase):
         self.assertIsInstance(self.obj.file, MagicMock)  # To prevent pycharm from chastising us
         self.obj.file.write.assert_called_once_with(mock_data)
 
-    @async_test
     @patch.object(util, 'asyncio')
     async def test_close(self, mock_aio: MagicMock) -> None:
         mock_run = mocked_loop_runner(mock_aio)
         self.assertIsNone(await self.obj.close())
         mock_run.assert_awaited_once_with(None, self.obj.file.close)
 
-    @async_test
     @patch.object(util, 'asyncio')
     @patch.object(util, 'HashedVideoFile')
     async def test_persist(self, mock_hashed_file_cls: MagicMock, mock_aio: MagicMock) -> None:
@@ -860,7 +845,6 @@ class TempFileTestCase(BaseTestCase):
         output = self.obj.get_thumb_path(test_temp_dir, test_file, test_number)
         self.assertEqual(output, expected_output)
 
-    @async_test
     @patch.object(util, 'asyncio')
     async def test_delete(self, mock_aio) -> None:
         mock_run = mocked_loop_runner(mock_aio)
@@ -886,8 +870,7 @@ class TempFileTestCase(BaseTestCase):
         self.obj.path.unlink.assert_not_called()
 
 
-class FunctionsTestCase(BaseTestCase):
-
+class FunctionsTestCase(IsolatedAsyncioTestCase):
     def test_create_dir_if_not_exists(self) -> None:
         # Should not do anything, because the root directory always exists:
         util.create_dir_if_not_exists('/')
@@ -933,7 +916,6 @@ class FunctionsTestCase(BaseTestCase):
         mock_aio.create_task.assert_called_once_with(mock__video_delete_task.return_value)
         mock_task_mgr.fire_and_forget_task.assert_called_once_with('foo')
 
-    @async_test
     @patch.object(util.FileStorage, 'get_instance')
     async def test__video_delete_task(self, mock_get_instance: MagicMock) -> None:
         mock_file = MagicMock(hash=FOO)
