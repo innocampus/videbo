@@ -99,6 +99,17 @@ class ClientTestCase(SilentLogMixin, AioHTTPTestCase):
         finally:
             VideboClient._instances.clear()
 
+    @patch.object(VideboClient, "close_all")
+    async def test_app_context(self, mock_close_all: AsyncMock) -> None:
+        iterator = VideboClient.app_context(MagicMock())
+        self.assertIsNone(await iterator.__anext__())
+        mock_close_all.assert_not_called()
+
+        with self.assertRaises(StopAsyncIteration):
+            await iterator.__anext__()
+
+        mock_close_all.assert_awaited_once_with()
+
     @patch.object(client, "RequestJWTData")
     async def test_get_jwt(self, mock_jwt_data_cls: MagicMock) -> None:
         obj = VideboClient()

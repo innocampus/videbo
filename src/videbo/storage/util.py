@@ -9,6 +9,8 @@ from collections.abc import AsyncIterator, Iterable, Iterator
 from pathlib import Path
 from typing import BinaryIO, Optional, Union
 
+from aiohttp.web_app import Application
+
 from videbo import settings
 from videbo.client import Client
 from videbo.exceptions import PendingWriteOperationError, CouldNotCreateDir, LMSInterfaceError
@@ -122,6 +124,12 @@ class FileStorage:
 
         self._garbage_collector_task = asyncio.create_task(self._garbage_collect_cron())
         TaskManager.fire_and_forget_task(self._garbage_collector_task)
+
+    @classmethod
+    async def app_context(cls, _app: Application) -> AsyncIterator[None]:
+        log.info("Initializing file storage instance...")
+        cls.get_instance()  # init instance
+        yield  # No cleanup necessary
 
     @classmethod
     def get_instance(cls) -> FileStorage:

@@ -9,11 +9,11 @@ from aiohttp.test_utils import AioHTTPTestCase
 from aiohttp.web import Application
 
 from videbo import settings
+from videbo.client import Client as VideboClient
 from videbo.misc import MEGA
 from videbo.models import Role, TokenIssuer
 from videbo.storage.api.models import FileType, RequestFileJWTData
 from videbo.storage.api.routes import get_expiration_time, routes
-from videbo.web import session_context
 
 
 main_log = logging.getLogger('videbo')
@@ -91,7 +91,7 @@ class BaseE2ETestCase(AioHTTPTestCase):
     async def get_application(self) -> Application:
         app = Application()
         app.add_routes(routes)
-        app.cleanup_ctx.append(session_context)
+        app.cleanup_ctx.append(VideboClient.app_context)
         return app
 
     def all_tests_passed(self) -> bool:

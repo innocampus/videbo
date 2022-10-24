@@ -17,6 +17,21 @@ class LMSTestCase(SilentLogMixin, IsolatedAsyncioTestCase):
         self.assertIsNone(lms_api.LMS.add(url1, url2, url3))
         mock___init__.assert_has_calls([call(url1), call(url2), call(url3)])
 
+    @patch.object(lms_api, "settings")
+    @patch.object(lms_api.LMS, "add")
+    async def test_lms_api_context(self, mock_lms_add: MagicMock, mock_settings: MagicMock) -> None:
+        mock_settings.lms_api_urls = mock_urls = ["foo", "bar", "baz"]
+        iterator = lms_api.LMS.app_context(MagicMock())
+        self.assertIsNone(await iterator.__anext__())
+        mock_lms_add.assert_called_once_with(*mock_urls)
+
+        mock_lms_add.reset_mock()
+
+        with self.assertRaises(StopAsyncIteration):
+            await iterator.__anext__()
+
+        mock_lms_add.assert_not_called()
+
     def test_iter_all(self) -> None:
         mock_lms1, mock_lms2 = MagicMock(), MagicMock()
         lms_api.LMS._collection = {"foo": mock_lms1, "bar": mock_lms2}

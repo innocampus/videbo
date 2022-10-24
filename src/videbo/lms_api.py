@@ -1,9 +1,12 @@
 from __future__ import annotations
 import logging
-from collections.abc import Iterator
+from collections.abc import AsyncIterator, Iterator
 from typing import Optional, TYPE_CHECKING
 from urllib.parse import urlencode
 
+from aiohttp.web_app import Application
+
+from videbo import settings
 from videbo.client import Client
 from videbo.exceptions import HTTPClientError, LMSInterfaceError
 from videbo.models import (
@@ -34,6 +37,11 @@ class LMS:
         """Instantiates `LMS` objects with the provided `*urls`."""
         for url in urls:
             cls(url)
+
+    @classmethod
+    async def app_context(cls, _app: Application) -> AsyncIterator[None]:
+        cls.add(*settings.lms_api_urls)
+        yield
 
     @classmethod
     def iter_all(cls) -> Iterator[LMS]:

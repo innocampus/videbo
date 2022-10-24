@@ -3,9 +3,12 @@ import asyncio
 import logging
 import os
 from asyncio import get_running_loop, Event, wait_for
+from collections.abc import AsyncIterator
 from pathlib import Path
 from time import time
 from typing import Optional
+
+from aiohttp.web_app import Application
 
 from videbo import settings
 from videbo.client import Client
@@ -54,6 +57,11 @@ class DistributorFileController:
         self.base_path: Path = path
         self.waiting: int = 0  # number of clients waiting for a file being downloaded
         self.http_client: Client = Client()
+
+    @classmethod
+    async def app_context(cls, _app: Application) -> AsyncIterator[None]:
+        cls.get_instance()  # init instance
+        yield  # No cleanup necessary
 
     @classmethod
     def get_instance(cls) -> DistributorFileController:

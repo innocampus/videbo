@@ -6,34 +6,6 @@ from videbo.storage import start
 
 class StartTestCase(IsolatedAsyncioTestCase):
     @patch.object(start, "settings")
-    @patch.object(start.LMS, "add")
-    async def test_lms_api_context(self, mock_lms_add: MagicMock, mock_settings: MagicMock) -> None:
-        mock_settings.lms_api_urls = mock_urls = ["foo", "bar", "baz"]
-        iterator = start.lms_api_context(MagicMock())
-        self.assertIsNone(await iterator.__anext__())
-        mock_lms_add.assert_called_once_with(*mock_urls)
-
-        mock_lms_add.reset_mock()
-
-        with self.assertRaises(StopAsyncIteration):
-            await iterator.__anext__()
-
-        mock_lms_add.assert_not_called()
-
-    @patch.object(start.FileStorage, "get_instance")
-    async def test_storage_context(self, mock_get_fs_instance: MagicMock) -> None:
-        iterator = start.storage_context(MagicMock())
-        self.assertIsNone(await iterator.__anext__())
-        mock_get_fs_instance.assert_called_once_with()
-
-        mock_get_fs_instance.reset_mock()
-
-        with self.assertRaises(StopAsyncIteration):
-            await iterator.__anext__()
-
-        mock_get_fs_instance.assert_not_called()
-
-    @patch.object(start, "settings")
     @patch("videbo.storage.monitoring.Monitoring.get_instance")
     async def test_monitoring_context(self, mock_get_mon_instance: MagicMock, mock_settings: MagicMock) -> None:
         mock_settings.monitoring.prom_text_file = True
@@ -75,9 +47,9 @@ class StartTestCase(IsolatedAsyncioTestCase):
         mock_mkdir.assert_called_once_with(parents=True, exist_ok=True)
         mock_start_web_server.assert_called_once_with(
             start.routes,
-            start.network_context,
-            start.lms_api_context,
-            start.storage_context,
+            start.NetworkInterfaces.app_context,
+            start.LMS.app_context,
+            start.FileStorage.app_context,
             start.monitoring_context,
             address=mock_settings.listen_address,
             port=mock_settings.listen_port,

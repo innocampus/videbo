@@ -8,6 +8,7 @@ from types import TracebackType
 from typing import Any, Optional, Type, TypeVar, Union, overload
 
 from aiohttp import client as aiohttp_client
+from aiohttp.web_app import Application
 from pydantic import ValidationError
 
 from videbo.exceptions import HTTPClientError
@@ -99,6 +100,15 @@ class Client:
         for client in cls._instances:
             await client.close()
         log.info("Closed all HTTP client sessions")
+
+    @classmethod
+    async def app_context(cls, _app: Application) -> AsyncIterator[None]:
+        """
+        Ensures that all HTTP client sessions are closed on the second iteration.
+        Can be used in the `.cleanup_ctx` list of the `aiohttp.Application`.
+        """
+        yield  # no start-up needed
+        await cls.close_all()
 
     def get_jwt(self, role: Role, issuer: TokenIssuer = TokenIssuer.internal) -> str:
         """

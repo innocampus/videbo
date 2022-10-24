@@ -99,6 +99,12 @@ class NetworkInterfaces:
             NetworkInterfaces._instance = NetworkInterfaces()
         return NetworkInterfaces._instance
 
+    @classmethod
+    async def app_context(cls, _app: Application) -> AsyncIterator[None]:
+        cls.get_instance().start_fetching()
+        yield
+        cls.get_instance().stop_fetching()
+
     @property
     def is_fetching(self) -> bool:
         return self._fetch_task is not None
@@ -248,9 +254,3 @@ class NetworkInterfaces:
             status_obj.rx_current_rate = round(interface.rx.throughput * 8 / 1_000_000, 2)
             status_obj.tx_total = round(interface.tx.bytes / MEGA, 2)
             status_obj.rx_total = round(interface.rx.bytes / MEGA, 2)
-
-
-async def network_context(_app: Application) -> AsyncIterator[None]:
-    NetworkInterfaces.get_instance().start_fetching()
-    yield
-    NetworkInterfaces.get_instance().stop_fetching()

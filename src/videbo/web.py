@@ -1,7 +1,7 @@
 import logging
 import functools
 import urllib.parse
-from collections.abc import AsyncIterator, Callable, Iterable
+from collections.abc import Callable, Iterable
 from pathlib import Path
 from json import JSONDecodeError
 from typing import Any, Optional, Union, cast, overload
@@ -27,19 +27,6 @@ from videbo.video import get_content_type_for_extension
 
 
 log = logging.getLogger(__name__)
-
-
-async def session_context(_app: Application) -> AsyncIterator[None]:
-    """
-    Ensures that all HTTP client sessions are closed on the second iteration.
-    Can be used in the `.cleanup_ctx` list of the aiohttp `Application`.
-    """
-    yield  # no start-up needed
-    await Client.close_all()
-
-
-async def cancel_tasks(_app: Application) -> None:
-    TaskManager.cancel_all()
 
 
 def start_web_server(routes: RouteTableDef, *cleanup_contexts: CleanupContext, address: Optional[str] = None,
@@ -69,9 +56,9 @@ def start_web_server(routes: RouteTableDef, *cleanup_contexts: CleanupContext, a
     """
     app = Application()
     app.add_routes(routes)
-    app.cleanup_ctx.append(session_context)
+    app.cleanup_ctx.append(Client.app_context)
     app.cleanup_ctx.extend(cleanup_contexts)
-    app.on_shutdown.append(cancel_tasks)  # executed **before** cleanup
+    app.on_shutdown.append(TaskManager.shutdown)  # executed **before** cleanup
     if not verbose:
         access_logger.setLevel(logging.ERROR)
     run_app(app, host=address, port=port, access_log=access_logger)

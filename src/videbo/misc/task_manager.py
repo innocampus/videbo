@@ -16,6 +16,10 @@ class TaskManager:
             task.cancel()
 
     @classmethod
+    async def shutdown(cls, *_: Any) -> None:
+        TaskManager.cancel_all()
+
+    @classmethod
     def fire_and_forget_task(cls, task: Task[Any]) -> None:
         """Checks if there was an exception in the task when the task ends."""
         def task_done(_future: Any) -> None:

@@ -142,6 +142,19 @@ class FileStorageTestCase(SilentLogMixin, IsolatedAsyncioTestCase):
         with self.assertRaises(NotADirectoryError), self.assertLogs():
             util.FileStorage(Path('/doesnotexist'))
 
+    @patch.object(util.FileStorage, "get_instance")
+    async def test_app_context(self, mock_get_fs_instance: MagicMock) -> None:
+        iterator = util.FileStorage.app_context(MagicMock())
+        self.assertIsNone(await iterator.__anext__())
+        mock_get_fs_instance.assert_called_once_with()
+
+        mock_get_fs_instance.reset_mock()
+
+        with self.assertRaises(StopAsyncIteration):
+            await iterator.__anext__()
+
+        mock_get_fs_instance.assert_not_called()
+
     def test_get_instance(self) -> None:
         url1, url2 = 'foo', 'bar'
         self.mock_settings.distribution.static_node_base_urls = [url1, url2]
