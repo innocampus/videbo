@@ -213,6 +213,9 @@ class LMSRequestJWTData(RequestJWTData):
     # Cache to avoid encoding a new token for each request:
     _current_token: ClassVar[tuple[str, int]] = '', 0
 
+    iss: TokenIssuer = TokenIssuer.external
+    role: Role = Role.node
+
     @validator('role')
     def role_appropriate(cls, v: Role, values: dict[str, Any]) -> Role:
         """Ensures that the role level is `node`."""

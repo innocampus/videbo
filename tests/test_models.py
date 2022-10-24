@@ -14,7 +14,6 @@ SETTINGS_PATH = TESTED_MODULE_PATH + '.settings'
 
 
 class BaseResponseModelTestCase(TestCase):
-
     def test_json_response(self) -> None:
         class ModelForTesting(models.BaseResponseModel):
             foo: int
@@ -94,6 +93,14 @@ class BaseJWTDataTestCase(TestCase):
         decoded = jwt.decode(token, self.external_secret, algorithms=[models.DEFAULT_JWT_ALG], issuer=iss.value)
         self.assertDictEqual(data, decoded)
 
+        key = "secret"
+        obj = models.BaseJWTData(exp=exp, iss=iss)
+        token = obj.encode(key=key)
+        expected = jwt.encode(data, key, algorithm=models.DEFAULT_JWT_ALG, headers={'kid': iss.value})
+        self.assertEqual(expected, token)
+        decoded = jwt.decode(token, key, algorithms=[models.DEFAULT_JWT_ALG], issuer=iss.value)
+        self.assertDictEqual(data, decoded)
+
     def test_decode(self) -> None:
         exp = int(time()) + 300
         iss = models.TokenIssuer.internal
@@ -112,9 +119,14 @@ class BaseJWTDataTestCase(TestCase):
         self.assertIsInstance(obj, models.BaseJWTData)
         self.assertDictEqual(data, obj.dict())
 
+        key = "secret"
+        token = jwt.encode(data, key, algorithm=models.DEFAULT_JWT_ALG, headers={'kid': iss.value})
+        obj = models.BaseJWTData.decode(token, internal=internal, key=key)
+        self.assertIsInstance(obj, models.BaseJWTData)
+        self.assertDictEqual(data, obj.dict())
+
 
 class RequestJWTDataTestCase(TestCase):
-
     def test_role_is_enum_member(self) -> None:
         kwargs: dict = {'exp': 1, 'iss': models.TokenIssuer.internal, 'role': models.Role.node}
         obj = models.RequestJWTData(**kwargs)
@@ -136,7 +148,7 @@ class RequestJWTDataTestCase(TestCase):
         with self.assertRaises(ValidationError):
             models.RequestJWTData(**kwargs)
 
-    def test_role_appropriate_for_external(self) -> None:
+    def test_role_appropriate(self) -> None:
         # Should not cause a problem:
         models.RequestJWTData(exp=1, iss=models.TokenIssuer.external, role=models.Role.lms)
 
@@ -148,3 +160,43 @@ class RequestJWTDataTestCase(TestCase):
 
         with self.assertRaises(ValidationError):
             models.RequestJWTData(exp=1, iss=models.TokenIssuer.external, role=models.Role.node)
+
+class LMSRequestJWTDataTestCase(TestCase):
+    def test_role_appropriate(self) -> None:
+        obj = models.LMSRequestJWTData(exp=1)
+        self.assertDictEqual(
+            {"exp": 1, "iss": models.TokenIssuer.external, "role": models.Role.node},
+            obj.dict()
+        )
+        with self.assertRaises(ValidationError):
+            models.LMSRequestJWTData(exp=1, role=models.Role.admin)
+
+    def test_only_external_issuer(self) -> None:
+        obj = models.LMSRequestJWTData(exp=1)
+        self.assertDictEqual(
+            {"exp": 1, "iss": models.TokenIssuer.external, "role": models.Role.node},
+            obj.dict()
+        )
+        with self.assertRaises(ValidationError):
+            models.LMSRequestJWTData(exp=1, iss=models.TokenIssuer.internal)
+
+    def test_get_standard_token(self) -> None:
+        token_before, exp_before = models.LMSRequestJWTData._current_token
+        token = models.LMSRequestJWTData.get_standard_token()
+        self.assertNotEqual(token_before, models.LMSRequestJWTData._current_token[0])
+        self.assertLess(exp_before, models.LMSRequestJWTData._current_token[1])
+        self.assertEqual(token, models.LMSRequestJWTData._current_token[0])
+        another_token = models.LMSRequestJWTData.get_standard_token()
+        self.assertIs(token, another_token)
+        models.LMSRequestJWTData._current_token = (token_before, exp_before)
+
+
+class VideosMissingRequestTestCase(TestCase):
+    def test_at_least_one_video(self) -> None:
+        obj = models.VideosMissingRequest(videos=[models.VideoModel(hash="foo", file_ext="bar")])
+        self.assertDictEqual(
+            {"videos": [{"hash": "foo", "file_ext": "bar"}]},
+            obj.dict()
+        )
+        with self.assertRaises(ValidationError):
+            models.VideosMissingRequest(videos=[])
