@@ -1,6 +1,7 @@
 import logging
 import sys
 import warnings
+from pathlib import Path
 from shutil import rmtree
 from typing import Optional
 
@@ -32,6 +33,17 @@ class BaseE2ETestCase(AioHTTPTestCase):
 
     log_lvl: int
 
+    @staticmethod
+    def _safe_rmtree(dir_path: Path) -> None:
+        if any(p.is_file() for p in dir_path.glob("**/*")):
+            warnings.warn(
+                f"Test case is finished, but files were found inside "
+                f"the directory '{dir_path}'; not deleting",
+                category=RuntimeWarning,
+            )
+        else:
+            rmtree(dir_path)
+
     @classmethod
     def setUpClass(cls) -> None:
         cls.log_lvl = main_log.level
@@ -56,15 +68,7 @@ class BaseE2ETestCase(AioHTTPTestCase):
 
     @classmethod
     def tearDownClass(cls) -> None:
-        if any(p.is_file() for p in settings.files_path.glob("**/*")):
-            warnings.warn(
-                f"Test case is finished, but files were found inside "
-                f"the storage path '{settings.files_path}'",
-                category=RuntimeWarning,
-            )
-        else:
-            rmtree(settings.files_path)
-
+        cls._safe_rmtree(settings.files_path)
         main_log.setLevel(cls.log_lvl)
         super().tearDownClass()
 

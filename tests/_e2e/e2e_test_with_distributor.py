@@ -3,7 +3,6 @@ from asyncio.tasks import sleep
 from filecmp import cmp
 from hashlib import md5
 from pathlib import Path
-from shutil import rmtree
 from unittest import SkipTest
 
 from aiohttp.client import ClientSession, ClientConnectionError
@@ -120,8 +119,11 @@ class TwoNodesTestCase(BaseE2ETestCase):
             LOG_PATH_DIST.unlink()
 
         # Delete test storage/distributor files directories:
-        rmtree(self.test_settings_storage.files_path)
-        rmtree(self.test_settings_dist.files_path)
+        for dir_path in (
+                self.test_settings_storage.files_path,
+                self.test_settings_dist.files_path,
+        ):
+            self._safe_rmtree(dir_path)
 
         super().tearDown()
 
@@ -346,7 +348,6 @@ class TwoNodesTestCase(BaseE2ETestCase):
         request_file_token = jwt_data.encode(key=key)
         url = self.test_settings_storage.make_url("/file?jwt=" + request_file_token)
         headers = self.get_auth_header(request_file_token)
-        # Perform the request to the storage node and download content:
         async with self.session.request(
                 method,
                 url,
