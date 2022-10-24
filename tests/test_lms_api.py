@@ -1,26 +1,12 @@
-import logging
 from unittest import IsolatedAsyncioTestCase
 from unittest.mock import AsyncMock, MagicMock, call, patch
 from urllib.parse import urlencode
 
 from videbo import lms_api
+from .silent_log import SilentLogMixin
 
 
-main_log = logging.getLogger('videbo')
-
-
-class LMSTestCase(IsolatedAsyncioTestCase):
-    log_lvl: int
-
-    @classmethod
-    def setUpClass(cls) -> None:
-        cls.log_lvl = main_log.level
-        main_log.setLevel(logging.CRITICAL)
-
-    @classmethod
-    def tearDownClass(cls) -> None:
-        main_log.setLevel(cls.log_lvl)
-
+class LMSTestCase(SilentLogMixin, IsolatedAsyncioTestCase):
     def tearDown(self) -> None:
         lms_api.LMS._collection = {}
 

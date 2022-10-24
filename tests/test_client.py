@@ -1,4 +1,3 @@
-import logging
 from time import time
 from typing import Optional
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -8,25 +7,13 @@ from aiohttp.test_utils import AioHTTPTestCase
 from aiohttp.web import Application, Request, Response
 
 from videbo import client
+from .silent_log import SilentLogMixin
 
-
-main_log = logging.getLogger('videbo')
 
 VideboClient = client.Client
 
 
-class ClientTestCase(AioHTTPTestCase):
-    log_lvl: int
-
-    @classmethod
-    def setUpClass(cls) -> None:
-        cls.log_lvl = main_log.level
-        main_log.setLevel(logging.CRITICAL)
-
-    @classmethod
-    def tearDownClass(cls) -> None:
-        main_log.setLevel(cls.log_lvl)
-
+class ClientTestCase(SilentLogMixin, AioHTTPTestCase):
     async def get_application(self):
         self.root_resp = Response()
         self.pseudo_file = b"123abc"

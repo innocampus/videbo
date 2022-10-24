@@ -1,6 +1,7 @@
 files_path: /tmp/videbo_test_storage
 internal_api_secret: secret
 external_api_secret: secure
+dev_mode: true
 distribution:
   static_node_base_urls: http://localhost:9030
   copy_views_threshold: 0

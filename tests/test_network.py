@@ -1,4 +1,3 @@
-import logging
 from asyncio import CancelledError, create_task, sleep
 from unittest import IsolatedAsyncioTestCase, TestCase
 from unittest.mock import AsyncMock, MagicMock, call, patch
@@ -6,9 +5,7 @@ from unittest.mock import AsyncMock, MagicMock, call, patch
 from videbo.exceptions import HTTPClientError
 from videbo.misc import MEGA
 from videbo import network
-
-
-main_log = logging.getLogger('videbo')
+from .silent_log import SilentLogMixin
 
 
 class InterfaceStatsTestCase(TestCase):
@@ -21,18 +18,7 @@ class InterfaceStatsTestCase(TestCase):
         self.assertEqual(1000., stats.throughput)
 
 
-class NetworkInterfacesTestCase(IsolatedAsyncioTestCase):
-    log_lvl: int
-
-    @classmethod
-    def setUpClass(cls) -> None:
-        cls.log_lvl = main_log.level
-        main_log.setLevel(logging.CRITICAL)
-
-    @classmethod
-    def tearDownClass(cls) -> None:
-        main_log.setLevel(cls.log_lvl)
-
+class NetworkInterfacesTestCase(SilentLogMixin, IsolatedAsyncioTestCase):
     def setUp(self) -> None:
         self.mock_client_request = AsyncMock()
         self.client_patcher = patch.object(network, "Client", return_value=MagicMock(request=self.mock_client_request))

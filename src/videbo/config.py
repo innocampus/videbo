@@ -2,7 +2,7 @@ from __future__ import annotations
 import logging
 from collections.abc import Callable
 from pathlib import Path
-from typing import Any, ClassVar, Optional, TypeVar, Union
+from typing import Any, Optional, TypeVar, Union
 
 from pydantic import BaseModel as PydanticBaseModel
 from pydantic import BaseSettings as PydanticBaseSettings
@@ -64,11 +64,13 @@ class SettingsBaseModel(PydanticBaseModel):
 
 
 class BaseSettings(PydanticBaseSettings, SettingsBaseModel):
-    _config_file_paths: ClassVar[list[Path]] = DEFAULT_CONFIG_FILE_PATHS
+    _config_file_paths: list[Path] = DEFAULT_CONFIG_FILE_PATHS
 
     def __init__(self, *args: Any, **kwargs: Any) -> None:
         config_paths = kwargs.pop(CONFIG_FILE_PATHS_PARAM, [])
-        self._config_file_paths.extend(Path(path) for path in config_paths)
+        self._config_file_paths = DEFAULT_CONFIG_FILE_PATHS + [
+            Path(path) for path in config_paths
+        ]
         super().__init__(*args, **kwargs)
 
     def get_config_file_paths(self) -> list[Path]:
@@ -78,7 +80,7 @@ class BaseSettings(PydanticBaseSettings, SettingsBaseModel):
     def none_to_model_defaults(cls, v: Any, field: ModelField) -> Any:
         """Replaces `None` on `SettingsBaseModel` fields with model default"""
         if issubclass(field.type_, SettingsBaseModel) and v is None:
-            v = field.type_()
+            v = field.default
         return v
 
     class Config:
@@ -129,8 +131,8 @@ class DistributionSettings(SettingsBaseModel):
     max_parallel_copying_tasks: int = 20
 
     @validator('reset_views_every_minutes')
-    def ensure_min_reset_freq(cls, freq: int) -> int:
-        return max(freq, 1)
+    def ensure_min_reset_freq(cls, freq: float) -> float:
+        return max(freq, 1.)
 
     _norm_node_urls = validator('static_node_base_urls', each_item=True, allow_reuse=True)(normalize_url)
 

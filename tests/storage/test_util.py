@@ -7,10 +7,9 @@ from pathlib import Path
 from typing import TypeVar, Type
 
 from tests.base import BaseTestCase, async_test, AsyncMock
+from tests.silent_log import SilentLogMixin
 from videbo.storage import util
 
-
-main_log = logging.getLogger('videbo')
 
 M = TypeVar('M', bound=Mock)
 
@@ -79,18 +78,7 @@ class StoredHashedVideoFileTestCase(BaseTestCase):
         self.assertLess(obj, mock_other)
 
 
-class FileStorageTestCase(BaseTestCase):
-    log_lvl: int
-
-    @classmethod
-    def setUpClass(cls) -> None:
-        cls.log_lvl = main_log.level
-        main_log.setLevel(logging.CRITICAL)
-
-    @classmethod
-    def tearDownClass(cls) -> None:
-        main_log.setLevel(cls.log_lvl)
-
+class FileStorageTestCase(SilentLogMixin, BaseTestCase):
     def setUp(self) -> None:
         super().setUp()
         self.path = Path('/tmp/videbo_storage_test')
