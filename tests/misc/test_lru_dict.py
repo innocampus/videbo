@@ -10,11 +10,12 @@ class BytesLimitLRUTestCase(TestCase):
     MAX_BYTES = 100
     BYTES_PER_ITEM = 15
     NUM_ITEMS = 6
+    ITEMS_BYTES = BYTES_PER_ITEM * NUM_ITEMS
+    ITEMS_LIST: list[tuple[str, bytes]]
 
     @classmethod
     def setUpClass(cls) -> None:
         cls.ITEMS_LIST = [(char, cls.BYTES_PER_ITEM * bytes(char, 'utf8')) for char in ascii_lowercase[:cls.NUM_ITEMS]]
-        cls.ITEMS_BYTES = cls.BYTES_PER_ITEM * cls.NUM_ITEMS
 
     def setUp(self) -> None:
         self.obj = BytesLimitLRU(self.MAX_BYTES, self.ITEMS_LIST)
