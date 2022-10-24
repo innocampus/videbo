@@ -60,7 +60,8 @@ class BytesLimitLRUTestCase(TestCase):
         self.assertEqual(key, tuple(iter(self.obj))[-1])
 
     def test_setitem(self) -> None:
-        def not_bytes(): return 1 if True else b'1'  # this is just a workaround, so PyCharm doesn't scream at me
+        def not_bytes():
+            return 1 if True else b'1'  # this is just a workaround, so PyCharm doesn't scream at me
         with self.assertRaises(TypeError):
             self.obj[self.ITEMS_LIST[0][0]] = not_bytes()
         with self.assertRaises(SizeError):

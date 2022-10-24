@@ -1,11 +1,13 @@
 from __future__ import annotations
 import re
 from asyncio import Task, create_task, sleep
+from collections.abc import AsyncIterator
 from enum import Enum
 from logging import Logger, getLogger
 from time import time
 from typing import Optional
 
+from aiohttp.web_app import Application
 from pydantic import BaseModel
 
 from videbo import settings
@@ -246,3 +248,9 @@ class NetworkInterfaces:
             status_obj.rx_current_rate = round(interface.rx.throughput * 8 / 1_000_000, 2)
             status_obj.tx_total = round(interface.tx.bytes / MEGA, 2)
             status_obj.rx_total = round(interface.rx.bytes / MEGA, 2)
+
+
+async def network_context(_app: Application) -> AsyncIterator[None]:
+    NetworkInterfaces.get_instance().start_fetching()
+    yield
+    NetworkInterfaces.get_instance().stop_fetching()

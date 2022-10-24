@@ -81,7 +81,7 @@ class MainTestCase(TestCase):
             __main__.LISTEN_ADDRESS: "some.host",
             "spam": "eggs",
         }
-        expected_output = Path(".", f".videbo_foo_settings.yaml")
+        expected_output = Path(".", ".videbo_foo_settings.yaml")
         with patch.object(__main__, "settings") as mock_settings:
             mock_settings.dev_mode = False
             self.assertNotEqual("some.host", mock_settings.listen_address)

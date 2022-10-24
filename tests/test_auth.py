@@ -347,6 +347,6 @@ class MockJWTModel(MagicMock):
 class CustomValidationError(ValidationError):
     def __init__(self) -> None:
         super().__init__([MagicMock()], cast(MagicMock(), Type[BaseModel]))
-    
+
     def __str__(self) -> str:
         return 'foo'

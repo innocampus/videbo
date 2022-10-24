@@ -4,17 +4,11 @@ from aiohttp.web_app import Application
 
 from videbo import settings
 from videbo.lms_api import LMS
-from videbo.network import NetworkInterfaces
+from videbo.network import network_context
 from videbo.web import start_web_server
 
 from .api.routes import routes
 from .util import FileStorage
-
-
-async def network_context(_app: Application) -> AsyncIterator[None]:
-    NetworkInterfaces.get_instance().start_fetching()
-    yield
-    NetworkInterfaces.get_instance().stop_fetching()
 
 
 async def lms_api_context(_app: Application) -> AsyncIterator[None]:

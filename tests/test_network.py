@@ -288,3 +288,25 @@ class NetworkInterfacesTestCase(SilentLogMixin, IsolatedAsyncioTestCase):
         self.assertEqual(16., mock_status_obj.rx_current_rate)
         self.assertEqual(2., mock_status_obj.tx_total)
         self.assertEqual(4., mock_status_obj.rx_total)
+
+
+class FunctionsTestCase(IsolatedAsyncioTestCase):
+    @patch.object(network.NetworkInterfaces, "get_instance")
+    async def test_network_context(self, mock_get_ni_instance: MagicMock) -> None:
+        mock_start_fetching, mock_stop_fetching = MagicMock(), MagicMock()
+        mock_get_ni_instance.return_value = MagicMock(
+            start_fetching=mock_start_fetching,
+            stop_fetching=mock_stop_fetching,
+        )
+        iterator = network.network_context(MagicMock())
+        self.assertIsNone(await iterator.__anext__())
+        mock_start_fetching.assert_called_once_with()
+        mock_stop_fetching.assert_not_called()
+
+        mock_start_fetching.reset_mock()
+
+        with self.assertRaises(StopAsyncIteration):
+            await iterator.__anext__()
+
+        mock_start_fetching.assert_not_called()
+        mock_stop_fetching.assert_called_once_with()

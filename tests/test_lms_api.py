@@ -123,7 +123,7 @@ class LMSTestCase(SilentLogMixin, IsolatedAsyncioTestCase):
 
         mock_iter_all.return_value = [lms1, lms2]
         mock_video_model_cls.from_orm = lambda x: x
-        
+
         output = await lms_api.LMS.filter_orphaned_videos(
             mock_video1, mock_video2, mock_video3, client=mock_client, origin=test_origin
         )

@@ -161,6 +161,7 @@ class RequestJWTDataTestCase(TestCase):
         with self.assertRaises(ValidationError):
             models.RequestJWTData(exp=1, iss=models.TokenIssuer.external, role=models.Role.node)
 
+
 class LMSRequestJWTDataTestCase(TestCase):
     def test_role_appropriate(self) -> None:
         obj = models.LMSRequestJWTData(exp=1)

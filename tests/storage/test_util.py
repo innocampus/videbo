@@ -48,7 +48,7 @@ class HashedVideoFileTestCase(TestCase):
         self.assertEqual(file1, file2)
         self.assertNotEqual(file3, file2)
         file4 = util.StoredHashedVideoFile("foo", ".bar")
-        same = file1 == file4
+        self.assertNotEqual(file1, file4)
 
 
 class StoredHashedVideoFileTestCase(TestCase):
