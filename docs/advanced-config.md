@@ -12,8 +12,8 @@ This means for example that the `listen_port` directive in a configuration file 
 
 By default, Videbo will search for configuration files in the following locations in that order:
 
-1. `/etc/videbo/config.ini`
-2. `./config.ini`
+1. `/etc/videbo/config.yaml`
+2. `./config.yaml`
 
 The order of precedence is analogous to the one described above. If you provide custom configuration file paths via the `-c`/`--config-file-paths` command line option, directives placed there will take precedence over those in the default config files listed above.
 
@@ -24,7 +24,7 @@ In addition to CLI and config files, you have the option of setting _any_ config
 VIDEBO_[DIRECTIVE]
 ```
 
-Here `[DIRECTIVE]` must correspond to a valid configuration directive. See the [`config.example.ini`](https://github.com/innocampus/videbo/blob/master/config.example.ini){.external-link target=_blank} for an exhaustive listing of all available directives and their meaning. Environment variable names are **not** case-sensitive. The following are both valid for example:
+Here `[DIRECTIVE]` must correspond to a valid configuration directive. See the [`example.config.yaml`](https://github.com/innocampus/videbo/blob/master/example.config.yaml){.external-link target=_blank} for an exhaustive listing of all available directives and their meaning. Environment variable names are **not** case-sensitive. The following are both valid for example:
 ```shell
 export VIDEBO_INTERNAL_API_SECRET=supersecretstring
 export videbo_listen_port=9001
