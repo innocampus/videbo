@@ -1,6 +1,5 @@
 from collections import OrderedDict
-from collections.abc import Iterable
-from typing import Hashable
+from collections.abc import Iterable, Hashable
 
 from videbo.exceptions import SizeError
 

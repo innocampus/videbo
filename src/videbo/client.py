@@ -5,7 +5,7 @@ from collections.abc import AsyncIterator
 from json.decoder import JSONDecodeError
 from time import time
 from types import TracebackType
-from typing import Any, Optional, Type, TypeVar, Union, overload
+from typing import Any, Optional, TypeVar, Union, overload
 
 from aiohttp import client as aiohttp_client
 from aiohttp.web_app import Application
@@ -218,7 +218,7 @@ class Client:
         jwt: Union[RequestJWTData, str, None] = None,
         *,
         data: Optional[BaseRequestModel] = None,
-        return_model: Type[R],  # determines the class of the returned data to be `R`
+        return_model: type[R],  # determines the class of the returned data to be `R`
         external: bool = False,
         log_connection_error: bool = True,
         **kwargs: Any,
@@ -247,7 +247,7 @@ class Client:
         jwt: Union[RequestJWTData, str, None] = None,
         *,
         data: Optional[BaseRequestModel] = None,
-        return_model: Optional[Type[BaseResponseModel]] = None,
+        return_model: Optional[type[BaseResponseModel]] = None,
         external: bool = False,
         log_connection_error: bool = True,
         **kwargs: Any,

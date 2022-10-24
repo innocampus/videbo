@@ -1,7 +1,7 @@
 from __future__ import annotations
 from enum import Enum, IntEnum
 from time import time
-from typing import Any, ClassVar, Optional, Type, TypeVar, Union
+from typing import Any, ClassVar, Optional, TypeVar, Union
 
 import jwt
 from aiohttp.web import Response
@@ -123,7 +123,7 @@ class BaseJWTData(BaseModel):
 
     @classmethod
     def decode(
-        cls: Type[J],
+        cls: type[J],
         encoded: str,
         *,
         internal: bool = False,

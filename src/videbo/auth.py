@@ -1,7 +1,7 @@
 import logging
 import functools
 from collections.abc import Callable, Mapping
-from typing import Any, Optional, Type, cast
+from typing import Any, Optional, cast
 
 import jwt
 from aiohttp.typedefs import LooseHeaders
@@ -82,7 +82,7 @@ def jwt_kid_internal(token: str) -> bool:
     return kid == TokenIssuer.internal
 
 
-def check_and_save_jwt_data(request: Request, min_level: int, jwt_model: Type[RequestJWTData]) -> None:
+def check_and_save_jwt_data(request: Request, min_level: int, jwt_model: type[RequestJWTData]) -> None:
     """
     Finds the JSON Web Token in a request and validates it before saving the decoded data back into the request.
 

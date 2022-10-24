@@ -1,75 +1,112 @@
 import os
 import re
-from asyncio import gather, get_running_loop
-from collections.abc import Awaitable, Callable
+from asyncio import get_running_loop
+from collections.abc import Callable
 from inspect import Parameter, isclass, signature
 from pathlib import Path
-from typing import Any, Type, TypeVar
-
-from pydantic import BaseModel
+from typing import Any, TypeVar
 
 from videbo.exceptions import InvalidRouteSignature
 from videbo.types import RouteHandler
 from . import MEGA
 
 
-M = TypeVar('M', bound=BaseModel)
+T = TypeVar("T")
 
 
-async def gather_in_batches(batch_size: int, *aws: Awaitable[Any], return_exceptions: bool = False) -> list[Any]:
-    results = []
-    for idx in range(0, len(aws), batch_size):
-        results += await gather(*aws[idx:idx + batch_size], return_exceptions=return_exceptions)
-    return results
+def ensure_string_does_not_end_with_slash(string: str) -> str:
+    """
+    Returns a version of `string` with no forward slash at the end.
 
-
-def ensure_url_does_not_end_with_slash(url: str) -> str:
-    while url:
-        if url[-1] == '/':
-            url = url[0:-1]
-        else:
-            return url
-    return url
+    Any number of consecutive slashes at the end of `string` will be cut off.
+    """
+    return re.sub(r"/+$", "", string)
 
 
 async def get_free_disk_space(path: str) -> float:
-    """Get free disk space in the given path. Returns MB."""
+    """Get free disk space at the given path in MB."""
     st = await get_running_loop().run_in_executor(None, os.statvfs, path)
-    free_bytes = st.f_bavail * st.f_frsize
-    return free_bytes / MEGA
+    return st.f_bavail * st.f_frsize / MEGA
 
 
 def sanitize_filename(filename: str) -> str:
-    filename = re.sub(r"[^\w \-_~,;\[\]().]", "", filename, 0, re.ASCII)  # \w should only match ASCII letters
-    filename = re.sub(r"[.]{2,}", "..", filename)
+    """
+    Returns a sanitized version of `filename` string suitable for file names.
+
+    Removes any character that is not an ASCII letter, digit, hyphen,
+    underscore, tilde, comma, semicolon, square bracket, parenthesis, or dot.
+    Leaves no more than two consecutive dots in any place of the file name.
+    """
+    filename = re.sub(r"[^\w \-_~,;\[\]().]", "", filename, flags=re.ASCII)
+    filename = re.sub(r"\.{3,}", "..", filename)
     return filename
 
 
 def rel_path(filename: str) -> Path:
     """
-    Returns a relative path from a file's name.
-    The path starts with a directory named with the first two characters of the filename followed by the file itself.
+    Returns a relative `Path` instance based on `filename`.
+
+    The path starts with a directory named with the first two characters
+    of the file's name followed by the file name itself.
     """
     if len(Path(filename).parts) != 1:
         raise ValueError(f"'{filename}' is not a valid filename")
     return Path(filename[:2], filename)
 
 
-def get_parameters_of_type(function: Callable[..., Any], cls: type) -> list[Parameter]:
+def get_parameters_of_class(
+    function: Callable[..., Any],
+    cls: type,
+) -> list[Parameter]:
+    """
+    Returns the parameters of `function` annotated with the class `cls`.
+
+    Args:
+        function:
+            Any callable with parameter type annotations
+        cls:
+            A parameter is included in the output, if it is annotated with
+            the specified `cls` or a subclass thereof
+
+    Returns:
+        List of `inspect.Parameter` instances in the order they were defined
+    """
     output = []
-    param: Parameter
     for name, param in signature(function).parameters.items():
         if isclass(param.annotation) and issubclass(param.annotation, cls):
             output.append(param)
     return output
 
 
-def get_route_model_param(route_handler: RouteHandler, model: Type[M]) -> tuple[str, Type[M]]:
-    params = get_parameters_of_type(route_handler, model)
+def get_route_model_param(
+    route_handler: RouteHandler,
+    cls: type[T],
+) -> tuple[str, type[T]]:
+    """
+    Extracts the parameter name and class from a route annotated with `cls`.
+
+    Args:
+        route_handler:
+            A route handler function with parameter type annotations
+        cls:
+            Exactly one parameter must be annotated with the
+            specified `cls` or a subclass thereof
+
+    Returns:
+        2-tuple of the parameter name and class
+
+    Raises:
+        `InvalidRouteSignature` if not exactly one matching parameter is found
+    """
+    params = get_parameters_of_class(route_handler, cls)
     if len(params) == 0:
-        raise InvalidRouteSignature(f"No parameter of the type `{model.__name__}` present in function "
-                                    f"`{route_handler.__name__}`.")
+        raise InvalidRouteSignature(
+            f"No parameter of the type `{cls.__name__}` present "
+            f"in function `{route_handler.__name__}`."
+        )
     if len(params) > 1:
-        raise InvalidRouteSignature(f"More than one parameter of the type `{model.__name__}` present in function "
-                                    f"`{route_handler.__name__}`.")
+        raise InvalidRouteSignature(
+            f"More than one parameter of the type `{cls.__name__}` present "
+            f"in function `{route_handler.__name__}`."
+        )
     return params[0].name, params[0].annotation

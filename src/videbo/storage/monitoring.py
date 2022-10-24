@@ -2,7 +2,7 @@ from __future__ import annotations
 import logging
 from collections.abc import Callable, Container
 from pathlib import Path
-from typing import Optional, Type, Union
+from typing import Optional, Union
 
 from pydantic.main import BaseModel
 from prometheus_client.registry import CollectorRegistry
@@ -56,7 +56,7 @@ class Monitoring:
 
         self.process_collector = ProcessCollector(registry=self.registry)
 
-    def _add_metrics_from_model(self, model_class: Type[BaseModel], exclude: Container[str] = ()) -> None:
+    def _add_metrics_from_model(self, model_class: type[BaseModel], exclude: Container[str] = ()) -> None:
         """Adds metrics to be taken directly "as is" from a status object."""
         for name, field in model_class.__fields__.items():
             if name in exclude:
