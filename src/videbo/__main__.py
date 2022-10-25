@@ -75,14 +75,15 @@ def parse_cli(args: Optional[Sequence[str]] = None) -> dict[str, Any]:
     return vars(parser.parse_args(args))
 
 
-def prepare_settings(**cli_kwargs: Any) -> Path:
-    setting_init_kwargs = {
-        key: cli_kwargs[key]
-        for key in _VALID_SETTINGS_KWARGS
-        if key in cli_kwargs.keys()
-    }
-    settings.__init__(**setting_init_kwargs)  # type: ignore[misc]
-    settings_path = Path(".", f".videbo_{cli_kwargs[MODE]}_settings.yaml")
+def prepare_settings(cli_kwargs: dict[str, Any]) -> Path:
+    settings_init_kwargs = {}
+    for key in _VALID_SETTINGS_KWARGS:
+        value = cli_kwargs.pop(key, None)
+        if value is not None:
+            settings_init_kwargs[key] = value
+    mode = cli_kwargs.pop(MODE)
+    settings.__init__(**settings_init_kwargs)  # type: ignore[misc]
+    settings_path = Path(".", f".videbo_{mode}_settings.yaml")
     if not settings.dev_mode:
         return settings_path
     main_log = logging.getLogger("videbo")
@@ -102,7 +103,7 @@ def main() -> None:
     logging.basicConfig(level=logging.INFO)
     cli_kwargs = parse_cli()
     run = cli_kwargs.pop(FUNCTION)
-    settings_dump_path = prepare_settings(**cli_kwargs)
+    settings_dump_path = prepare_settings(cli_kwargs)
     try:
         run(**cli_kwargs)
     finally:

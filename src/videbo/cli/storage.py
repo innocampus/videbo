@@ -99,13 +99,13 @@ async def print_distributor_nodes(client: Client) -> None:
         print_response(status)
 
 
-async def disable_distributor_node(client: Client, base_url: str) -> None:
+async def disable_distributor_node(client: Client, url: str) -> None:
     print_response(
-        await client.set_distributor_state(base_url, enabled=False)
+        await client.set_distributor_state(url, enabled=False)
     )
 
 
-async def enable_distributor_node(client: Client, base_url: str) -> None:
+async def enable_distributor_node(client: Client, url: str) -> None:
     print_response(
-        await client.set_distributor_state(base_url, enabled=True)
+        await client.set_distributor_state(url, enabled=True)
     )

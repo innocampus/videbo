@@ -1,15 +1,24 @@
-import sys
-from argparse import ArgumentParser
+from argparse import ArgumentParser, SUPPRESS
 from typing import Any
 
+from videbo.storage.api.client import StorageClient
+from .storage import (
+    disable_distributor_node,
+    enable_distributor_node,
+    find_orphaned_files,
+    print_distributor_nodes,
+    print_storage_status,
+)
 
-# CLI commands:
-CMD = 'cmd'
+
+# CLI parameters:
+CMD = 'cli_cmd'
 YES = 'yes_all'
 SHOW_STATUS = 'status'
 FIND_ORPHANS = 'find-orphaned-files'
 DELETE = 'delete'
-SHOW_DIST_NODES, DISABLE_DIST, ENABLE_DIST = 'show-dist-nodes', 'disable-dist-node', 'enable-dist-node'
+SHOW_DIST_NODES = 'show-dist-nodes'
+DISABLE_DIST, ENABLE_DIST = 'disable-dist-node', 'enable-dist-node'
 URL = 'url'
 
 
@@ -17,64 +26,61 @@ def setup_cli_args(parser: ArgumentParser) -> None:
     parser.add_argument(
         '-y', f'--{YES.replace("_", "-")}',
         action='store_true',
-        help="If this flag is set, every confirmation prompt (yes/no) will automatically be passed with `yes`."
+        default=SUPPRESS,
+        help="If this flag is set, every confirmation prompt (yes/no) "
+             "will automatically be passed with `yes`.",
     )
-    subparsers = parser.add_subparsers(title="Available CLI commands", dest=CMD, required=True)
-    subparsers.add_parser(
+    subparsers = parser.add_subparsers(
+        title="Available CLI commands",
+        required=True,
+    )
+
+    parser_status = subparsers.add_parser(
         name=SHOW_STATUS,
-        help="Print status details about main storage node."
+        help="Print status details about main storage node.",
     )
-    find_orphans = subparsers.add_parser(
+    parser_status.set_defaults(**{CMD: print_storage_status})
+
+    parser_orphans = subparsers.add_parser(
         name=FIND_ORPHANS,
-        help="Identify files existing in storage that are unknown to any LMS."
+        help="Identify files in storage that are unknown to all LMS.",
     )
-    find_orphans.add_argument(
+    parser_orphans.set_defaults(**{CMD: find_orphaned_files})
+    parser_orphans.add_argument(
         '-d', f'--{DELETE}',
         action='store_true',
-        help="Setting this flag deletes all orphaned files from storage and distributor nodes."
+        help="Setting this flag deletes all orphaned files from all nodes.",
     )
-    subparsers.add_parser(
+
+    parser_dist_status = subparsers.add_parser(
         name=SHOW_DIST_NODES,
-        help="Print status details about all distributor nodes."
+        help="Print status details about all distributor nodes.",
     )
-    disable_dist_node = subparsers.add_parser(
+    parser_dist_status.set_defaults(**{CMD: print_distributor_nodes})
+
+    parser_dist_disable = subparsers.add_parser(
         name=DISABLE_DIST,
-        help="Disable a distributor node (do not redirect more requests to this node)."
+        help="Disable a distributor node. "
+             "Prevents redirecting more requests to the node.",
     )
-    disable_dist_node.add_argument(
+    parser_dist_disable.set_defaults(**{CMD: disable_distributor_node})
+    parser_dist_disable.add_argument(
         URL,
-        help="Base URL of the distributor node"
+        help="Base URL of the distributor node",
     )
-    enable_dist_node = subparsers.add_parser(
+
+    parser_dist_enable = subparsers.add_parser(
         name=ENABLE_DIST,
-        help="Enable a previously disabled distributor node."
+        help="Enable a previously disabled distributor node.",
     )
-    enable_dist_node.add_argument(
+    parser_dist_enable.set_defaults(**{CMD: enable_distributor_node})
+    parser_dist_enable.add_argument(
         URL,
-        help="Base URL of the distributor node"
+        help="Base URL of the distributor node",
     )
 
 
 async def execute_cli_command(**kwargs: Any) -> None:
-    from videbo.storage.api.client import StorageClient
-    from .storage import (
-        disable_distributor_node,
-        enable_distributor_node,
-        find_orphaned_files,
-        print_distributor_nodes,
-        print_storage_status,
-    )
+    run = kwargs.pop(CMD)
     async with StorageClient() as client:
-        if kwargs[CMD] == SHOW_STATUS:
-            await print_storage_status(client)
-        elif kwargs[CMD] == FIND_ORPHANS:
-            await find_orphaned_files(client, delete=kwargs[DELETE], yes_all=kwargs[YES])
-        elif kwargs[CMD] == SHOW_DIST_NODES:
-            await print_distributor_nodes(client)
-        elif kwargs[CMD] == DISABLE_DIST:
-            await disable_distributor_node(client, kwargs[URL])
-        elif kwargs[CMD] == ENABLE_DIST:
-            await enable_distributor_node(client, kwargs[URL])
-        else:
-            print("Invalid cli command argument given.")
-            sys.exit(3)
+        await run(client, **kwargs)
