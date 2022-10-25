@@ -7,22 +7,6 @@ from videbo.misc import functions
 
 
 class FunctionsTestCase(IsolatedAsyncioTestCase):
-    def test_ensure_string_does_not_end_with_slash(self) -> None:
-        url = "foo///"
-        expected_output = "foo"
-        output = functions.ensure_string_does_not_end_with_slash(url)
-        self.assertEqual(expected_output, output)
-
-        url = "/"
-        expected_output = ""
-        output = functions.ensure_string_does_not_end_with_slash(url)
-        self.assertEqual(expected_output, output)
-
-        url = "http://localhost:9020"
-        expected_output = url
-        output = functions.ensure_string_does_not_end_with_slash(url)
-        self.assertEqual(expected_output, output)
-
     @patch.object(functions.os, "statvfs")
     async def test_get_free_disk_space(self, mock_statvfs: MagicMock) -> None:
         test_path = "foo/bar"

@@ -14,15 +14,6 @@ from . import MEGA
 T = TypeVar("T")
 
 
-def ensure_string_does_not_end_with_slash(string: str) -> str:
-    """
-    Returns a version of `string` with no forward slash at the end.
-
-    Any number of consecutive slashes at the end of `string` will be cut off.
-    """
-    return re.sub(r"/+$", "", string)
-
-
 async def get_free_disk_space(path: str) -> float:
     """Get free disk space at the given path in MB."""
     st = await get_running_loop().run_in_executor(None, os.statvfs, path)

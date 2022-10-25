@@ -1,5 +1,6 @@
 from __future__ import annotations
 import logging
+import re
 from collections.abc import Callable
 from pathlib import Path
 from typing import Any, Optional, TypeVar, Union
@@ -11,7 +12,6 @@ from pydantic.class_validators import validator
 from pydantic.env_settings import SettingsSourceCallable
 from pydantic.fields import ModelField, SHAPE_LIST, SHAPE_SET
 
-from videbo.misc.functions import ensure_string_does_not_end_with_slash as normalize_url
 from videbo.types import PathT
 
 
@@ -98,12 +98,28 @@ class BaseSettings(PydanticBaseSettings, SettingsBaseModel):
             return init_settings, env_settings, config_file_settings
 
 
+def no_slash_at_the_end(string: str) -> str:
+    """
+    Returns a version of `string` with no forward slash at the end.
+
+    Any number of consecutive slashes at the end of `string` will be cut off.
+    Does nothing, if `string` is not a string.
+    Intended to be re-used as a Pydantic field validator.
+    """
+    if isinstance(string, str):
+        return re.sub(r"/+$", "", string)
+    return string
+
+
 class WebserverSettings(SettingsBaseModel):
     status_page: Optional[str] = None
     x_accel_location: Optional[str] = None
     x_accel_limit_rate_mbit: float = 0.0
 
-    _norm_x_accel_location = validator('x_accel_location', allow_reuse=True)(normalize_url)
+    _norm_x_accel_location = validator(
+        "x_accel_location",
+        allow_reuse=True,
+    )(no_slash_at_the_end)
 
 
 class ThumbnailSettings(SettingsBaseModel):
@@ -134,7 +150,11 @@ class DistributionSettings(SettingsBaseModel):
     def ensure_min_reset_freq(cls, freq: float) -> float:
         return max(freq, 1.)
 
-    _norm_node_urls = validator('static_node_base_urls', each_item=True, allow_reuse=True)(normalize_url)
+    _norm_node_urls = validator(
+        "static_node_base_urls",
+        each_item=True,
+        allow_reuse=True,
+    )(no_slash_at_the_end)
 
 
 class MonitoringSettings(SettingsBaseModel):
@@ -172,8 +192,15 @@ class Settings(BaseSettings):
     test_video_file_path: Path = Path(PROJECT_DIR, 'tests', 'test_video.mp4')
 
     # Additional validators:
-    _norm_public_base_url = validator('public_base_url', allow_reuse=True)(normalize_url)
-    _norm_lms_api_urls = validator('lms_api_urls', each_item=True, allow_reuse=True)(normalize_url)
+    _norm_public_base_url = validator(
+        "public_base_url",
+        allow_reuse=True,
+    )(no_slash_at_the_end)
+    _norm_lms_api_urls = validator(
+        "lms_api_urls",
+        each_item=True,
+        allow_reuse=True,
+    )(no_slash_at_the_end)
 
     def make_url(self, path: str = "/", scheme: str = "http") -> str:
         if not path.startswith("/"):

@@ -85,6 +85,28 @@ class BaseSettingsTestCase(TestCase):
         self.assertTupleEqual(expected_output, output)
 
 
+class ValidatorTestCase(TestCase):
+    def test_ensure_string_does_not_end_with_slash(self) -> None:
+        url = "foo///"
+        expected_output = "foo"
+        output = config.no_slash_at_the_end(url)
+        self.assertEqual(expected_output, output)
+
+        url = "/"
+        expected_output = ""
+        output = config.no_slash_at_the_end(url)
+        self.assertEqual(expected_output, output)
+
+        url = "http://localhost:9020"
+        expected_output = url
+        output = config.no_slash_at_the_end(url)
+        self.assertEqual(expected_output, output)
+
+        something_else = MagicMock()
+        output = config.no_slash_at_the_end(something_else)
+        self.assertIs(something_else, output)
+
+
 class DistributionSettingsTestCase(TestCase):
     def test_ensure_min_reset_freq(self) -> None:
         obj = config.DistributionSettings(reset_views_every_minutes=-10)
