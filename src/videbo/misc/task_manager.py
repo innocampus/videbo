@@ -29,7 +29,10 @@ class TaskManager:
             except CancelledError:
                 pass
             except Exception as e:
-                log.exception(f"{e.__class__.__name__} occurred in an fire-and-forget task.")
+                log.exception(
+                    "%s occurred in an fire-and-forget task.",
+                    e.__class__.__name__,
+                )
             finally:
                 cls._tasks.remove(task)
 

@@ -29,8 +29,8 @@ class VideoError(VideboBaseException):
 
 
 class InvalidMimeTypeError(VideoError):
-    def __init__(self, mimetype: str):
-        self.mime_type = mimetype
+    def __init__(self, mime_type: str):
+        self.mime_type = mime_type
         super().__init__()
 
 
