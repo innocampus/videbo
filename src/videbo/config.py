@@ -2,7 +2,7 @@ from __future__ import annotations
 import logging
 import re
 from collections.abc import Callable
-from pathlib import Path
+from pathlib import Path, PosixPath, WindowsPath
 from typing import Any, Optional, TypeVar, Union
 
 import yaml
@@ -237,3 +237,11 @@ def load_yaml(path: PathT) -> dict[str, Any]:
             f"Config file has no top-level mapping: {path}"
         )
     return config
+
+
+def yaml_path_serializer(dumper: yaml.Dumper, data: Path) -> yaml.ScalarNode:
+    return dumper.represent_str(str(data.resolve()))
+
+
+yaml.add_representer(PosixPath, yaml_path_serializer)
+yaml.add_representer(WindowsPath, yaml_path_serializer)

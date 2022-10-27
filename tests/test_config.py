@@ -2,6 +2,8 @@ from pathlib import Path
 from unittest import TestCase
 from unittest.mock import MagicMock, patch
 
+import yaml
+
 from tests.silent_log import SilentLogMixin
 from videbo import config
 
@@ -172,3 +174,17 @@ class FunctionsTestCase(SilentLogMixin, TestCase):
         self.assertDictEqual(expected_output, output)
         mock_path_open.assert_called_once_with("r")
         mock_safe_load.assert_called_once_with(mock_file)
+
+    def test_yaml_path_serializer(self) -> None:
+        expected_output = object()
+        mock_represent_str = MagicMock(return_value=expected_output)
+        mock_dumper = MagicMock(represent_str=mock_represent_str)
+        test_path = Path(__file__)
+        output = config.yaml_path_serializer(mock_dumper, test_path)
+        self.assertIs(expected_output, output)
+        mock_represent_str.assert_called_once_with(str(test_path.resolve()))
+
+        # Try it out; it should have been added on import:
+        expected_output = f"test: {test_path.resolve()}\n"
+        output = yaml.dump({"test": test_path})
+        self.assertEqual(expected_output, output)
