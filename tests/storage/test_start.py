@@ -43,7 +43,7 @@ class StartTestCase(IsolatedAsyncioTestCase):
     @patch.object(start, "start_web_server")
     def test_start(self, mock_start_web_server: MagicMock, mock_settings: MagicMock) -> None:
         mock_settings.files_path.mkdir = mock_mkdir = MagicMock()
-        self.assertIsNone(start.start(foo="bar"))
+        self.assertIsNone(start.start())
         mock_mkdir.assert_called_once_with(parents=True, exist_ok=True)
         mock_start_web_server.assert_called_once_with(
             start.routes,

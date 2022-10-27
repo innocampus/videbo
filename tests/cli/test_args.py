@@ -10,6 +10,7 @@ class ArgsTestCase(IsolatedAsyncioTestCase):
         parser = ArgumentParser()
         args_module.setup_cli_args(parser)
 
+        # Get status:
         args = ["-y", "status"]
         expected_output = {
             args_module.YES: True,
@@ -18,6 +19,7 @@ class ArgsTestCase(IsolatedAsyncioTestCase):
         output = vars(parser.parse_args(args))
         self.assertDictEqual(expected_output, output)
 
+        # Find orphaned files:
         args = ["find-orphaned-files"]
         expected_output = {
             args_module.CMD: args_module.find_orphaned_files,
@@ -26,6 +28,7 @@ class ArgsTestCase(IsolatedAsyncioTestCase):
         output = vars(parser.parse_args(args))
         self.assertDictEqual(expected_output, output)
 
+        # Find and delete orphaned files without prompt:
         args = ["-y", "find-orphaned-files", "-d"]
         expected_output = {
             args_module.YES: True,
@@ -35,6 +38,7 @@ class ArgsTestCase(IsolatedAsyncioTestCase):
         output = vars(parser.parse_args(args))
         self.assertDictEqual(expected_output, output)
 
+        # Disable distributor node:
         test_url = "http://foo.bar"
         args = ["disable-dist-node", test_url]
         expected_output = {
@@ -44,6 +48,7 @@ class ArgsTestCase(IsolatedAsyncioTestCase):
         output = vars(parser.parse_args(args))
         self.assertDictEqual(expected_output, output)
 
+        # Enable distributor node:
         args = ["enable-dist-node", test_url]
         expected_output = {
             args_module.CMD: args_module.enable_distributor_node,
@@ -52,6 +57,7 @@ class ArgsTestCase(IsolatedAsyncioTestCase):
         output = vars(parser.parse_args(args))
         self.assertDictEqual(expected_output, output)
 
+        # Error from missing URL:
         with patch("sys.stderr") as mock_stderr:
             with self.assertRaises(SystemExit):
                 parser.parse_args(["disable-dist-node"])

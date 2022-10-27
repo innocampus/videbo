@@ -6,7 +6,7 @@ from .api.routes import routes
 from .files import DistributorFileController
 
 
-def start(**_kwargs: object) -> None:
+def start() -> None:
     settings.files_path.mkdir(parents=True, exist_ok=True)
     start_web_server(
         routes,

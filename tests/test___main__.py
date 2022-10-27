@@ -11,7 +11,7 @@ class MainTestCase(TestCase):
         paths = "foo,  bar  , baz "
         expected_output = [Path("foo"), Path("bar"), Path("baz")]
         output = __main__.path_list(paths)
-        self.assertEqual(expected_output, output)
+        self.assertListEqual(expected_output, output)
 
     @patch.object(__main__, "execute_cli_command")
     def test_cli_run(self, mock_execute_cli_command: AsyncMock) -> None:
@@ -155,12 +155,14 @@ class MainTestCase(TestCase):
         mock_path_open.assert_called_once_with("w")
         mock_yaml_dump.assert_not_called()
 
+    @patch.object(__main__.logging, "basicConfig")
     @patch.object(__main__, "prepare_settings")
     @patch.object(__main__, "parse_cli")
     def test_main(
         self,
         mock_parse_cli: MagicMock,
         mock_prepare_settings: MagicMock,
+        mock_log_basic_conf: MagicMock,
     ) -> None:
         mock_kwargs = {"spam": "eggs"}
         mock_run = MagicMock()
@@ -170,6 +172,7 @@ class MainTestCase(TestCase):
         mock_prepare_settings.return_value = mock_path = MagicMock()
 
         self.assertIsNone(__main__.main())
+        mock_log_basic_conf.assert_called_once_with(level=logging.INFO)
         mock_parse_cli.assert_called_once_with()
         mock_prepare_settings.assert_called_once_with(mock_kwargs)
         mock_run.assert_called_once_with(**mock_kwargs)

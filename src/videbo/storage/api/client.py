@@ -15,6 +15,11 @@ from .models import (
 
 class StorageClient(Client):
     async def get_status(self) -> tuple[int, StorageStatus]:
+        """
+        Request the current status from the storage node.
+
+        Returns the HTTP status code and a `StorageStatus` object.
+        """
         return await self.request(
             "GET",
             settings.make_url("/api/storage/status"),
@@ -27,10 +32,13 @@ class StorageClient(Client):
         **kwargs: Union[str, int, bool],
     ) -> Optional[list[StorageFileInfo]]:
         """
-        Makes a GET request to the storage node's files endpoint to receive a list of stored files.
-        Any keyword arguments passed are encoded into the url query string, and may be used to filter the results.
-        If a 200 response is received, a list of files (matching filter parameters) is returned.
-        Any other response causes None to be returned.
+        Request a list of stored files from the storage node.
+
+        Any keyword arguments passed are encoded into the url query string,
+        and may be used to filter the results.
+        If a 200 response is received, a list of files (matching the filter
+        parameters) is returned.
+        Any other response causes `None` to be returned.
         """
         status, ret = await self.request(
             "GET",
@@ -44,8 +52,9 @@ class StorageClient(Client):
 
     async def delete_files(self, *files: StorageFileInfo) -> tuple[int, dict[str, str]]:
         """
-        Makes a POST request to perform a batch deletion of files in storage.
-        Prints out hashes of any files that could not be deleted.
+        Requests a batch deletion of files in storage.
+
+        Returns the HTTP status code and a dictionary with further info.
         """
         data = DeleteFilesList(hashes=[f.hash for f in files])
         return await self.request(
@@ -56,6 +65,11 @@ class StorageClient(Client):
         )
 
     async def get_distributor_nodes(self) -> tuple[int, DistributorStatusDict]:
+        """
+        Request the status of active distributor nodes from the storage node.
+
+        Returns the HTTP status code and a `DistributorStatusDict` object.
+        """
         return await self.request(
             "GET",
             settings.make_url("/api/storage/distributor/status"),
@@ -64,6 +78,11 @@ class StorageClient(Client):
         )
 
     async def set_distributor_state(self, base_url: str, enabled: bool) -> int:
+        """
+        Requests enabling/disabling a specific distributor node.
+
+        Returns the HTTP status code.
+        """
         prefix = "en" if enabled else "dis"
         status, _ = await self.request(
             "POST",
