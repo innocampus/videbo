@@ -42,31 +42,9 @@ class StorageClientTestCase(IsolatedAsyncioTestCase):
         )
 
     async def test_get_filtered_files(self) -> None:
-        expected_output = object()
-        self.mock_request.return_value = 200, MagicMock(files=expected_output)
-
         test_kwargs = {"foo": "bar", "spam": "eggs"}
         output = await self.client.get_filtered_files(**test_kwargs)
-
-        self.assertEqual(expected_output, output)
-        self.mock_make_url.assert_called_once_with(
-            f"/api/storage/files?{urlencode(test_kwargs)}"
-        )
-        self.mock_get_jwt_admin.assert_called_once_with()
-        self.mock_request.assert_awaited_once_with(
-            "GET",
-            self.mock_make_url.return_value,
-            self.mock_get_jwt_admin.return_value,
-            return_model=client.StorageFilesList,
-        )
-
-        self.mock_make_url.reset_mock()
-        self.mock_get_jwt_admin.reset_mock()
-        self.mock_request.reset_mock()
-
-        self.mock_request.return_value = 201, object()
-        output = await self.client.get_filtered_files(**test_kwargs)
-        self.assertIsNone(output)
+        self.assertEqual(self.mock_request.return_value, output)
         self.mock_make_url.assert_called_once_with(
             f"/api/storage/files?{urlencode(test_kwargs)}"
         )

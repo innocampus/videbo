@@ -1,4 +1,4 @@
-from typing import Optional, Union
+from typing import Union
 from urllib.parse import urlencode
 
 from videbo import settings
@@ -30,25 +30,21 @@ class StorageClient(Client):
     async def get_filtered_files(
         self,
         **kwargs: Union[str, int, bool],
-    ) -> Optional[list[StorageFileInfo]]:
+    ) -> tuple[int, StorageFilesList]:
         """
         Request a list of stored files from the storage node.
 
         Any keyword arguments passed are encoded into the url query string,
         and may be used to filter the results.
-        If a 200 response is received, a list of files (matching the filter
-        parameters) is returned.
-        Any other response causes `None` to be returned.
+
+        Returns the HTTP status code and a `StorageFilesList` object.
         """
-        status, ret = await self.request(
+        return await self.request(
             "GET",
             settings.make_url(f"/api/storage/files?{urlencode(kwargs)}"),
             self.get_jwt_admin(),
             return_model=StorageFilesList,
         )
-        if status == 200:
-            return ret.files
-        return None
 
     async def delete_files(self, *files: StorageFileInfo) -> tuple[int, dict[str, str]]:
         """

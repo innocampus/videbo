@@ -6,8 +6,8 @@ from .storage import (
     disable_distributor_node,
     enable_distributor_node,
     find_orphaned_files,
-    print_distributor_nodes,
-    print_storage_status,
+    show_distributor_nodes,
+    show_storage_status,
 )
 
 
@@ -39,7 +39,7 @@ def setup_cli_args(parser: ArgumentParser) -> None:
         name=SHOW_STATUS,
         help="Print status details about main storage node.",
     )
-    parser_status.set_defaults(**{CMD: print_storage_status})
+    parser_status.set_defaults(**{CMD: show_storage_status})
 
     parser_orphans = subparsers.add_parser(
         name=FIND_ORPHANS,
@@ -56,7 +56,7 @@ def setup_cli_args(parser: ArgumentParser) -> None:
         name=SHOW_DIST_NODES,
         help="Print status details about all distributor nodes.",
     )
-    parser_dist_status.set_defaults(**{CMD: print_distributor_nodes})
+    parser_dist_status.set_defaults(**{CMD: show_distributor_nodes})
 
     parser_dist_disable = subparsers.add_parser(
         name=DISABLE_DIST,

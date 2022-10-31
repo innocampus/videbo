@@ -14,7 +14,7 @@ class ArgsTestCase(IsolatedAsyncioTestCase):
         args = ["-y", "status"]
         expected_output = {
             args_module.YES: True,
-            args_module.CMD: args_module.print_storage_status,
+            args_module.CMD: args_module.show_storage_status,
         }
         output = vars(parser.parse_args(args))
         self.assertDictEqual(expected_output, output)
