@@ -1,7 +1,7 @@
 import logging
 import functools
 from collections.abc import Callable, Mapping
-from typing import Any, Optional, cast
+from typing import Any, Optional, TypeVar, cast
 
 import jwt
 from aiohttp.typedefs import LooseHeaders
@@ -17,13 +17,17 @@ from videbo.types import RouteHandler
 
 
 __all__ = [
-    'ensure_auth'
+    "extract_jwt_from_request",
+    "ensure_auth",
 ]
 
 
 log = logging.getLogger(__name__)
 
-JWT_ALG = 'HS256'
+J = TypeVar("J", bound=RequestJWTData)
+
+JWT_ALG = "HS256"
+BEARER_PREFIX = "Bearer "
 
 
 def extract_jwt_from_request(request: Request) -> str:
@@ -44,16 +48,15 @@ def extract_jwt_from_request(request: Request) -> str:
     """
     try:
         # First try to find the token in the header.
-        header_auth: str = request.headers.getone('Authorization')
+        header_auth: str = request.headers.getone("Authorization")
     except KeyError:
         # If it is not in the header, try to find the token in the GET field jwt.
         query: Mapping[str, str] = request.query
-        if 'jwt' in query:
-            return query['jwt']
+        if "jwt" in query:
+            return query["jwt"]
     else:
-        prefix = 'Bearer '
-        if header_auth.startswith(prefix):
-            return header_auth[len(prefix):]
+        if header_auth.startswith(BEARER_PREFIX):
+            return header_auth[len(BEARER_PREFIX):]
     raise InvalidAuthData("No JWT found in request.")
 
 
@@ -72,7 +75,7 @@ def jwt_kid_internal(token: str) -> bool:
         `InvalidAuthData` if the "kid" header is missing or its value is anything other than the two valid options.
     """
     try:
-        kid: str = jwt.get_unverified_header(token)['kid']
+        kid: str = jwt.get_unverified_header(token)["kid"]
     except KeyError:
         raise InvalidAuthData("JWT missing key ID header")
     try:
@@ -82,14 +85,17 @@ def jwt_kid_internal(token: str) -> bool:
     return kid == TokenIssuer.internal
 
 
-def check_and_save_jwt_data(request: Request, min_level: int, jwt_model: type[RequestJWTData]) -> None:
+def validate_jwt_data(request: Request, min_level: int, jwt_model: type[J]) -> J:
     """
-    Finds the JSON Web Token in a request and validates it before saving the decoded data back into the request.
+    Finds the JSON Web Token in a request and validates it.
 
     Args:
         request: The `aiohttp` request object to check and save to
         min_level: The minimum access level (see `Role`) the requesting party needs for the specified request.
         jwt_model: The JWT model class to use for decoding and parsing the JWT string.
+
+    Returns:
+        Instance of the provided `jwt_model` class with the decoded data
 
     Raises:
         `InvalidAuthData` if the key ID header in the JWT was missing or invalid or the data object parsing failed.
@@ -110,8 +116,7 @@ def check_and_save_jwt_data(request: Request, min_level: int, jwt_model: type[Re
         raise InvalidAuthData(f"JWT data does not correspond to expected data: {error}")
     if data.role < min_level:
         raise NotAuthorized()
-    # TODO: Don't put the decoded token into the request; return it instead
-    request['jwt_data'] = data
+    return data
 
 
 def ensure_auth(min_level: int, *, headers: Optional[LooseHeaders] = None) -> Callable[[RouteHandler], RouteHandler]:
@@ -143,15 +148,15 @@ def ensure_auth(min_level: int, *, headers: Optional[LooseHeaders] = None) -> Ca
         async def wrapper(request: Request, *args: Any, **kwargs: Any) -> Any:
             """Wrapper around the actual function call"""
             try:
-                check_and_save_jwt_data(request, min_level, param_class)
+                jwt_data = validate_jwt_data(request, min_level, param_class)
             except (jwt.InvalidTokenError, NotAuthorized):
                 raise HTTPUnauthorized(headers=headers)
             except InvalidAuthData as e:
                 log.info("Auth data invalid: %s", str(e))
                 raise HTTPBadRequest(headers=headers)
-            if min_level >= Role.admin and settings.forbid_admin_via_proxy and 'X-Forwarded-For' in request.headers:
+            if min_level >= Role.admin and settings.forbid_admin_via_proxy and "X-Forwarded-For" in request.headers:
                 raise HTTPForbidden(headers=headers)
-            kwargs[param_name] = request['jwt_data']
+            kwargs[param_name] = jwt_data
             return await function(request, *args, **kwargs)
 
         return cast(RouteHandler, wrapper)

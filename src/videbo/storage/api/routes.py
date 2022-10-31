@@ -19,7 +19,7 @@ from aiohttp.web_exceptions import (HTTPBadRequest, HTTPForbidden, HTTPNotFound,
 from aiohttp.web_exceptions import HTTPInternalServerError, HTTPServiceUnavailable  # 5xx
 
 from videbo import settings
-from videbo.auth import ensure_auth
+from videbo.auth import ensure_auth, extract_jwt_from_request
 from videbo.exceptions import InvalidMimeTypeError, InvalidVideoError, FFProbeError
 from videbo.misc import MEGA
 from videbo.misc.functions import rel_path
@@ -374,9 +374,7 @@ async def video_check_redirect(request: Request, file: StoredHashedVideoFile) ->
 
 def video_redirect_to_node(request: Request, node: DistributionNodeInfo, file: StoredHashedVideoFile) -> None:
     log.debug(f"Redirect user to {node.base_url} for video {file}")
-    # TODO: Use `auth.extract_jwt_from_request` here instead
-    jwt = request.query['jwt']
-    url = f"{node.base_url}/file?jwt={jwt}"
+    url = f"{node.base_url}/file?jwt={extract_jwt_from_request(request)}"
     downloadas = request.query.getone("downloadas", None)
     if downloadas:
         url += "&downloadas=" + urllib.parse.quote(downloadas)
