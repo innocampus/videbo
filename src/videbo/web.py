@@ -4,7 +4,7 @@ import urllib.parse
 from collections.abc import Callable, Iterable
 from pathlib import Path
 from json import JSONDecodeError
-from typing import Any, Optional, Union, cast, overload
+from typing import Any, Optional, Union, overload
 
 from aiohttp.log import access_logger as aiohttp_access_logger
 from aiohttp.typedefs import LooseHeaders
@@ -22,7 +22,7 @@ from videbo.misc import MEGA
 from videbo.misc.functions import sanitize_filename, get_route_model_param
 from videbo.misc.task_manager import TaskManager
 from videbo.models import BaseRequestModel
-from videbo.types import CleanupContext, RouteHandler
+from videbo.types import CleanupContext, ExtendedHandler
 from videbo.video import get_content_type_for_extension
 
 
@@ -64,19 +64,24 @@ def start_web_server(routes: RouteTableDef, *cleanup_contexts: CleanupContext, a
     run_app(app, host=address, port=port, access_log=access_logger)
 
 
-# TODO: Annotate with `ParamSpec`
 @overload
-def ensure_json_body(_func: RouteHandler) -> RouteHandler:
+def ensure_json_body(_func: ExtendedHandler) -> ExtendedHandler:
     ...
 
 
 @overload
-def ensure_json_body(*, headers: Optional[LooseHeaders] = None) -> Callable[[RouteHandler], RouteHandler]:
+def ensure_json_body(
+    *,
+    headers: Optional[LooseHeaders] = None,
+) -> Callable[[ExtendedHandler], ExtendedHandler]:
     ...
 
 
-def ensure_json_body(_func: Optional[RouteHandler] = None, *,
-                     headers: Optional[LooseHeaders] = None) -> Union[RouteHandler, Callable[[RouteHandler], RouteHandler]]:
+def ensure_json_body(
+    _func: Optional[ExtendedHandler] = None,
+    *,
+    headers: Optional[LooseHeaders] = None,
+) -> Union[ExtendedHandler, Callable[[ExtendedHandler], ExtendedHandler]]:
     """
     Decorator function used to ensure that there is a json body in the request and that this json
     corresponds to the model given as a type annotation in func.
@@ -90,7 +95,7 @@ def ensure_json_body(_func: Optional[RouteHandler] = None, *,
         headers (optional):
             Headers to include when sending error responses.
     """
-    def decorator(function: RouteHandler) -> RouteHandler:
+    def decorator(function: ExtendedHandler) -> ExtendedHandler:
         """internal decorator function"""
         param_name, param_class = get_route_model_param(function, BaseRequestModel)
 
@@ -112,7 +117,7 @@ def ensure_json_body(_func: Optional[RouteHandler] = None, *,
                 raise HTTPBadRequest(headers=headers)
             kwargs[param_name] = data
             return await function(request, *args, **kwargs)
-        return cast(RouteHandler, wrapper)
+        return wrapper
 
     if _func is None:
         return decorator
@@ -178,7 +183,7 @@ def file_serve_response(path: Path, x_accel: bool, downloadas: Optional[str] = N
 
 
 def route_with_cors(routes: RouteTableDef, path: str, *allow_methods: str,
-                    allow_headers: Optional[Iterable[str]] = None) -> Callable[[RouteHandler], RouteHandler]:
+                    allow_headers: Optional[Iterable[str]] = None) -> Callable[[ExtendedHandler], ExtendedHandler]:
     """
     Decorator function used to register a route with Cross-Origin Resource Sharing (CORS) header fields to the response.
 
@@ -196,7 +201,7 @@ def route_with_cors(routes: RouteTableDef, path: str, *allow_methods: str,
             Can be passed an iterable of strings representing header fields to allow for the route;
             if provided, a corresponding 'Access-Control-Allow-Headers' header will be added to the response.
     """
-    def decorator(function: RouteHandler) -> RouteHandler:
+    def decorator(function: ExtendedHandler) -> ExtendedHandler:
         """Internal decorator function"""
         headers = {
             'Access-Control-Allow-Origin': '*',
@@ -224,5 +229,5 @@ def route_with_cors(routes: RouteTableDef, path: str, *allow_methods: str,
             routes.route(method, path)(wrapper)
         routes.route('OPTIONS', path)(return_options)
 
-        return cast(RouteHandler, wrapper)
+        return wrapper
     return decorator

@@ -237,7 +237,7 @@ async def upload_file(request: Request, jwt_token: UploadFileJWTData) -> Respons
         storage.num_current_uploads -= 1
 
 
-@routes.get('/api/save/file/{hash:[0-9a-f]{64}}{file_ext:\\.[0-9a-z]{1,10}}')  # type: ignore[arg-type]
+@routes.get('/api/save/file/{hash:[0-9a-f]{64}}{file_ext:\\.[0-9a-z]{1,10}}')
 @ensure_auth(Role.lms)
 async def save_file(request: Request, jwt_data: SaveFileJWTData) -> Response:
     """Confirms that the file should be saved permanently."""
@@ -256,7 +256,7 @@ async def save_file(request: Request, jwt_data: SaveFileJWTData) -> Response:
     return json_response({'status': 'ok'})
 
 
-@routes.delete('/api/file/{hash:[0-9a-f]{64}}{file_ext:\\.[0-9a-z]{1,10}}')  # type: ignore[arg-type]
+@routes.delete('/api/file/{hash:[0-9a-f]{64}}{file_ext:\\.[0-9a-z]{1,10}}')
 @ensure_auth(Role.lms)
 async def delete_file(request: Request, jwt_data: DeleteFileJWTData) -> Response:
     """Delete the file with the hash."""
@@ -269,7 +269,7 @@ async def delete_file(request: Request, jwt_data: DeleteFileJWTData) -> Response
     return json_response({"status": "ok"})  # always succeeds
 
 
-@routes.get('/file')  # type: ignore[arg-type]
+@routes.get('/file')
 @ensure_auth(Role.client)
 async def request_file(request: Request, jwt_data: RequestFileJWTData) -> Union[Response, FileResponse]:
     """
@@ -474,21 +474,21 @@ async def enable_dist_node(_request: Request, _jwt_data: RequestJWTData, data: D
     await set_dist_node_state(data.base_url, enabled=True)
 
 
-@routes.get(r'/api/storage/distributor/status')  # type: ignore[arg-type]
+@routes.get(r'/api/storage/distributor/status')
 @ensure_auth(Role.admin)
 async def get_all_dist_nodes(_request: Request, _jwt_data: RequestJWTData) -> Response:
     nodes_statuses = FileStorage.get_instance().distribution_controller.get_nodes_status()
     return DistributorStatusDict(nodes=nodes_statuses).json_response()
 
 
-@routes.get(r'/api/storage/status')  # type: ignore[arg-type]
+@routes.get(r'/api/storage/status')
 @ensure_auth(Role.admin)
 async def get_status(_request: Request, _jwt_data: RequestJWTData) -> Response:
     storage_status = await FileStorage.get_instance().get_status()
     return storage_status.json_response()
 
 
-@routes.get(r'/api/storage/files')  # type: ignore[arg-type]
+@routes.get(r'/api/storage/files')
 @ensure_auth(Role.admin)
 async def get_files_list(request: Request, _jwt_data: RequestJWTData) -> Response:
     orphaned: Optional[bool] = None
@@ -504,7 +504,7 @@ async def get_files_list(request: Request, _jwt_data: RequestJWTData) -> Respons
     return StorageFilesList(files=files).json_response()
 
 
-@routes.post('/api/storage/delete')  # type: ignore[arg-type]
+@routes.post('/api/storage/delete')
 @ensure_auth(Role.admin)
 @ensure_json_body
 async def batch_delete_files(_request: Request, _jwt_data: RequestJWTData, data: DeleteFilesList) -> Response:

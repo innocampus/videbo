@@ -1,11 +1,12 @@
 import logging
 import functools
 from collections.abc import Callable, Mapping
-from typing import Any, Optional, TypeVar, cast
+from typing import Optional, TypeVar
 
 import jwt
-from aiohttp.typedefs import LooseHeaders
+from aiohttp.typedefs import Handler, LooseHeaders
 from aiohttp.web_request import Request
+from aiohttp.web_response import StreamResponse
 from aiohttp.web_exceptions import HTTPBadRequest, HTTPUnauthorized, HTTPForbidden
 from pydantic import ValidationError
 
@@ -13,7 +14,7 @@ from videbo import settings
 from videbo.exceptions import InvalidAuthData, NotAuthorized
 from videbo.misc.functions import get_route_model_param
 from videbo.models import TokenIssuer, Role, RequestJWTData
-from videbo.types import RouteHandler
+from videbo.types import ExtendedHandler
 
 
 __all__ = [
@@ -119,7 +120,7 @@ def validate_jwt_data(request: Request, min_level: int, jwt_model: type[J]) -> J
     return data
 
 
-def ensure_auth(min_level: int, *, headers: Optional[LooseHeaders] = None) -> Callable[[RouteHandler], RouteHandler]:
+def ensure_auth(min_level: int, *, headers: Optional[LooseHeaders] = None) -> Callable[[ExtendedHandler], Handler]:
     """
     Decorator for route handler functions ensuring only authorized access to the decorated route.
 
@@ -137,15 +138,16 @@ def ensure_auth(min_level: int, *, headers: Optional[LooseHeaders] = None) -> Ca
 
     Returns:
         The internal decorator that wraps the actual route handler function.
+        The wrapper is safe to pass to aiohttp route definitions.
     """
     min_level = Role(min_level)  # immediately throws a `ValueError` if `min_level` is not a valid `Role` value
 
-    def decorator(function: RouteHandler) -> RouteHandler:
+    def decorator(function: ExtendedHandler) -> Handler:
         """Internal decorator function"""
         param_name, param_class = get_route_model_param(function, RequestJWTData)
 
         @functools.wraps(function)
-        async def wrapper(request: Request, *args: Any, **kwargs: Any) -> Any:
+        async def wrapper(request: Request) -> StreamResponse:
             """Wrapper around the actual function call"""
             try:
                 jwt_data = validate_jwt_data(request, min_level, param_class)
@@ -156,8 +158,7 @@ def ensure_auth(min_level: int, *, headers: Optional[LooseHeaders] = None) -> Ca
                 raise HTTPBadRequest(headers=headers)
             if min_level >= Role.admin and settings.forbid_admin_via_proxy and "X-Forwarded-For" in request.headers:
                 raise HTTPForbidden(headers=headers)
-            kwargs[param_name] = jwt_data
-            return await function(request, *args, **kwargs)
+            return await function(request, **{param_name: jwt_data})
 
-        return cast(RouteHandler, wrapper)
+        return wrapper
     return decorator

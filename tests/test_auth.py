@@ -204,7 +204,6 @@ class AuthTestCase(IsolatedAsyncioTestCase):
 
         # Set up fake request object and additional arguments to pass to our pseudo-route:
         mock_request = MagicMock()
-        args, kwargs = (1, 2, 3), {'test': 123, 'something': 'something'}
 
         ################
         # Everything OK:
@@ -225,12 +224,12 @@ class AuthTestCase(IsolatedAsyncioTestCase):
         mock_get_route_model_param.assert_called_once_with(mock_function, auth.RequestJWTData)
 
         # Test wrapper:
-        output = await wrapped_function(mock_request, *args, **kwargs)
+        output = await wrapped_function(mock_request)
         # Check that it returns exactly what our pseudo-function returns:
         self.assertIs(expected_output, output)
         # Check that our pseudo-function was called with the same positional arguments and keyword-arguments
         # plus the JWT data parameter as identified by the mocked `get_route_model_param` function:
-        mock_function.assert_awaited_once_with(mock_request, *args, **kwargs, **{mock_param_name: mock_jwt_data})
+        mock_function.assert_awaited_once_with(mock_request, **{mock_param_name: mock_jwt_data})
         # Check the expected function call inside:
         mock_validate_jwt_data.assert_called_once_with(mock_request, min_level, mock_param_cls)
 
@@ -259,7 +258,7 @@ class AuthTestCase(IsolatedAsyncioTestCase):
 
         # Test wrapper:
         with self.assertRaises(HTTPForbidden) as err403_context:
-            await wrapped_function(mock_request, *args, **kwargs)
+            await wrapped_function(mock_request)
         # Check that the specified headers are "transmitted":
         self.assertEqual(hdr_val, err403_context.exception.headers[hdr_key])
         # Check that our pseudo-function was never even called:
@@ -289,7 +288,7 @@ class AuthTestCase(IsolatedAsyncioTestCase):
 
         # Test wrapper:
         with self.assertRaises(HTTPBadRequest) as err400_context:
-            await wrapped_function(mock_request, *args, **kwargs)
+            await wrapped_function(mock_request)
         # Check that the specified headers are "transmitted":
         self.assertEqual(hdr_val, err400_context.exception.headers[hdr_key])
         # Check that our pseudo-function was never even called:
@@ -319,7 +318,7 @@ class AuthTestCase(IsolatedAsyncioTestCase):
 
         # Test wrapper:
         with self.assertRaises(HTTPUnauthorized) as err401_context:
-            await wrapped_function(mock_request, *args, **kwargs)
+            await wrapped_function(mock_request)
         # Check that the specified headers are "transmitted":
         self.assertEqual(hdr_val, err401_context.exception.headers[hdr_key])
         # Check that our pseudo-function was never even called:

@@ -7,7 +7,7 @@ from pathlib import Path
 from typing import Any, TypeVar
 
 from videbo.exceptions import InvalidRouteSignature
-from videbo.types import RouteHandler
+from videbo.types import ExtendedHandler
 from . import MEGA
 
 
@@ -70,7 +70,7 @@ def get_parameters_of_class(
 
 
 def get_route_model_param(
-    route_handler: RouteHandler,
+    route_handler: ExtendedHandler,
     cls: type[T],
 ) -> tuple[str, type[T]]:
     """

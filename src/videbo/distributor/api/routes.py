@@ -27,7 +27,7 @@ log = logging.getLogger(__name__)
 routes = RouteTableDef()
 
 
-@routes.get(r'/api/distributor/status')  # type: ignore[arg-type]
+@routes.get(r'/api/distributor/status')
 @ensure_auth(Role.node)
 async def get_status(_request: Request, _jwt_data: RequestJWTData) -> Response:
     file_controller = DistributorFileController.get_instance()
@@ -45,7 +45,7 @@ async def get_status(_request: Request, _jwt_data: RequestJWTData) -> Response:
     return status.json_response()
 
 
-@routes.get(r'/api/distributor/files')  # type: ignore[arg-type]
+@routes.get(r'/api/distributor/files')
 @ensure_auth(Role.node)
 async def get_all_files(_request: Request, _jwt_data: RequestJWTData) -> Response:
     all_files: list[tuple[str, str]] = []
@@ -69,7 +69,7 @@ async def copy_file(request: Request, _jwt_data: RequestJWTData, data: Distribut
     raise HTTPOk()
 
 
-@routes.post(r'/api/distributor/delete')  # type: ignore[arg-type]
+@routes.post(r'/api/distributor/delete')
 @ensure_auth(Role.node)
 @ensure_json_body
 async def delete_files(_request: Request, _jwt_data: RequestJWTData, data: DistributorDeleteFiles) -> Response:
@@ -84,7 +84,7 @@ async def delete_files(_request: Request, _jwt_data: RequestJWTData, data: Distr
     return DistributorDeleteFilesResponse(files_skipped=files_skipped, free_space=free_space).json_response()
 
 
-@routes.get('/file')  # type: ignore[arg-type]
+@routes.get('/file')
 @ensure_auth(Role.client)
 async def request_file(request: Request, jwt_data: RequestFileJWTData) -> Union[Response, FileResponse]:
     file_controller = DistributorFileController.get_instance()
