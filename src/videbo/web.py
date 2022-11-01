@@ -28,37 +28,79 @@ from videbo.video import get_content_type_for_extension
 
 log = logging.getLogger(__name__)
 
+REQUEST_BODY_MAX_SIZE = 256. * 1024  # 256 kB
 
-def start_web_server(routes: RouteTableDef, *cleanup_contexts: CleanupContext, address: Optional[str] = None,
-                     port: Optional[int] = None, access_logger: logging.Logger = aiohttp_access_logger,
-                     verbose: bool = False) -> None:
+
+def get_application(
+    cleanup_contexts: Iterable[CleanupContext] = (),
+    **kwargs: Any,
+) -> Application:
     """
-    Starts the aiohttp web server.
-    Adds a context, such that on startup the `HTTPClient.session` is initialized, and on cleanup it is closed.
-    Also ensures that all tasks are cancelled on shutdown.
+    Returns an `aiohttp.web.Application` instance with the given parameters.
+
+    Always adds the `Client.app_context` as the first cleanup context to
+    the `Application.cleanup_ctx` list.
+    (see https://docs.aiohttp.org/en/stable/web_advanced.html#cleanup-context)
+
+    `TaskManager.shutdown` is set to be executed immediately on shutdown.
+
+    Args:
+        cleanup_contexts (optional):
+            Callables that will be added to the `Application.cleanup_ctx`;
+            should be asynchronous generator functions that take only the
+            app itself as an argument and are structured as
+            "startup code; yield; cleanup code".
+        **kwargs (optional):
+            Passed to the `Application` constructor; by default, only the
+            `client_max_size` is set to the constant `REQUEST_BODY_MAX_SIZE`.
+
+    Returns:
+        Configured instance of `aiohttp.web.Application`
+    """
+    kwargs.setdefault("client_max_size", REQUEST_BODY_MAX_SIZE)
+    app = Application(**kwargs)
+    app.cleanup_ctx.append(Client.app_context)
+    app.cleanup_ctx.extend(cleanup_contexts)
+    app.on_shutdown.append(TaskManager.shutdown)  # executed before cleanup
+    return app
+
+
+def start_web_server(
+    routes: RouteTableDef,
+    address: Optional[str] = None,
+    port: Optional[int] = None,
+    *,
+    cleanup_contexts: Iterable[CleanupContext] = (),
+    access_logger: logging.Logger = aiohttp_access_logger,
+    verbose: bool = False,
+    **app_kwargs: Any,
+) -> None:
+    """
+    Configures and starts the `aiohttp` web server.
+
+    Calls `get_application` to set up `aiohttp.web.Application` instance.
+    Ensures that before exiting the program, all client sessions are closed
+    and all tasks are cancelled.
 
     Args:
         routes:
             The route definition table to serve
-        cleanup_contexts (optional):
-            Callables that will be added to the `aiohttp.web.Application.cleanup_ctx`;
-            should be asynchronous generator functions that take only the app itself as an argument and
-            are structured as "startup code; yield; cleanup code".
-            (see https://docs.aiohttp.org/en/stable/web_advanced.html#cleanup-context)
         address (optional):
             Passed as the `host` argument to the `run_app` method.
         port (optional):
             Passed as the `port` argument to the `run_app` method.
+        cleanup_contexts (optional):
+            Passed to `get_application`
         access_logger (optional):
-            Passed as the `access_log` argument to the `run_app` method; if omitted, the aiohttp.access logger is used.
+            Passed as the `access_log` argument to the `run_app` method;
+            if omitted, the `aiohttp.log.access_logger` is used.
         verbose (optional):
-            If `False` and no `access_logger` was specified, the default logger's level is raised to ERROR.
+            If `False` (default), the `access_logger` level is set to ERROR.
+        **app_kwargs (optional):
+            Passed to `get_application`
     """
-    app = Application()
+    app = get_application(cleanup_contexts=cleanup_contexts, **app_kwargs)
     app.add_routes(routes)
-    app.cleanup_ctx.append(Client.app_context)
-    app.cleanup_ctx.extend(cleanup_contexts)
-    app.on_shutdown.append(TaskManager.shutdown)  # executed **before** cleanup
     if not verbose:
         access_logger.setLevel(logging.ERROR)
     run_app(app, host=address, port=port, access_log=access_logger)

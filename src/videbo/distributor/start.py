@@ -10,9 +10,11 @@ def start() -> None:
     settings.files_path.mkdir(parents=True, exist_ok=True)
     start_web_server(
         routes,
-        NetworkInterfaces.app_context,
-        DistributorFileController.app_context,
-        address=settings.listen_address,
-        port=settings.listen_port,
+        settings.listen_address,
+        settings.listen_port,
+        cleanup_contexts=(
+            NetworkInterfaces.app_context,
+            DistributorFileController.app_context,
+        ),
         verbose=settings.dev_mode,
     )

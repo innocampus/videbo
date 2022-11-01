@@ -13,9 +13,11 @@ class StartTestCase(IsolatedAsyncioTestCase):
         mock_mkdir.assert_called_once_with(parents=True, exist_ok=True)
         mock_start_web_server.assert_called_once_with(
             start.routes,
-            start.NetworkInterfaces.app_context,
-            start.DistributorFileController.app_context,
-            address=mock_settings.listen_address,
-            port=mock_settings.listen_port,
+            mock_settings.listen_address,
+            mock_settings.listen_port,
+            cleanup_contexts=(
+                start.NetworkInterfaces.app_context,
+                start.DistributorFileController.app_context,
+            ),
             verbose=mock_settings.dev_mode,
         )

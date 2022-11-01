@@ -1,4 +1,3 @@
-import logging
 import sys
 import warnings
 from pathlib import Path
@@ -8,30 +7,27 @@ from typing import Optional
 from aiohttp.test_utils import AioHTTPTestCase
 from aiohttp.web import Application
 
+from tests.silent_log import SilentLogMixin
 from videbo import settings
-from videbo.client import Client as VideboClient
 from videbo.misc import MEGA
 from videbo.models import Role, TokenIssuer
 from videbo.storage.api.models import FileType, RequestFileJWTData
 from videbo.storage.api.routes import get_expiration_time, routes
+from videbo.web import get_application
 
-
-main_log = logging.getLogger('videbo')
 
 AUTHORIZATION, BEARER_PREFIX = 'Authorization', 'Bearer '
 
 test_vid_path = settings.test_video_file_path.resolve()
 
 
-class BaseE2ETestCase(AioHTTPTestCase):
+class BaseE2ETestCase(SilentLogMixin, AioHTTPTestCase):
     THUMBNAIL_EXT = 'jpg'
 
     test_vid_exists: bool = test_vid_path.is_file()
     test_vid_size_mb: Optional[float]
     test_vid_file_ext: Optional[str]
     SKIP_REASON_NO_TEST_VID: str = f"Test video '{test_vid_path}' not found"
-
-    log_lvl: int
 
     @staticmethod
     def _safe_rmtree(dir_path: Path) -> None:
@@ -46,9 +42,6 @@ class BaseE2ETestCase(AioHTTPTestCase):
 
     @classmethod
     def setUpClass(cls) -> None:
-        cls.log_lvl = main_log.level
-        main_log.setLevel(logging.CRITICAL)
-
         if not sys.warnoptions:
             warnings.simplefilter("always")
 
@@ -69,7 +62,6 @@ class BaseE2ETestCase(AioHTTPTestCase):
     @classmethod
     def tearDownClass(cls) -> None:
         cls._safe_rmtree(settings.files_path)
-        main_log.setLevel(cls.log_lvl)
         super().tearDownClass()
 
     @staticmethod
@@ -89,9 +81,8 @@ class BaseE2ETestCase(AioHTTPTestCase):
         return {AUTHORIZATION: BEARER_PREFIX + token}
 
     async def get_application(self) -> Application:
-        app = Application()
+        app = get_application()
         app.add_routes(routes)
-        app.cleanup_ctx.append(VideboClient.app_context)
         return app
 
     def all_tests_passed(self) -> bool:
