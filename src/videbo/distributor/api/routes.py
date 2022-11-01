@@ -2,7 +2,7 @@ import asyncio
 import logging
 from time import time
 from pathlib import Path
-from typing import Union
+from typing import NoReturn, Union
 
 from aiohttp.web import Request, RouteTableDef
 from aiohttp.web_exceptions import HTTPNotFound, HTTPOk, HTTPServiceUnavailable, HTTPInternalServerError
@@ -54,10 +54,10 @@ async def get_all_files(_request: Request, _jwt_data: RequestJWTData) -> Respons
     return DistributorFileList(files=all_files).json_response()
 
 
-@routes.post(r'/api/distributor/copy/{hash:[0-9a-f]{64}}{file_ext:\.[0-9a-z]{1,10}}')  # type: ignore[arg-type]
+@routes.post(r'/api/distributor/copy/{hash:[0-9a-f]{64}}{file_ext:\.[0-9a-z]{1,10}}')
 @ensure_auth(Role.node)
 @ensure_json_body
-async def copy_file(request: Request, _jwt_data: RequestJWTData, data: DistributorCopyFile) -> None:
+async def copy_file(request: Request, _jwt_data: RequestJWTData, data: DistributorCopyFile) -> NoReturn:
     file_controller = DistributorFileController.get_instance()
     file = HashedVideoFile(request.match_info['hash'], request.match_info['file_ext'])
     new_file = file_controller.copy_file(file, data.from_base_url, data.file_size)

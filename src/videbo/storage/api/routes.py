@@ -5,7 +5,7 @@ from collections.abc import Iterator
 from distutils.util import strtobool
 from pathlib import Path
 from time import time
-from typing import Optional, Union
+from typing import NoReturn, Optional, Union
 
 from aiohttp.web_request import Request
 from aiohttp.web_response import Response, json_response
@@ -431,18 +431,18 @@ async def handle_thumbnail_request(jwt_data: RequestFileJWTData) -> Response:
     return Response(body=bytes_data, content_type=CONTENT_TYPES[path.suffix], headers=file_serve_headers())
 
 
-@routes.post(r'/api/storage/distributor/add')  # type: ignore[arg-type]
+@routes.post(r'/api/storage/distributor/add')
 @ensure_auth(Role.admin)
 @ensure_json_body
-async def add_dist_node(_request: Request, _jwt_data: RequestJWTData, data: DistributorNodeInfo) -> None:
+async def add_dist_node(_request: Request, _jwt_data: RequestJWTData, data: DistributorNodeInfo) -> NoReturn:
     FileStorage.get_instance().distribution_controller.add_new_dist_node(data.base_url)
     raise HTTPOk()
 
 
-@routes.post(r'/api/storage/distributor/remove')  # type: ignore[arg-type]
+@routes.post(r'/api/storage/distributor/remove')
 @ensure_auth(Role.admin)
 @ensure_json_body
-async def remove_dist_node(_request: Request, _jwt_data: RequestJWTData, data: DistributorNodeInfo) -> None:
+async def remove_dist_node(_request: Request, _jwt_data: RequestJWTData, data: DistributorNodeInfo) -> NoReturn:
     await FileStorage.get_instance().distribution_controller.remove_dist_node(data.base_url)
     raise HTTPOk()
 
@@ -457,21 +457,22 @@ async def set_dist_node_state(base_url: str, enabled: bool) -> None:
     except (DistAlreadyDisabled, DistAlreadyEnabled):
         log.warning(f"Cannot to {prefix}able distributor node `{base_url}`; already {prefix}abled.")
         raise HTTPConflict()
+
+
+@routes.post(r'/api/storage/distributor/disable')
+@ensure_auth(Role.admin)
+@ensure_json_body
+async def disable_dist_node(_request: Request, _jwt_data: RequestJWTData, data: DistributorNodeInfo) -> NoReturn:
+    await set_dist_node_state(data.base_url, enabled=False)
     raise HTTPOk()
 
 
-@routes.post(r'/api/storage/distributor/disable')  # type: ignore[arg-type]
+@routes.post(r'/api/storage/distributor/enable')
 @ensure_auth(Role.admin)
 @ensure_json_body
-async def disable_dist_node(_request: Request, _jwt_data: RequestJWTData, data: DistributorNodeInfo) -> None:
-    await set_dist_node_state(data.base_url, enabled=False)
-
-
-@routes.post(r'/api/storage/distributor/enable')  # type: ignore[arg-type]
-@ensure_auth(Role.admin)
-@ensure_json_body
-async def enable_dist_node(_request: Request, _jwt_data: RequestJWTData, data: DistributorNodeInfo) -> None:
+async def enable_dist_node(_request: Request, _jwt_data: RequestJWTData, data: DistributorNodeInfo) -> NoReturn:
     await set_dist_node_state(data.base_url, enabled=True)
+    raise HTTPOk()
 
 
 @routes.get(r'/api/storage/distributor/status')
