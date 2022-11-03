@@ -1,4 +1,11 @@
 #!/usr/bin/env bash
+# Runs unit tests and prints only coverage percentage, if successful.
+# If an error occurs, prints the entire unit tests progress output.
+
+# Ensure that we return to the current working directory in case of an error:
+trap "cd $(realpath ${PWD})" ERR
+# Change into project root directory:
+cd "$(dirname $(dirname $(realpath $0)))"
 
 coverage erase
 # Capture the test progression in a variable:

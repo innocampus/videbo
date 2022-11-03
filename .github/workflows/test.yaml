@@ -39,7 +39,7 @@ jobs:
     - name: Run unit test coverage script for Python 3.10 and save total percentage
       if: ${{ matrix.python-version == '3.10' }}
       run: |
-        total=$(./coverage.sh)
+        total=$(./scripts/cov.sh)
         [[ $? -eq 0 ]] && echo "coverage=${total}" >> $GITHUB_ENV
 
     outputs:
