@@ -3,6 +3,11 @@ from typing import TYPE_CHECKING
 from unittest import TestCase
 
 
+__all__ = [
+    "SilentLogMixin",
+]
+
+
 if TYPE_CHECKING:
     _Base = TestCase
 else:

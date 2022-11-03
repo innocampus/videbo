@@ -1,4 +1,4 @@
-from typing import ClassVar, Optional, Type, cast
+from typing import ClassVar, Optional, cast
 from unittest import IsolatedAsyncioTestCase
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -352,7 +352,7 @@ class MockJWTModel(MagicMock):
 
 class CustomValidationError(ValidationError):
     def __init__(self) -> None:
-        super().__init__([MagicMock()], cast(MagicMock(), Type[BaseModel]))
+        super().__init__([MagicMock()], cast(type[BaseModel], MagicMock()))
 
     def __str__(self) -> str:
-        return 'foo'
+        return "foo"

@@ -220,7 +220,7 @@ class Video:
             shutil.copyfile(str(source_file), str(target_file))
 
 
-def get_content_type_for_extension(file_ext: str) -> str:
+def content_type_for_extension(file_ext: str) -> str:
     if file_ext == '.mp4':
         return 'video/mp4'
     if file_ext == '.webm':

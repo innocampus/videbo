@@ -10,7 +10,6 @@ from typing import NoReturn, Optional, Union
 from aiohttp.web_request import Request
 from aiohttp.web_response import Response, json_response
 from aiohttp.web_fileresponse import FileResponse
-from aiohttp.web_routedef import RouteTableDef
 from aiohttp.multipart import BodyPartReader
 from aiohttp.web_exceptions import HTTPOk  # 2xx
 from aiohttp.web_exceptions import HTTPFound  # 3xx
@@ -25,8 +24,9 @@ from videbo.misc import MEGA
 from videbo.misc.functions import rel_path
 from videbo.models import RequestJWTData, Role, TokenIssuer
 from videbo.network import NetworkInterfaces
+from videbo.route_def import RouteTableDef
 from videbo.video import VideoInfo, VideoValidator, VideoConfig
-from videbo.web import ensure_json_body, file_serve_headers, file_serve_response, route_with_cors
+from videbo.web import ensure_json_body, file_serve_headers, serve_file_via_x_accel
 from videbo.storage.util import (FileStorage, JPG_EXT, HashedVideoFile, StoredHashedVideoFile, TempFile,
                                  is_allowed_file_ending, schedule_video_delete)
 from videbo.storage.exceptions import (FileTooBigError, FormFieldMissing, BadFileExtension, UnknownDistURL,
@@ -202,13 +202,13 @@ async def read_and_save_temp(file: TempFile, field: BodyPartReader) -> Response:
     return json_response(resp)
 
 
-@route_with_cors(routes, '/api/upload/maxsize', 'GET')
+@routes.get_with_cors('/api/upload/maxsize')
 async def get_max_size(_: Request) -> Response:
     """Get max file size in mb."""
     return json_response({'max_size': settings.max_file_size_mb})
 
 
-@route_with_cors(routes, '/api/upload/file', 'POST', allow_headers=['Authorization'])
+@routes.post_with_cors('/api/upload/file', allow_headers=['Authorization'])
 @ensure_auth(Role.client)
 async def upload_file(request: Request, jwt_token: UploadFileJWTData) -> Response:
     """User wants to upload a video."""
@@ -305,12 +305,14 @@ async def request_file(request: Request, jwt_data: RequestFileJWTData) -> Union[
     # If a video file is requested we already know the file should exist.
     if jwt_data.type != FileType.VIDEO:
         await verify_file_exists(path)
-    if settings.webserver.x_accel_location:
-        path = Path(settings.webserver.x_accel_location, rel_path(str(video)))
-    dl = request.query.get('downloadas')
-    # The 'X-Accel-Limit-Rate' header value should be non-zero, only if the request is not internal:
-    limit_rate = float(jwt_data.iss != TokenIssuer.internal and settings.webserver.x_accel_limit_rate_mbit)
-    return file_serve_response(path, bool(settings.webserver.x_accel_location), dl, limit_rate)
+    download_filename = request.query.get('downloadas')
+    if not settings.webserver.x_accel_location:
+        return FileResponse(path, headers=file_serve_headers(download_filename))
+    uri = Path(settings.webserver.x_accel_location, rel_path(str(video)))
+    limit_rate = settings.webserver.get_x_accel_limit_rate(
+        internal=jwt_data.iss == TokenIssuer.internal
+    )
+    return serve_file_via_x_accel(uri, limit_rate, download_filename)
 
 
 async def video_check_redirect(request: Request, file: StoredHashedVideoFile) -> None:

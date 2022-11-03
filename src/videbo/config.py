@@ -12,6 +12,7 @@ from pydantic.class_validators import validator
 from pydantic.env_settings import SettingsSourceCallable
 from pydantic.fields import ModelField, SHAPE_LIST, SHAPE_SET
 
+from videbo.misc import MEGA
 from videbo.types import PathT
 
 
@@ -120,6 +121,16 @@ class WebserverSettings(SettingsBaseModel):
         "x_accel_location",
         allow_reuse=True,
     )(no_slash_at_the_end)
+
+    def get_x_accel_limit_rate(self, *, internal: bool) -> int:
+        """
+        Returns the "X-Accel-Limit-Rate" header value in bytes.
+
+        Returns zero, if `internal` is `True`.
+        """
+        if internal:
+            return 0
+        return int(self.x_accel_limit_rate_mbit * MEGA / 8)
 
 
 class ThumbnailSettings(SettingsBaseModel):

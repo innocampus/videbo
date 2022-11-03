@@ -88,7 +88,7 @@ class BaseSettingsTestCase(TestCase):
 
 
 class ValidatorTestCase(TestCase):
-    def test_ensure_string_does_not_end_with_slash(self) -> None:
+    def test_no_slash_at_the_end(self) -> None:
         url = "foo///"
         expected_output = "foo"
         output = config.no_slash_at_the_end(url)
@@ -107,6 +107,17 @@ class ValidatorTestCase(TestCase):
         something_else = MagicMock()
         output = config.no_slash_at_the_end(something_else)
         self.assertIs(something_else, output)
+
+
+class WebserverSettingsTestCase(TestCase):
+    def test_get_x_accel_limit_rate(self) -> None:
+        rate_mbit = 8
+        expected_output = 1024 ** 2
+        obj = config.WebserverSettings(x_accel_limit_rate_mbit=rate_mbit)
+        output = obj.get_x_accel_limit_rate(internal=False)
+        self.assertEqual(expected_output, output)
+        output = obj.get_x_accel_limit_rate(internal=True)
+        self.assertEqual(0, output)
 
 
 class DistributionSettingsTestCase(TestCase):

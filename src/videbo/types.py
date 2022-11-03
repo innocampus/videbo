@@ -13,3 +13,5 @@ FileID = tuple[str, str]  # (hash, file extension)
 CleanupContext = Callable[[Application], AsyncIterator[None]]
 
 PathT = Union[Path, str]
+
+StrDict = dict[str, str]

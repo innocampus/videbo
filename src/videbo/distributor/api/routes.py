@@ -15,7 +15,7 @@ from videbo.misc import MEGA
 from videbo.misc.functions import rel_path
 from videbo.models import TokenIssuer, Role, RequestJWTData
 from videbo.network import NetworkInterfaces
-from videbo.web import ensure_json_body, file_serve_response
+from videbo.web import ensure_json_body, file_serve_headers, serve_file_via_x_accel
 from videbo.storage.util import HashedVideoFile
 from videbo.storage.api.models import RequestFileJWTData, FileType
 from videbo.distributor.files import DistributorFileController, TooManyWaitingClients, NoSuchFile, NotSafeToDelete
@@ -104,11 +104,14 @@ async def request_file(request: Request, jwt_data: RequestFileJWTData) -> Union[
         log.info(f"Too many waiting users, file {file_hash}")
         raise HTTPServiceUnavailable()
     video.last_requested = int(time())
-    if settings.webserver.x_accel_location:
-        path = Path(settings.webserver.x_accel_location, rel_path(str(video)))
-    else:
-        path = file_controller.get_path(video)
-    dl = request.query.get('downloadas')
-    # The 'X-Accel-Limit-Rate' header value should be non-zero, only if the request is not internal:
-    limit_rate = float(jwt_data.iss != TokenIssuer.internal and settings.webserver.x_accel_limit_rate_mbit)
-    return file_serve_response(path, bool(settings.webserver.x_accel_location), dl, limit_rate)
+    download_filename = request.query.get('downloadas')
+    if not settings.webserver.x_accel_location:
+        return FileResponse(
+            file_controller.get_path(video),
+            headers=file_serve_headers(download_filename),
+        )
+    uri = Path(settings.webserver.x_accel_location, rel_path(str(video)))
+    limit_rate = settings.webserver.get_x_accel_limit_rate(
+        internal=jwt_data.iss == TokenIssuer.internal
+    )
+    return serve_file_via_x_accel(uri, limit_rate, download_filename)

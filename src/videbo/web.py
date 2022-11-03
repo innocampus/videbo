@@ -1,7 +1,7 @@
 import logging
-import functools
 import urllib.parse
 from collections.abc import Callable, Iterable
+from functools import wraps
 from pathlib import Path
 from json import JSONDecodeError
 from typing import Any, Optional, Union, overload
@@ -10,25 +10,24 @@ from aiohttp.log import access_logger as aiohttp_access_logger
 from aiohttp.typedefs import LooseHeaders
 from aiohttp.web import run_app
 from aiohttp.web_app import Application
-from aiohttp.web_exceptions import HTTPException, HTTPBadRequest
-from aiohttp.web_fileresponse import FileResponse
+from aiohttp.web_exceptions import HTTPBadRequest
 from aiohttp.web_request import Request
-from aiohttp.web_response import Response
+from aiohttp.web_response import Response, StreamResponse
 from aiohttp.web_routedef import RouteTableDef
 from pydantic import ValidationError
 
 from videbo.client import Client
-from videbo.misc import MEGA
 from videbo.misc.functions import sanitize_filename, get_route_model_param
 from videbo.misc.task_manager import TaskManager
 from videbo.models import BaseRequestModel
-from videbo.types import CleanupContext, ExtendedHandler
-from videbo.video import get_content_type_for_extension
+from videbo.types import CleanupContext, ExtendedHandler, StrDict
+from videbo.video import content_type_for_extension
 
 
 log = logging.getLogger(__name__)
 
-REQUEST_BODY_MAX_SIZE = 256. * 1024  # 256 kB
+REQUEST_BODY_MAX_SIZE: float = 256. * 1024  # 256 kB
+CACHE_CONTROL_MAX_AGE: int = 14 * 60 * 60  # 14 hours
 
 
 def get_application(
@@ -125,39 +124,59 @@ def ensure_json_body(
     headers: Optional[LooseHeaders] = None,
 ) -> Union[ExtendedHandler, Callable[[ExtendedHandler], ExtendedHandler]]:
     """
-    Decorator function used to ensure that there is a json body in the request and that this json
-    corresponds to the model given as a type annotation in func.
+    Decorator for route handlers validating the JSON body of the request.
 
-    Use `BaseRequestModel` as base class for your models.
+    The (extended) route handler function must have an additional parameter
+    of annotated with `BaseRequestModel` or a subclass, which should
+    represent the expected schema of the JSON payload.
+    The wrapper around the handler function will then first attempt to parse
+    the payload through that model.
+    If the payload is malformed or does not pass validation, the wrapper
+    will raise HTTP 400.
+    Otherwise the data object will be passed as the appropriate keyword
+    argument to the actual handler function.
 
     Args:
         _func:
-            Control parameter; allows using the decorator with or without arguments.
-            If this decorator is used with any arguments, this will always be the decorated function itself.
+            Control parameter that allows using the decorator with arguments
+            and also entirely without parentheses. If used without
+            parentheses, this will always be the decorated function itself.
         headers (optional):
             Headers to include when sending error responses.
+
+    Returns:
+        The internal decorator that wraps the actual route handler function
+        or the wrapper right away, if the "no-parentheses" notation is used.
+        The wrapper is NOT type safe to pass to aiohttp route definitions.
+        (It accepts additional arguments besides the requests.)
     """
     def decorator(function: ExtendedHandler) -> ExtendedHandler:
-        """internal decorator function"""
-        param_name, param_class = get_route_model_param(function, BaseRequestModel)
+        """Internal decorator function"""
+        param_name, cls = get_route_model_param(function, BaseRequestModel)
 
-        @functools.wraps(function)
-        async def wrapper(request: Request, *args: Any, **kwargs: Any) -> Any:
+        @wraps(function)
+        async def wrapper(
+            request: Request,
+            *args: Any,
+            **kwargs: Any,
+        ) -> StreamResponse:
             """Wrapper around the actual function call."""
-            assert request._client_max_size > 0
-            if request.content_type != 'application/json':
-                log.info('Wrong content type, json expected, got %s', request.content_type)
+            if request.content_type != "application/json":
+                log.info(
+                    f"Request has wrong content type; 'application/json' "
+                    f"expected, but received '{request.content_type}'"
+                )
                 raise HTTPBadRequest(headers=headers)
             try:
-                json = await request.json()
-                data = param_class.parse_obj(json)
-            except ValidationError as error:
-                log.info('JSON in request does not match model: %s', str(error))
-                raise HTTPBadRequest(headers=headers)
+                data = await request.json()
             except JSONDecodeError:
-                log.info('Invalid JSON in request')
+                log.info("Request body is not valid JSON")
                 raise HTTPBadRequest(headers=headers)
-            kwargs[param_name] = data
+            try:
+                kwargs[param_name] = cls.parse_obj(data)
+            except ValidationError as error:
+                log.info(f"JSON in request does not match model: {error}")
+                raise HTTPBadRequest(headers=headers)
             return await function(request, *args, **kwargs)
         return wrapper
 
@@ -167,109 +186,61 @@ def ensure_json_body(
         return decorator(_func)
 
 
-def file_serve_headers(downloadas: Optional[str] = None) -> dict[str, str]:
+def file_serve_headers(download_filename: Optional[str] = None) -> StrDict:
     """
     Returns a dictionary of HTTP headers to use in file serving responses.
 
-    The 'Cache-Control' header is always set;
-    if `downloadas` is provided, the 'Content-Disposition' header is also set accordingly.
+    The "Cache-Control" header is always set; if `downloadas` is provided,
+    the "Content-Disposition" header is also set accordingly.
     """
     headers = {
-        'Cache-Control': 'private, max-age=50400'
+        "Cache-Control": f"private, max-age={CACHE_CONTROL_MAX_AGE}"
     }
-    if downloadas:
-        headers['Content-Disposition'] = f'attachment; filename="{urllib.parse.quote(sanitize_filename(downloadas))}"'
+    if download_filename:
+        name = urllib.parse.quote(sanitize_filename(download_filename))
+        headers["Content-Disposition"] = f'attachment; filename="{name}"'
     return headers
 
 
-def get_x_accel_headers(redirect_uri: str, limit_rate_bytes: Optional[int] = None) -> dict[str, str]:
+def x_accel_headers(redirect_uri: str, limit_rate_bytes: int = 0) -> StrDict:
     """
     Returns a dictionary of HTTP headers to use for reverse proxy setups.
 
-    The 'X-Accel-Redirect' header is always set to `redirect_uri`;
-    if `limit_rate_bytes` is provided, the 'X-Accel-Limit-Rate' header is also set accordingly.
+    Args:
+        redirect_uri:
+            Assigned to the "X-Accel-Redirect" header
+        limit_rate_bytes (optional):
+            Assigned to the "X-Accel-Limit-Rate" header, if greater than 0
     """
-    headers = {'X-Accel-Redirect': redirect_uri}
-    if limit_rate_bytes:
-        headers['X-Accel-Limit-Rate'] = str(limit_rate_bytes)
+    headers = {"X-Accel-Redirect": redirect_uri}
+    if limit_rate_bytes > 0:
+        headers["X-Accel-Limit-Rate"] = str(limit_rate_bytes)
     return headers
 
 
-def file_serve_response(path: Path, x_accel: bool, downloadas: Optional[str] = None,
-                        x_accel_limit_rate: float = 0.0) -> Union[Response, FileResponse]:
+def serve_file_via_x_accel(
+    redirect_uri: Path,
+    limit_rate_bytes: int = 0,
+    download_filename: Optional[str] = None,
+) -> Response:
     """
-    Constructs a response object to serve a file either "as is" or via NGINX X-Accel capabilities.
+    Returns a `aiohttp.web.Response` to serve a file via NGINX X-Accel.
 
     Args:
-        path:
-            Either the actual full path to the file or the 'X-Accel-Redirect' URI
-        x_accel:
-            If `True`, the response will not reference the file directly, but instead contain relevant X-Accel headers;
-            otherwise a `FileResponse` is returned.
-        downloadas (optional):
-            The `downloadas` value of the request's query
-        x_accel_limit_rate (optional):
-            'X-Accel-Limit-Rate' header value in megabits (2^20 bits) per second; ignored if `x_accel` is False.
+        redirect_uri:
+            The path to the file relative to the NGINX X-Accel location
+        limit_rate_bytes (optional):
+            "X-Accel-Limit-Rate" header value in bytes per second;
+            if zero is passed (default) this header will be omitted.
+        download_filename (optional):
+            If passed, the "Content-Disposition" header is set to
+            attachment; filename="{download_filename}"
 
     Returns:
-        An appropriately constructed `aiohttp.web.Response` object, if X-Accel is to be used,
-        and a `aiohttp.web.FileResponse` object for the provided file path otherwise.
+        A response that can be processed by an NGINX reverse proxy
+        to serve the specified file
     """
-    headers = file_serve_headers(downloadas)
-    if x_accel:
-        limit_rate_bytes = int(x_accel_limit_rate * MEGA / 8)
-        headers.update(get_x_accel_headers(str(path), limit_rate_bytes))
-        content_type = get_content_type_for_extension(''.join(path.suffixes))
-        return Response(headers=headers, content_type=content_type)
-    return FileResponse(path, headers=headers)
-
-
-def route_with_cors(routes: RouteTableDef, path: str, *allow_methods: str,
-                    allow_headers: Optional[Iterable[str]] = None) -> Callable[[ExtendedHandler], ExtendedHandler]:
-    """
-    Decorator function used to register a route with Cross-Origin Resource Sharing (CORS) header fields to the response.
-
-    It also registers a route for the path with the OPTIONS method that responds with the same headers.
-
-    Args:
-        routes:
-            The `aiohttp.web_routedef.RouteTableDef` instance to use for registering the route
-        path:
-            The URL path to register the route for
-        *allow_methods:
-            Each argument should be the name of an HTTP method to register the route with;
-            a route with the `OPTIONS` method is always registered.
-        allow_headers (optional):
-            Can be passed an iterable of strings representing header fields to allow for the route;
-            if provided, a corresponding 'Access-Control-Allow-Headers' header will be added to the response.
-    """
-    def decorator(function: ExtendedHandler) -> ExtendedHandler:
-        """Internal decorator function"""
-        headers = {
-            'Access-Control-Allow-Origin': '*',
-            'Access-Control-Allow-Methods': ','.join(allow_methods),
-            'Access-Control-Max-Age': '3600',
-        }
-        if allow_headers:
-            headers['Access-Control-Allow-Headers'] = ','.join(allow_headers)
-
-        @functools.wraps(function)
-        async def wrapper(request: Request, *args: Any, **kwargs: Any) -> Any:
-            """Wrapper around the actual function call"""
-            try:
-                response = await function(request, *args, **kwargs)
-                response.headers.extend(headers)
-                return response
-            except HTTPException as error:
-                error.headers.extend(headers)
-                raise error
-
-        async def return_options(_request: Request) -> Response:
-            return Response(headers=headers)
-
-        for method in allow_methods:
-            routes.route(method, path)(wrapper)
-        routes.route('OPTIONS', path)(return_options)
-
-        return wrapper
-    return decorator
+    headers = file_serve_headers(download_filename)
+    headers.update(x_accel_headers(str(redirect_uri), limit_rate_bytes))
+    content_type = content_type_for_extension(''.join(redirect_uri.suffixes))
+    return Response(headers=headers, content_type=content_type)
