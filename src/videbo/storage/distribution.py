@@ -217,7 +217,7 @@ class DistributionNodeInfo:
                 return
             for file_hash, file_ext in ret.files:
                 try:
-                    file = await storage.get_file(file_hash, file_ext)
+                    file = storage.get_file(file_hash, file_ext)
                 except FileNotFoundError:
                     log.info(f"Remove `{file_hash}{file_ext}` on {self.base_url} since file does not exist on storage.")
                     remove_unknown_files.append((file_hash, file_ext))

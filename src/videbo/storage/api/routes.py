@@ -1,33 +1,34 @@
 import logging
-import asyncio
 import urllib.parse
-from collections.abc import Iterator
+from asyncio import sleep as async_sleep
 from distutils.util import strtobool
 from pathlib import Path
-from time import time
 from typing import NoReturn, Optional, Union
 
-from aiohttp.web_request import Request
-from aiohttp.web_response import Response, json_response
-from aiohttp.web_fileresponse import FileResponse
 from aiohttp.multipart import BodyPartReader
 from aiohttp.web_exceptions import HTTPOk  # 2xx
 from aiohttp.web_exceptions import HTTPFound  # 3xx
 from aiohttp.web_exceptions import (HTTPBadRequest, HTTPForbidden, HTTPNotFound, HTTPNotAcceptable, HTTPConflict,
                                     HTTPGone)  # 4xx
 from aiohttp.web_exceptions import HTTPInternalServerError, HTTPServiceUnavailable  # 5xx
+from aiohttp.web_fileresponse import FileResponse
+from aiohttp.web_request import Request
+from aiohttp.web_response import Response, json_response
 
 from videbo import settings
 from videbo.auth import ensure_auth, extract_jwt_from_request
-from videbo.exceptions import InvalidMimeTypeError, InvalidVideoError, FFProbeError
+from videbo.exceptions import FFMpegError, FFProbeError, MimeTypeNotAllowed, VideoNotAllowed
 from videbo.misc import MEGA
-from videbo.misc.functions import rel_path
+from videbo.misc.functions import rel_path, run_in_default_executor
 from videbo.models import RequestJWTData, Role, TokenIssuer
 from videbo.network import NetworkInterfaces
 from videbo.route_def import RouteTableDef
-from videbo.video import VideoInfo, VideoValidator, VideoConfig
+from videbo.temp_file import TempFile
+from videbo.types import PathT
+from videbo.video.models import VideoInfo
+from videbo.video.analyze import generate_thumbnails, get_ffprobe_info, get_video_mime_type
 from videbo.web import ensure_json_body, file_serve_headers, serve_file_via_x_accel
-from videbo.storage.util import (FileStorage, JPG_EXT, HashedVideoFile, StoredHashedVideoFile, TempFile,
+from videbo.storage.util import (FileStorage, StoredHashedVideoFile,
                                  is_allowed_file_ending, schedule_video_delete)
 from videbo.storage.exceptions import (FileTooBigError, FormFieldMissing, BadFileExtension, UnknownDistURL,
                                        DistAlreadyDisabled, DistAlreadyEnabled)
@@ -41,180 +42,270 @@ routes = RouteTableDef()
 
 EXTERNAL_JWT_LIFE_TIME = 3600  # 1 hour in seconds
 CHUNK_SIZE_DEFAULT = 300 * 1024  # 300 KB in bytes
-CONTENT_TYPES = {JPG_EXT: 'image/jpeg'}
+
+MULTIPART_FORM_DATA = "multipart/form-data"
 
 
-def get_expiration_time(seconds_from_now: int = EXTERNAL_JWT_LIFE_TIME) -> int:
-    return int(time() + seconds_from_now)
-
-
-def generate_video_url(video: HashedVideoFile, temp: bool) -> str:
-    jwt_data = RequestFileJWTData(
-        exp=get_expiration_time(),
-        iss=TokenIssuer.external,
-        role=Role.client,
-        type=FileType.VIDEO_TEMP if temp else FileType.VIDEO,
-        hash=video.hash,
-        file_ext=video.file_ext,
-        rid=''
-    )
-    return f"{settings.public_base_url}/file?jwt={jwt_data.encode()}"
-
-
-def generate_thumb_urls(video: HashedVideoFile, temp: bool, thumb_count: int) -> Iterator[str]:
-    exp = get_expiration_time()
-    for thumb_id in range(thumb_count):
-        jwt_data = RequestFileJWTData(
-            exp=exp,
-            iss=TokenIssuer.external,
-            role=Role.client,
-            type=FileType.THUMBNAIL_TEMP if temp else FileType.THUMBNAIL,
-            hash=video.hash,
-            file_ext=video.file_ext,
-            thumb_id=thumb_id,
-            rid='',
-        )
-        yield f"{settings.public_base_url}/file?jwt={jwt_data.encode()}"
-
-
-async def read_data(file: TempFile, field: BodyPartReader, chunk_size: int = CHUNK_SIZE_DEFAULT) -> None:
-    """Save the video data into temporary file."""
-    log.info("Start reading file from client")
-    data = await field.read_chunk(chunk_size)
-    while len(data) > 0:
-        if file.size > settings.max_file_size_mb * MEGA:
-            await file.delete()
-            raise FileTooBigError()
-        await file.write(data)
-        data = await field.read_chunk(chunk_size)
-    await file.close()
-    log.info(f"File was uploaded ({file.size} Bytes)")
+@routes.get_with_cors('/api/upload/maxsize')
+async def get_max_size(_: Request) -> Response:
+    """Get max file size in MB."""
+    return json_response({'max_size': settings.max_file_size_mb})
 
 
 async def get_video_payload(request: Request) -> BodyPartReader:
-    """Perform payload checks and extract the part containing the video file."""
+    """
+    Performs payload checks and extract the video file stream from the form.
+
+    Assumes the request contains a multipart payload. Searches through it
+    for a field named `video` and represented by a stream reader.
+
+    Returns:
+        `aiohttp.BodyPartReader` instance representing the video data stream
+
+    Raises:
+        `FormFieldMissing`:
+            If the correct video form field is not found
+        `BadFileExtension`:
+            If the `filename` field does not have a whitelisted extension
+        `FileTooBigError`:
+            If the content length of the request is specified and
+            exceeds the configured maximum allowed file size
+    """
     multipart = await request.multipart()
-    # Skip to the field that we are interested in;
-    # this cannot be another (nested) MultipartReader, but should be a BodyPartReader instance,
-    # and the field name should be `video`.
+    # TODO: Consider using an `async for`-loop with a `break` here instead
     field = await multipart.next()
     while not isinstance(field, BodyPartReader) or field.name != 'video':
         if field is None:
             raise FormFieldMissing()
         field = await multipart.next()
-    # Simple file extension check.
     if not is_allowed_file_ending(field.filename):
-        log.warning(f"file ending not allowed ({field.filename})")
+        log.warning(f"File extension not allowed: {field.filename}")
         raise BadFileExtension()
-    # Check file/content size as reported in the header if supplied.
     if request.content_length and request.content_length > settings.max_file_size_mb * MEGA:
         raise FileTooBigError()
     return field
 
 
-async def get_video_info(file: TempFile) -> VideoInfo:
-    """Run checks with ffprobe and return info."""
-    video = VideoInfo(video_file=file.path, video_config=VideoConfig())
-    validator = VideoValidator(info=video)
-    await video.fetch_mime_type()
-    try:
-        validator.check_valid_mime_type()
-    except InvalidMimeTypeError as mimetype_err:
-        log.warning(f"invalid video mime type found in request (mime type: {mimetype_err.mime_type}).")
-        raise
-    try:
-        await video.fetch_info()
-    except FFProbeError as ffprobe_err:
-        log.warning("invalid video file found in request (ffprobe error, timeout=%i, stderr below).",
-                    ffprobe_err.timeout)
-        if ffprobe_err.stderr is not None:
-            log.warning(ffprobe_err.stderr)
-        raise
-    try:
-        validator.check_valid_video()
-    except InvalidVideoError as video_err:
-        log.warning("invalid video file found in request (video: %s, audio: %s, container: %s).",
-                    video_err.video_codec, video_err.audio_codec, video_err.container)
-        raise
-    return video
-
-
 def invalid_format_response() -> Response:
-    log.warning("no or invalid file found in request.")
+    """Respond with 415 and error "invalid_format"."""
+    log.warning("No or invalid file in request")
     return json_response({'error': 'invalid_format'}, status=415)
 
 
 def file_too_big_response() -> Response:
-    log.warning("client wanted to upload file that is too big.")
+    """Respond with 413 and "max_size" information."""
+    log.warning("File too big to upload")
     return json_response({'max_size': settings.max_file_size_mb}, status=413)
 
 
-async def save_temp_file(file: TempFile, video_info: VideoInfo) -> tuple[HashedVideoFile, int, float]:
-    """Saves video in a temporary file and returns its wrapper, thumbnail count and the video duration."""
-    video_duration = int(video_info.get_length())
-    try:
-        file_ext = video_info.get_suggested_file_extension()
-    except InvalidVideoError:
-        raise BadFileExtension()
-    hashed_file = await file.persist(file_ext)
-    file_storage = FileStorage.get_instance()
-    video_info.video_file = file_storage.get_path_in_temp(hashed_file)
-    log.info(f"saved temp file, size: {file.size}, duration: {video_duration}, hash: {hashed_file.hash}")
-    thumb_count = await file_storage.generate_thumbs(hashed_file, video_info)
-    log.info(f"saved {thumb_count} temp thumbnails for temp video, hash: {hashed_file.hash}")
-    return hashed_file, thumb_count, video_duration
+async def read_data(
+    temp_file: TempFile,
+    video_form_field: BodyPartReader,
+    chunk_size_bytes: int = CHUNK_SIZE_DEFAULT,
+) -> None:
+    """
+    Writes video data into temp. file in chunks up to the configured limit.
+
+    Args:
+        temp_file:
+            The `TempFile` instance to write the video data into
+        video_form_field:
+            The `aiohttp.BodyPartReader` object with the video data stream
+        chunk_size_bytes (optional):
+            The number of bytes to read asynchronously per chunk;
+            defaults to `CHUNK_SIZE_DEFAULT`
+
+    Raises:
+        `FileTooBigError` if the configured maximum file size is exceeded
+    """
+    log.info("Start reading file from client")
+    # TODO: Check if it is possible to use `async for`-loop here instead
+    data = await video_form_field.read_chunk(chunk_size_bytes)
+    while len(data) > 0:
+        if temp_file.size > settings.max_file_size_mb * MEGA:
+            raise FileTooBigError()
+        await temp_file.write(data)
+        data = await video_form_field.read_chunk(chunk_size_bytes)
+    log.info(f"File was uploaded ({temp_file.size} bytes)")
 
 
-async def read_and_save_temp(file: TempFile, field: BodyPartReader) -> Response:
+async def get_video_info(path: PathT) -> VideoInfo:
     """
-    Reads and saves video payload in a temporary file and returns relevant data in a JSON response (status 200).
-    May return specific error responses instead (other status codes).
+    Runs metadata checks on the video at `path` and returns the information.
+
+    Logs failed checks as expressive warnings.
+
+    Args:
+        path: Path to the video file to analyze
+
+    Returns:
+        Instance of `VideoInfo` if the checks were passed
+
+    Raises:
+        `MimeTypeNotAllowed` if the video's MIME type is not whitelisted
+        `FFProbeError` if analysis with `ffprobe` could not be completed
+        `VideoNotAllowed` if the video's codec or format is not whitelisted
     """
+    mime_type = await get_video_mime_type(path)
+    if mime_type not in settings.video.mime_types_allowed:
+        exception = MimeTypeNotAllowed(mime_type)
+        log.warning(repr(exception))
+        raise exception
     try:
-        await read_data(file, field)
-    except FileTooBigError:
-        await file.delete()
-        return file_too_big_response()
-    try:
-        video = await get_video_info(file)
-    except (InvalidMimeTypeError, FFProbeError, InvalidVideoError):
-        await file.delete()
-        return invalid_format_response()
-    try:
-        stored_file, thumb_count, duration = await save_temp_file(file, video)
-    except BadFileExtension:
-        await file.delete()
-        return invalid_format_response()
-    jwt_data = FileUploadedResponseJWT(
-        exp=get_expiration_time(),
+        probe_info = await get_ffprobe_info(path)
+        probe_info.ensure_is_allowed()
+    except (FFProbeError, VideoNotAllowed) as e:
+        log.warning(repr(e))
+        raise
+    return probe_info
+
+
+async def save_temp_file_and_create_thumbnails(
+    temp_file: TempFile,
+    video_info: VideoInfo,
+) -> FileUploadedResponseJWT:
+    """
+    Persists the temp. video file on disk and creates thumbnails alongside it.
+
+    Logs file size, video duration, hash digest, and number of thumbnails.
+
+    Args:
+        temp_file:
+            The `TempFile` instance to write the video data into
+        video_info:
+            The `VideoInfo` instance with the video meta information
+
+    Returns:
+        Valid `FileUploadedResponseJWT` instance
+    """
+    duration = round(video_info.get_duration(), 1)
+    video_path = await temp_file.persist(file_ext=video_info.file_ext)
+    size, hash_, ext = temp_file.size, temp_file.digest, video_path.suffix
+    log.info(f"Temp video saved: {size=}, {duration=}, {hash_=}")
+    thumb_count = await generate_thumbnails(
+        video_path,
+        duration,
+        interim_dir=FileStorage.get_instance().temp_out_dir,
+    )
+    log.info(f"{thumb_count} thumbnails generated for video: {hash_}")
+    return FileUploadedResponseJWT(
+        exp=FileUploadedResponseJWT.default_expiration_from_now(),
         iss=TokenIssuer.external,
-        hash=stored_file.hash,
-        file_ext=stored_file.file_ext,
+        hash=hash_,
+        file_ext=ext,
         thumbnails_available=thumb_count,
         duration=duration
     )
-    resp = {
-        'result': 'ok',
-        'jwt': jwt_data.encode(),
-        'url': generate_video_url(stored_file, temp=True),
-        'thumbnails': list(generate_thumb_urls(stored_file, temp=True, thumb_count=thumb_count)),
+
+
+def get_video_and_thumbnail_urls(
+    file_hash: str,
+    file_ext: str,
+    *,
+    temp: bool,
+    thumb_count: int,
+    exp: Optional[int] = None,
+) -> tuple[str, list[str]]:
+    """
+    Constructs the URLs for requesting a video file and its thumbnails.
+
+    Each URL is created via the `RequestFileJWTData.encode_public_file_url`.
+
+    Args:
+        file_hash:
+            The hash hexdigest of the video file in question
+        file_ext:
+            The extension of the video file in question
+        temp:
+            If `True`, the video is assumed to not be saved permanently yet,
+            but only recently uploaded.
+        thumb_count:
+            The number of thumbnails that can be requested for the video
+        exp (optional):
+            If provided, it will be set as the value for the `exp` field
+            on the JWT model; otherwise the default expiration time is used.
+
+    Returns:
+        2-tuple with the first element being the URL by which to request
+        the video and the second being a list of the thumbnail URLs
+    """
+    exp = exp or RequestFileJWTData.default_expiration_from_now()
+    video_url = RequestFileJWTData.client_default(
+        file_hash,
+        file_ext,
+        temp=temp,
+        expiration_time=exp,
+    ).encode_public_file_url()
+    thumbnail_urls = []
+    for thumb_id in range(thumb_count):
+        thumbnail_urls.append(
+            RequestFileJWTData.client_default(
+                file_hash,
+                file_ext,
+                temp=temp,
+                expiration_time=exp,
+                thumb_id=thumb_id,
+            ).encode_public_file_url()
+        )
+    return video_url, thumbnail_urls
+
+
+async def save_temp_and_respond(
+    temp_file: TempFile,
+    video_form_field: BodyPartReader,
+) -> Response:
+    """
+    Writes video data into temp. file, saves it and responds appropriately.
+
+    If `FileTooBigError` is encountered while reading the data stream,
+    the `file_too_big_response` is returned.
+    If `FFProbeError` or `VideoNotAllowed` is raised during video analysis,
+    the `invalid_format_response` is returned.
+    In both those error cases the exception is _not_ propagated up the stack,
+    but the temporary `file` is deleted.
+
+    Args:
+        temp_file:
+            The `TempFile` instance to write the video data into
+        video_form_field:
+            The `aiohttp.BodyPartReader` object with the video data stream
+
+    Returns:
+        `aiohttp.web_response.Response` with a JSON body
+    """
+    try:
+        async with temp_file.open():
+            await read_data(temp_file, video_form_field)
+    except FileTooBigError:
+        await temp_file.delete()
+        return file_too_big_response()
+    try:
+        video = await get_video_info(temp_file.path)
+    except (FFProbeError, VideoNotAllowed):
+        await temp_file.delete()
+        return invalid_format_response()
+    jwt_data = await save_temp_file_and_create_thumbnails(temp_file, video)
+    video_url, thumbnail_urls = get_video_and_thumbnail_urls(
+        jwt_data.hash,
+        jwt_data.file_ext,
+        temp=True,
+        thumb_count=jwt_data.thumbnails_available,
+    )
+    data = {
+        "result": "ok",
+        "jwt": jwt_data.encode(),
+        "url": video_url,
+        "thumbnails": thumbnail_urls,
     }
-    return json_response(resp)
-
-
-@routes.get_with_cors('/api/upload/maxsize')
-async def get_max_size(_: Request) -> Response:
-    """Get max file size in mb."""
-    return json_response({'max_size': settings.max_file_size_mb})
+    return json_response(data)
 
 
 @routes.post_with_cors('/api/upload/file', allow_headers=['Authorization'])
 @ensure_auth(Role.client)
 async def upload_file(request: Request, jwt_token: UploadFileJWTData) -> Response:
     """User wants to upload a video."""
-    if request.content_type != 'multipart/form-data':
-        raise HTTPNotAcceptable(headers={'Accept': 'multipart/form-data'})
-    # check JWT permission
+    if request.content_type != MULTIPART_FORM_DATA:
+        raise HTTPNotAcceptable(headers={"Accept": MULTIPART_FORM_DATA})
     if not jwt_token.is_allowed_to_upload_file:
         raise HTTPForbidden()
     try:
@@ -224,14 +315,17 @@ async def upload_file(request: Request, jwt_token: UploadFileJWTData) -> Respons
     except FileTooBigError:
         return file_too_big_response()
     storage = FileStorage.get_instance()
-    file: TempFile = storage.create_temp_file()
     storage.num_current_uploads += 1
-    # Form this point on, any error should be followed by a cleanup of the temp. file
+    file = TempFile.create(storage.temp_dir)
+    # Any error should be followed by a cleanup of the temp. file
     try:
-        return await read_and_save_temp(file, field)
+        return await save_temp_and_respond(file, field)
     except Exception as e:
         await file.delete()
-        log.exception(e)
+        if isinstance(e, FFMpegError):
+            log.error(repr(e))
+        else:
+            log.exception(e)
         raise HTTPInternalServerError()
     finally:
         storage.num_current_uploads -= 1
@@ -242,18 +336,18 @@ async def upload_file(request: Request, jwt_token: UploadFileJWTData) -> Respons
 async def save_file(request: Request, jwt_data: SaveFileJWTData) -> Response:
     """Confirms that the file should be saved permanently."""
     if not jwt_data.is_allowed_to_save_file:
-        log.info('unauthorized request')
+        log.info("Unauthorized save request")
         raise HTTPForbidden()
-    file = HashedVideoFile(request.match_info['hash'], request.match_info['file_ext'])
+    hash_, ext = request.match_info["hash"], request.match_info["file_ext"]
     try:
-        file_storage = FileStorage.get_instance()
-        await file_storage.add_file_from_temp(file)
-        thumb_count = settings.thumbnails.suggestion_count
-        await file_storage.add_thumbs_from_temp(file, thumb_count)
+        await FileStorage.get_instance().store_permanently(hash_, ext)
     except FileNotFoundError:
-        log.error('Cannot save file with hash %s to video, file does not exist.', file.hash)
-        return json_response({'status': 'error', 'error': 'file_does_not_exist'}, status=404)
-    return json_response({'status': 'ok'})
+        log.error(f"Save request failed; file(s) not found: {hash_}")
+        return json_response(
+            {"status": "error", "error": "file_does_not_exist"},
+            status=404,
+        )
+    return json_response({"status": "ok"})
 
 
 @routes.delete('/api/file/{hash:[0-9a-f]{64}}{file_ext:\\.[0-9a-z]{1,10}}')
@@ -283,36 +377,34 @@ async def request_file(request: Request, jwt_data: RequestFileJWTData) -> Union[
     Thus, this function only returns a file serving response itself, if none of the above mentioned conditions are met.
     If so configured, X-Accel capabilities will be used in that case.
     """
-    video = HashedVideoFile(jwt_data.hash, jwt_data.file_ext)
+    hash_, ext = jwt_data.hash, jwt_data.file_ext
     file_storage = FileStorage.get_instance()
     if jwt_data.type == FileType.VIDEO:
-        # Record the video access and find out if this node serves the file or should redirect to a distributor node.
         try:
-            video = await file_storage.get_file(jwt_data.hash, jwt_data.file_ext)
+            path = file_storage.get_perm_video_path(hash_, ext)
         except FileNotFoundError:
             raise HTTPNotFound()
-        # Only consider redirecting the client when it is an external request.
+        # Don't consider redirecting internal requests:
         if jwt_data.iss != TokenIssuer.internal:
-            file_storage.distribution_controller.count_file_access(video, jwt_data.rid)
-            await video_check_redirect(request, video)
-        log.debug(f"serve video with hash {jwt_data.hash}")
-        path = file_storage.get_path(video)
+            stored_file = file_storage.get_file(hash_, ext)
+            file_storage.distribution_controller.count_file_access(stored_file, jwt_data.rid)
+            # May raise 302 redirect:
+            await video_check_redirect(request, stored_file)
+        log.debug(f"Serve video {hash_}")
     elif jwt_data.type == FileType.VIDEO_TEMP:
-        log.debug(f"serve temp video with hash {jwt_data.hash}")
-        path = file_storage.get_path_in_temp(video)
-    else:  # can only be a thumbnail request, since we check for a valid type in the beginning
+        path = file_storage.get_temp_video_path(hash_, ext)
+        await verify_file_exists(path)  # no guarantee until the response!
+        log.debug(f"Serve temp video {hash_}")
+    else:  # must be FileType.THUMBNAIL or FileType.THUMBNAIL_TEMP
         return await handle_thumbnail_request(jwt_data)
-    # If a video file is requested we already know the file should exist.
-    if jwt_data.type != FileType.VIDEO:
-        await verify_file_exists(path)
-    download_filename = request.query.get('downloadas')
+    dl_name = request.query.get('downloadas')
     if not settings.webserver.x_accel_location:
-        return FileResponse(path, headers=file_serve_headers(download_filename))
-    uri = Path(settings.webserver.x_accel_location, rel_path(str(video)))
+        return FileResponse(path, headers=file_serve_headers(dl_name))
+    uri = Path(settings.webserver.x_accel_location, rel_path(path.name))
     limit_rate = settings.webserver.get_x_accel_limit_rate(
         internal=jwt_data.iss == TokenIssuer.internal
     )
-    return serve_file_via_x_accel(uri, limit_rate, download_filename)
+    return serve_file_via_x_accel(uri, limit_rate, download_filename=dl_name)
 
 
 async def video_check_redirect(request: Request, file: StoredHashedVideoFile) -> None:
@@ -348,7 +440,7 @@ async def video_check_redirect(request: Request, file: StoredHashedVideoFile) ->
                     if own_tx_load > 0.5:
                         # Redirect to node where the client needs to wait until the node downloaded the file.
                         # Wait a moment to give distributor node time getting notified to copy the file.
-                        await asyncio.sleep(1)
+                        await async_sleep(1)
                         return video_redirect_to_node(request, to_node, file)
                     else:
                         return  # Serve file
@@ -368,7 +460,7 @@ async def video_check_redirect(request: Request, file: StoredHashedVideoFile) ->
         if own_tx_load > 0.5:
             # Redirect to node where the client needs to wait until the node downloaded the file.
             # Wait a moment to give distributor node time getting notified to copy the file.
-            await asyncio.sleep(1)
+            await async_sleep(1)
             return video_redirect_to_node(request, node, file)
         else:
             return  # Serve file
@@ -392,8 +484,8 @@ def get_own_tx_load() -> float:
 
 
 async def verify_file_exists(path: Path) -> None:
-    if not await asyncio.get_event_loop().run_in_executor(None, path.is_file):
-        log.warning(f"file does not exist: {path}")
+    if not await run_in_default_executor(path.is_file):
+        log.warning(f"File does not exist: {path}")
         raise HTTPNotFound()
 
 
@@ -403,34 +495,38 @@ async def handle_thumbnail_request(jwt_data: RequestFileJWTData) -> Response:
     Uses the `FileStorage` instance's capabilities of storing recently requested thumbnails in RAM.
     The usual sanity checks apply.
     """
-    video = HashedVideoFile(jwt_data.hash, jwt_data.file_ext)
-    file_storage = FileStorage.get_instance()
     if jwt_data.thumb_id is None:
-        log.info("thumb ID is None in JWT")
+        log.warning("JWT missing `thumb_id`")
         raise HTTPBadRequest()
+    hash_, ext, num = jwt_data.hash, jwt_data.file_ext, jwt_data.thumb_id
+    file_storage = FileStorage.get_instance()
     if jwt_data.type == FileType.THUMBNAIL:
-        log.debug(f"serve thumbnail {jwt_data.thumb_id} for video with hash {video}")
-        path = file_storage.get_thumb_path(video, jwt_data.thumb_id)
-    else:
-        log.debug(f"serve temp thumbnail {jwt_data.thumb_id} for video with hash {video}")
-        path = file_storage.get_thumb_path_in_temp(video, jwt_data.thumb_id)
-
-    bytes_data: Optional[bytes] = file_storage.thumb_memory_cache.get(path)
-    if bytes_data is None:
-        def read_entire_file_and_close_it() -> bytes:
-            with open(path, 'rb') as f:
-                return f.read()
         try:
-            bytes_data = await asyncio.get_event_loop().run_in_executor(None, read_entire_file_and_close_it)
+            path = file_storage.get_perm_thumbnail_path(hash_, ext, num=num)
         except FileNotFoundError:
-            log.warning(f"file does not exist: {path}")
             raise HTTPNotFound()
-        assert isinstance(bytes_data, bytes)
-
-        # Setting cache maximum size to 0 effectively disables keeping the data:
+        log.debug(f"Serve thumbnail {num} for video {hash_}")
+    elif jwt_data.type == FileType.THUMBNAIL_TEMP:
+        path = file_storage.get_temp_thumbnail_path(hash_, num=num)
+        log.debug(f"Serve temp thumbnail {num} for temp video {hash_}")
+    else:
+        raise RuntimeError("invalid request type")  # should never happen
+    body: Optional[bytes] = file_storage.thumb_memory_cache.get(path)
+    if body is None:
+        try:
+            body = await run_in_default_executor(path.read_bytes)
+        except FileNotFoundError:
+            log.warning(f"File does not exist: {path}")
+            raise HTTPNotFound()
+        assert isinstance(body, bytes)
+        # Setting cache maximum size to 0 effectively disables it:
         if settings.thumbnails.cache_max_mb > 0:
-            file_storage.thumb_memory_cache[path] = bytes_data
-    return Response(body=bytes_data, content_type=CONTENT_TYPES[path.suffix], headers=file_serve_headers())
+            file_storage.thumb_memory_cache[path] = body
+    return Response(
+        body=body,
+        content_type="image/jpeg",
+        headers=file_serve_headers(),
+    )
 
 
 @routes.post(r'/api/storage/distributor/add')

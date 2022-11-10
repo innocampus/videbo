@@ -10,9 +10,8 @@ from aiohttp.web import Application
 from tests.silent_log import SilentLogMixin
 from videbo import settings
 from videbo.misc import MEGA
-from videbo.models import Role, TokenIssuer
-from videbo.storage.api.models import FileType, RequestFileJWTData
-from videbo.storage.api.routes import get_expiration_time, routes
+from videbo.models import BaseJWTData
+from videbo.storage.api.routes import routes
 from videbo.web import get_application
 
 
@@ -64,17 +63,9 @@ class BaseE2ETestCase(SilentLogMixin, AioHTTPTestCase):
         cls._safe_rmtree(settings.files_path)
         super().tearDownClass()
 
-    @staticmethod
-    def get_request_file_jwt_data(file_hash: str, file_ext: str) -> RequestFileJWTData:
-        return RequestFileJWTData(
-            exp=get_expiration_time(),
-            iss=TokenIssuer.external,
-            role=Role.client,
-            type=FileType.VIDEO,
-            hash=file_hash,
-            file_ext=file_ext,
-            rid='1'
-        )
+    def setUp(self) -> None:
+        self.default_jwt_exp_time = BaseJWTData.default_expiration_from_now()
+        super().setUp()
 
     @staticmethod
     def get_auth_header(token: str) -> dict[str, str]:

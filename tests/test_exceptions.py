@@ -5,24 +5,32 @@ from videbo import exceptions
 
 class SubprocessErrorTestCase(TestCase):
     def test___init__(self) -> None:
-        obj = exceptions.SubprocessError(timeout=True, stderr="abc")
-        self.assertTrue(obj.timeout)
-        self.assertEqual("abc", obj.stderr)
+        timeout, stderr = True, "abc"
+        exc = exceptions.SubprocessError(timeout=timeout, stderr=stderr)
+        self.assertTrue(exc.timeout)
+        self.assertEqual(stderr, exc.stderr)
+        self.assertEqual(f"{timeout=}; stderr={stderr}", exc.args[0])
+
+        timeout = False
+        exc = exceptions.SubprocessError(timeout=timeout)
+        self.assertFalse(exc.timeout)
+        self.assertEqual(None, exc.stderr)
+        self.assertEqual(f"{timeout=}", exc.args[0])
 
 
-class InvalidMimeTypeErrorTestCase(TestCase):
+class MimeTypeNotAllowedTestCase(TestCase):
     def test___init__(self) -> None:
-        obj = exceptions.InvalidMimeTypeError(mime_type="abc")
+        obj = exceptions.MimeTypeNotAllowed(mime_type="abc")
         self.assertEqual("abc", obj.mime_type)
 
 
-class InvalidVideoErrorTestCase(TestCase):
+class ContainerFormatNotAllowedTestCase(TestCase):
     def test___init__(self) -> None:
-        obj = exceptions.InvalidVideoError(
-            container="a",
-            video_codec="b",
-            audio_codec="c",
-        )
-        self.assertEqual("a", obj.container)
-        self.assertEqual("b", obj.video_codec)
-        self.assertEqual("c", obj.audio_codec)
+        obj = exceptions.ContainerFormatNotAllowed(formats=("abc", "xyz"))
+        self.assertListEqual(["abc", "xyz"], obj.formats)
+
+
+class CodecNotAllowedTestCase(TestCase):
+    def test___init__(self) -> None:
+        obj = exceptions.CodecNotAllowed(codec="abc")
+        self.assertEqual("abc", obj.codec)

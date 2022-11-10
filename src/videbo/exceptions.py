@@ -1,4 +1,5 @@
-from typing import Optional
+from collections.abc import Iterable as _Iterable
+from typing import Optional as _Optional
 
 
 class VideboBaseException(Exception):
@@ -6,10 +7,19 @@ class VideboBaseException(Exception):
 
 
 class SubprocessError(VideboBaseException):
-    def __init__(self, timeout: bool = False, stderr: Optional[str] = None) -> None:
+    """Base class for subprocess-related exceptions"""
+    def __init__(
+        self,
+        timeout: bool = False,
+        stderr: _Optional[str] = None,
+    ) -> None:
+        """If `stderr` is provided, the text is added to the error message."""
         self.timeout: bool = timeout
-        self.stderr: Optional[str] = stderr
-        super().__init__()
+        self.stderr: _Optional[str] = stderr
+        msg = f"{timeout=}"
+        if stderr:
+            msg += f"; stderr={stderr}"
+        super().__init__(msg)
 
 
 class FileCmdError(SubprocessError):
@@ -25,21 +35,38 @@ class FFProbeError(SubprocessError):
 
 
 class VideoError(VideboBaseException):
+    """Base class for video format/codec related exceptions"""
     pass
 
 
-class InvalidMimeTypeError(VideoError):
+class VideoNotAllowed(VideoError):
+    pass
+
+
+class MimeTypeNotAllowed(VideoNotAllowed):
     def __init__(self, mime_type: str):
         self.mime_type = mime_type
-        super().__init__()
+        super().__init__(self.mime_type)
 
 
-class InvalidVideoError(VideoError):
-    def __init__(self, container: str = '', video_codec: str = '', audio_codec: str = '') -> None:
-        self.container = container
-        self.video_codec = video_codec
-        self.audio_codec = audio_codec
-        super().__init__()
+class ContainerFormatNotAllowed(VideoNotAllowed):
+    def __init__(self, formats: _Iterable[str]) -> None:
+        self.formats = list(formats)
+        super().__init__(str(self.formats))
+
+
+class CodecNotAllowed(VideoNotAllowed):
+    def __init__(self, codec: _Optional[str]) -> None:
+        self.codec = codec
+        super().__init__(str(self.codec))
+
+
+class VideoCodecNotAllowed(CodecNotAllowed):
+    pass
+
+
+class AudioCodecNotAllowed(CodecNotAllowed):
+    pass
 
 
 class FilesystemError(VideboBaseException):

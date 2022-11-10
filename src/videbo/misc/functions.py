@@ -1,23 +1,112 @@
 import os
 import re
 from asyncio import get_running_loop
+from asyncio.subprocess import Process
+from asyncio.subprocess import create_subprocess_exec as _create_subproc
 from collections.abc import Callable
 from inspect import Parameter, isclass, signature
 from pathlib import Path
-from typing import Any, TypeVar
+from shutil import copyfile as _shutil_copyfile
+from subprocess import DEVNULL
+from typing import Any, Optional, TypeVar
 
 from videbo.exceptions import InvalidRouteSignature
-from videbo.types import ExtendedHandler
+from videbo.types import ExtendedHandler, PathT
 from . import MEGA
+
+
+__all__ = [
+    "run_in_default_executor",
+    "get_free_disk_space",
+    "move_file",
+    "copy_file",
+    "sanitize_filename",
+    "rel_path",
+    "get_parameters_of_class",
+    "get_route_model_param",
+    "create_user_subprocess",
+]
 
 
 T = TypeVar("T")
 
 
+async def run_in_default_executor(func: Callable[..., T], *args: Any) -> T:
+    """Runs `func(*args)` in the running event loop's default executor."""
+    return await get_running_loop().run_in_executor(None, func, *args)
+
+
 async def get_free_disk_space(path: str) -> float:
     """Get free disk space at the given path in MB."""
-    st = await get_running_loop().run_in_executor(None, os.statvfs, path)
+    st = await run_in_default_executor(os.statvfs, path)
     return st.f_bavail * st.f_frsize / MEGA
+
+
+def move_file(
+    src: PathT,
+    dst: PathT,
+    create_dir_mode: Optional[int] = None,
+    chmod: int = 0o644,
+    safe: bool = False,
+) -> bool:
+    """
+    Moves a file from on location in the filesystem to another.
+
+    Args:
+        src:
+            The file to move
+        dst:
+            The desired new location of the file
+        create_dir_mode (optional):
+            If provided and the parent/directory of the destination file path
+            is missing, it is first created with the specified permissions.
+        chmod (optional):
+            The permissions to set on the destination file path;
+            defaults to `0o644`.
+        safe (optional):
+            If `True` and the destination path already exists and is a file,
+            a `FileExistsError` is raised; if `False` (default) and the
+            destination file already exists, the source file just is removed.
+
+    Returns:
+        `True` if the `dst` path did not exist yet and `src` file was moved;
+        `False` if `dst` already existed and `src` file was merely deleted.
+    """
+    dst = Path(dst)
+    if create_dir_mode is not None:
+        dst.parent.mkdir(mode=create_dir_mode, parents=True, exist_ok=True)
+    if dst.is_file():
+        if safe:
+            raise FileExistsError
+        Path(src).unlink()
+        return False
+    else:  # move
+        Path(src).rename(dst)
+        dst.chmod(chmod)
+        return True
+
+
+def copy_file(src: PathT, dst: PathT, overwrite: bool = False) -> bool:
+    """
+    Copies a file from one location in the filesystem to another.
+
+    Args:
+        src:
+            The file to copy
+        dst:
+            The desired new location of the file
+        overwrite (optional):
+            If `True` and the `dst` path already exists and is a file,
+            it will be overwritten with `src`; if `False` (default) and the
+            `dst` path already exists and is a file, no action is performed.
+
+    Returns:
+        `True` if the `src` file was copied; `False` otherwise.
+    """
+    if overwrite or not Path(dst).is_file():
+        _shutil_copyfile(src, dst)
+        return True
+    return False
 
 
 def sanitize_filename(filename: str) -> str:
@@ -101,3 +190,29 @@ def get_route_model_param(
             f"in function `{route_handler.__name__}`."
         )
     return params[0].name, params[0].annotation
+
+
+async def create_user_subprocess(
+    program: str,
+    *args: str,
+    sudo_user: Optional[str] = None,
+    **kwargs: Any,
+) -> Process:
+    """
+    Creates an `asyncio.subprocess.Process` with the provided arguments.
+
+    If `sudo_user` is specified, the program will be called with
+    `sudo -u <sudo_user>`, which requires `sudo` to be available and the
+    appropriate settings in the sudoers file to be set.
+
+    For the other arguments see `create_subprocess_exec` documentation:
+    https://docs.python.org/3/library/asyncio-subprocess.html
+
+    By default `stdout` and `stderr` are both set to `subprocess.DEVNULL`.
+    """
+    if sudo_user:
+        args = ("-u", sudo_user, program) + args
+        program = "sudo"
+    kwargs.setdefault("stdout", DEVNULL)
+    kwargs.setdefault("stderr", DEVNULL)
+    return await _create_subproc(program, *args, **kwargs)

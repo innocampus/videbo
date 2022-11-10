@@ -14,10 +14,10 @@ from videbo.models import Role, TokenIssuer
 from videbo.storage.api.models import (
     DeleteFileJWTData,
     FileUploadedResponseJWT,
+    RequestFileJWTData,
     SaveFileJWTData,
     UploadFileJWTData,
 )
-from videbo.storage.api.routes import get_expiration_time
 from tests._e2e.base import BaseE2ETestCase
 
 THIS_DIR = Path(__file__).parent
@@ -184,7 +184,7 @@ class TwoNodesTestCase(BaseE2ETestCase):
         method = "POST"
         url = self.test_settings_storage.make_url("/api/upload/file")
         jwt_data = UploadFileJWTData(
-            exp=get_expiration_time(),
+            exp=self.default_jwt_exp_time,
             iss=TokenIssuer.external,
             role=Role.client,
             is_allowed_to_upload_file=True
@@ -230,7 +230,7 @@ class TwoNodesTestCase(BaseE2ETestCase):
         method = "GET"
         url = self.test_settings_storage.make_url("/api/save/file/" + hashed_video_file_name)
         jwt_data = SaveFileJWTData(
-            exp=get_expiration_time(),
+            exp=self.default_jwt_exp_time,
             iss=TokenIssuer.external,
             role=Role.lms,
             is_allowed_to_save_file=True
@@ -260,7 +260,7 @@ class TwoNodesTestCase(BaseE2ETestCase):
         # Download from Storage & copy to Dist #
 
         method = "GET"
-        jwt_data = self.get_request_file_jwt_data(data.hash, data.file_ext)
+        jwt_data = RequestFileJWTData.client_default(data.hash, data.file_ext, temp=False)
         request_file_token = jwt_data.encode(key=key)
         url = self.test_settings_storage.make_url("/file?jwt=" + request_file_token)
         headers = self.get_auth_header(request_file_token)
@@ -315,7 +315,7 @@ class TwoNodesTestCase(BaseE2ETestCase):
         method = "DELETE"
         url = self.test_settings_storage.make_url("/api/file/" + hashed_video_file_name)
         jwt_data = DeleteFileJWTData(
-            exp=get_expiration_time(),
+            exp=self.default_jwt_exp_time,
             iss=TokenIssuer.external,
             role=Role.lms,
             is_allowed_to_delete_file=True
@@ -344,7 +344,7 @@ class TwoNodesTestCase(BaseE2ETestCase):
 
         # Perform another request to the storage node to get 404:
         method = "GET"
-        jwt_data = self.get_request_file_jwt_data(data.hash, data.file_ext)
+        jwt_data = RequestFileJWTData.client_default(data.hash, data.file_ext, temp=False)
         request_file_token = jwt_data.encode(key=key)
         url = self.test_settings_storage.make_url("/file?jwt=" + request_file_token)
         headers = self.get_auth_header(request_file_token)

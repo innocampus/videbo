@@ -57,6 +57,8 @@ class BaseJWTData(BaseModel):
 
     Allows encoding an instance's data as a JWT string, as well as decoding a JWT string to an instance of the model.
     """
+    DEFAULT_LIFE_TIME: ClassVar[float] = 60 * 60.0  # seconds
+
     exp: int  # expiration time claim
     iss: TokenIssuer  # issuer claim
 
@@ -169,6 +171,11 @@ class BaseJWTData(BaseModel):
             issuer=issuer,
         )
         return cls.parse_obj(decoded)
+
+    @classmethod
+    def default_expiration_from_now(cls) -> int:
+        """Returns the timestamp `DEFAULT_LIFE_TIME` seconds from now."""
+        return int(time() + cls.DEFAULT_LIFE_TIME)
 
 
 class Role(IntEnum):

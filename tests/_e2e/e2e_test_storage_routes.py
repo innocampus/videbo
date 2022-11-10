@@ -12,12 +12,12 @@ from videbo.misc import MEGA
 from videbo.misc.functions import rel_path
 from videbo.models import Role, TokenIssuer
 from videbo.storage.api.models import (
-    UploadFileJWTData,
-    SaveFileJWTData,
     DeleteFileJWTData,
     FileUploadedResponseJWT,
+    RequestFileJWTData,
+    SaveFileJWTData,
+    UploadFileJWTData,
 )
-from videbo.storage.api.routes import get_expiration_time
 from .base import BaseE2ETestCase
 
 
@@ -39,7 +39,7 @@ class RoutesIntegrationTestCaseFail(BaseE2ETestCase):
 
         # With invalid content-type:
         jwt_data = UploadFileJWTData(
-            exp=get_expiration_time(),
+            exp=self.default_jwt_exp_time,
             iss=TokenIssuer.external,
             role=Role.client,
             is_allowed_to_upload_file=True
@@ -51,7 +51,7 @@ class RoutesIntegrationTestCaseFail(BaseE2ETestCase):
 
         # Without upload permission:
         jwt_data = UploadFileJWTData(
-            exp=get_expiration_time(),
+            exp=self.default_jwt_exp_time,
             iss=TokenIssuer.external,
             role=Role.client,
             is_allowed_to_upload_file=False
@@ -64,7 +64,7 @@ class RoutesIntegrationTestCaseFail(BaseE2ETestCase):
         # No field named `video` in payload:
         del headers[CONTENT_TYPE]
         jwt_data = UploadFileJWTData(
-            exp=get_expiration_time(),
+            exp=self.default_jwt_exp_time,
             iss=TokenIssuer.external,
             role=Role.client,
             is_allowed_to_upload_file=True
@@ -103,7 +103,7 @@ class RoutesIntegrationTestCaseFail(BaseE2ETestCase):
 
         # With not enough privileges:
         jwt_data = SaveFileJWTData(
-            exp=get_expiration_time(),
+            exp=self.default_jwt_exp_time,
             iss=TokenIssuer.external,
             role=Role.client,
             is_allowed_to_save_file=True
@@ -114,7 +114,7 @@ class RoutesIntegrationTestCaseFail(BaseE2ETestCase):
 
         # Without save permission:
         jwt_data = SaveFileJWTData(
-            exp=get_expiration_time(),
+            exp=self.default_jwt_exp_time,
             iss=TokenIssuer.external,
             role=Role.lms,
             is_allowed_to_save_file=False
@@ -125,7 +125,7 @@ class RoutesIntegrationTestCaseFail(BaseE2ETestCase):
 
         # No such file:
         jwt_data = SaveFileJWTData(
-            exp=get_expiration_time(),
+            exp=self.default_jwt_exp_time,
             iss=TokenIssuer.external,
             role=Role.lms,
             is_allowed_to_save_file=True
@@ -145,7 +145,7 @@ class RoutesIntegrationTestCaseFail(BaseE2ETestCase):
 
         # With not enough privileges:
         jwt_data = DeleteFileJWTData(
-            exp=get_expiration_time(),
+            exp=self.default_jwt_exp_time,
             iss=TokenIssuer.external,
             role=Role.client,
             is_allowed_to_delete_file=True
@@ -156,7 +156,7 @@ class RoutesIntegrationTestCaseFail(BaseE2ETestCase):
 
         # Without delete permission:
         jwt_data = DeleteFileJWTData(
-            exp=get_expiration_time(),
+            exp=self.default_jwt_exp_time,
             iss=TokenIssuer.external,
             role=Role.lms,
             is_allowed_to_delete_file=False
@@ -182,7 +182,7 @@ class RoutesIntegrationTestCaseCorrect(BaseE2ETestCase):
         # Upload:
         method, url = 'POST', '/api/upload/file'
         jwt_data = UploadFileJWTData(
-            exp=get_expiration_time(),
+            exp=self.default_jwt_exp_time,
             iss=TokenIssuer.external,
             role=Role.client,
             is_allowed_to_upload_file=True
@@ -209,7 +209,7 @@ class RoutesIntegrationTestCaseCorrect(BaseE2ETestCase):
         # Save:
         method, url = 'GET', '/api/save/file/' + hashed_video_file_name
         jwt_data = SaveFileJWTData(
-            exp=get_expiration_time(),
+            exp=self.default_jwt_exp_time,
             iss=TokenIssuer.external,
             role=Role.lms,
             is_allowed_to_save_file=True
@@ -227,7 +227,7 @@ class RoutesIntegrationTestCaseCorrect(BaseE2ETestCase):
         # Download (without X-Accel):
         settings.webserver.x_accel_location = ''
         method, url = 'GET', '/file'
-        jwt_data = self.get_request_file_jwt_data(data.hash, data.file_ext)
+        jwt_data = RequestFileJWTData.client_default(data.hash, data.file_ext, temp=False)
         headers = self.get_auth_header(jwt_data.encode())
         resp = await self.client.request(method, url, headers=headers)
         self.assertEqual(200, resp.status)
@@ -250,7 +250,7 @@ class RoutesIntegrationTestCaseCorrect(BaseE2ETestCase):
         # Delete:
         method, url = 'DELETE', '/api/file/' + hashed_video_file_name
         jwt_data = DeleteFileJWTData(
-            exp=get_expiration_time(),
+            exp=self.default_jwt_exp_time,
             iss=TokenIssuer.external,
             role=Role.lms,
             is_allowed_to_delete_file=True
@@ -266,7 +266,7 @@ class RoutesIntegrationTestCaseCorrect(BaseE2ETestCase):
 
         # Request again, expected 404:
         method, url = 'GET', '/file'
-        jwt_data = self.get_request_file_jwt_data(data.hash, data.file_ext)
+        jwt_data = RequestFileJWTData.client_default(data.hash, data.file_ext, temp=False)
         headers = self.get_auth_header(jwt_data.encode())
         resp = await self.client.request(method, url, headers=headers)
         self.assertEqual(404, resp.status)

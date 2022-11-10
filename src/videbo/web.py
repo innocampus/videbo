@@ -21,7 +21,7 @@ from videbo.misc.functions import sanitize_filename, get_route_model_param
 from videbo.misc.task_manager import TaskManager
 from videbo.models import BaseRequestModel
 from videbo.types import CleanupContext, ExtendedHandler, StrDict
-from videbo.video import content_type_for_extension
+from videbo.video.models import VideoInfo
 
 
 log = logging.getLogger(__name__)
@@ -242,5 +242,5 @@ def serve_file_via_x_accel(
     """
     headers = file_serve_headers(download_filename)
     headers.update(x_accel_headers(str(redirect_uri), limit_rate_bytes))
-    content_type = content_type_for_extension(''.join(redirect_uri.suffixes))
+    content_type = VideoInfo.content_type_for(''.join(redirect_uri.suffixes))
     return Response(headers=headers, content_type=content_type)

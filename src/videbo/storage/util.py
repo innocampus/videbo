@@ -1,26 +1,23 @@
 from __future__ import annotations
-import asyncio
-import hashlib
 import logging
-import os
-import tempfile
-import time
+from asyncio import sleep as async_sleep
+from asyncio.tasks import create_task, gather
 from collections.abc import AsyncIterator, Iterable, Iterator
 from pathlib import Path
-from typing import BinaryIO, Optional, Union
+from time import time
+from typing import Optional, Union
 
 from aiohttp.web_app import Application
 
 from videbo import settings
 from videbo.client import Client
-from videbo.exceptions import PendingWriteOperationError, CouldNotCreateDir, LMSInterfaceError
+from videbo.exceptions import CouldNotCreateDir, LMSInterfaceError
 from videbo.lms_api import LMS
-from videbo.misc import MEGA
-from videbo.misc.functions import get_free_disk_space, rel_path
+from videbo.misc import JPG_EXT, MEGA
+from videbo.misc.functions import get_free_disk_space, move_file, rel_path, run_in_default_executor
 from videbo.misc.lru_dict import BytesLimitLRU
 from videbo.misc.task_manager import TaskManager
 from videbo.network import NetworkInterfaces
-from videbo.video import VideoInfo, Video, VideoConfig
 from .distribution import DistributionController, FileNodes
 from .exceptions import HashedFileInvalidExtensionError
 from .api.models import FileType, StorageStatus
@@ -30,7 +27,6 @@ log = logging.getLogger(__name__)
 
 
 FILE_EXT_WHITELIST = ('.mp4', '.webm')
-JPG_EXT = '.jpg'  # for thumbnails
 VALID_EXTENSIONS = frozenset(FILE_EXT_WHITELIST + (JPG_EXT,))
 
 
@@ -83,6 +79,7 @@ _FilesDict = dict[str, HashedVideoFile]
 _StoredFilesDict = dict[str, StoredHashedVideoFile]
 
 
+# TODO: Check the necessity for this function and move it to misc.functions
 def create_dir_if_not_exists(path: Union[Path, str], mode: int = 0o777, explicit_chmod: bool = False) -> None:
     path = Path(path)
     if path.is_dir():
@@ -122,7 +119,7 @@ class FileStorage:
         create_dir_if_not_exists(self.temp_dir, 0o755)
         create_dir_if_not_exists(self.temp_out_dir, 0o777, explicit_chmod=True)
 
-        self._garbage_collector_task = asyncio.create_task(self._garbage_collect_cron())
+        self._garbage_collector_task = create_task(self._garbage_collect_cron())
         TaskManager.fire_and_forget_task(self._garbage_collector_task)
 
     @classmethod
@@ -175,10 +172,12 @@ class FileStorage:
         self.distribution_controller.add_video(file)
         return file
 
-    def get_files_total_size_mb(self) -> int:
-        return int(self._cached_files_total_size / 1024 / 1024)
+    @property
+    def files_total_size_mb(self) -> float:
+        return self._cached_files_total_size / MEGA
 
-    def get_files_count(self) -> int:
+    @property
+    def files_count(self) -> int:
         return len(self._cached_files)
 
     def iter_files(self) -> Iterator[StoredHashedVideoFile]:
@@ -255,139 +254,147 @@ class FileStorage:
             return orphaned_files
         return set(files).difference(orphaned_files)
 
-    async def get_file(self, file_hash: str, file_ext: str) -> StoredHashedVideoFile:
-        """Get video file in storage and check that it really exists."""
+    def get_file(self, file_hash: str, file_ext: str) -> StoredHashedVideoFile:
+        """
+        Returns stored video file with the specified hash and extension.
+
+        If no matching file is found in cache, raises `FileNotFoundError`.
+        """
         file = self._cached_files.get(file_hash)
-        if file and file.file_ext == file_ext:
-            return file
+        if file is None or file.file_ext != file_ext:
+            raise FileNotFoundError
+        return file
 
-        raise FileNotFoundError()
-
-    async def generate_thumbs(self, file: HashedVideoFile, video: VideoInfo) -> int:
-        """Generates thumbnail suggestions."""
-        video_length = video.get_length()
-        thumb_height = settings.thumbnails.height
-        thumb_count = settings.thumbnails.suggestion_count
-        video_check_user = settings.video.check_user
-        # Generate thumbnails concurrently
-        tasks = []
-        for thumb_nr in range(thumb_count):
-            thumb_path = self.get_thumb_path_in_temp(file, thumb_nr)
-            offset = int(video_length / thumb_count * (thumb_nr + 0.5))
-            temp_out_file = None
-            if video_check_user is not None:
-                temp_out_file = Path(self.temp_out_dir, file.hash + "_" + str(thumb_nr) + JPG_EXT)
-            tasks.append(Video(video_config=VideoConfig()).save_thumbnail(
-                video.video_file, thumb_path, offset, thumb_height, temp_output_file=temp_out_file))
-        await asyncio.gather(*tasks)
-        return thumb_count
-
-    @classmethod
-    def get_hash_gen(cls):  # type: ignore
-        """Get hashing method that is used for all files in the video."""
-        return hashlib.sha256()
-
-    def create_temp_file(self) -> TempFile:
-        """Create a space where we can write data to."""
-        fd, path = tempfile.mkstemp(prefix='upload_', dir=self.temp_dir)  # actually blocking io
-        os.chmod(path, 0o644)  # Make readable for check_user
-        return TempFile(os.fdopen(fd, mode='wb'), Path(path), self)
-
-    def get_path(self, file: HashedVideoFile) -> Path:
-        """Get path where to find a file with its hash."""
-        return Path(self.storage_dir, rel_path(str(file)))
-
-    def get_path_in_temp(self, file: HashedVideoFile) -> Path:
-        return TempFile.get_path(self.temp_dir, file)
-
-    def get_thumb_path(self, file: HashedVideoFile, thumb_nr: int) -> Path:
-        """Get path where to find a thumbnail with a hash."""
-        file_name = file.hash + "_" + str(thumb_nr) + JPG_EXT
+    def get_path(self, file_name: str, *, temp: bool) -> Path:
+        """Constructs standardized storage path for a specified file name."""
+        if temp:
+            return Path(self.temp_dir, file_name)
         return Path(self.storage_dir, rel_path(file_name))
 
-    def get_thumb_path_in_temp(self, file: HashedVideoFile, thumb_nr: int) -> Path:
-        return TempFile.get_thumb_path(self.temp_dir, file, thumb_nr)
+    def get_perm_video_path(self, file_hash: str, file_ext: str) -> Path:
+        """
+        Returns permanent storage path for the specified video file.
 
-    @staticmethod
-    def _delete_file(file_path: Path) -> bool:
-        # Check source file really exists.
-        if not file_path.is_file():
-            return False
+        If no matching video is found in cache, raises `FileNotFoundError`.
+        """
+        file = self.get_file(file_hash, file_ext)
+        return self.get_path(str(file), temp=False)
 
-        file_path.unlink()
-        return True
+    def get_temp_video_path(self, file_hash: str, file_ext: str) -> Path:
+        """Returns temporary storage path for the specified video file."""
+        return self.get_path(file_hash + file_ext, temp=True)
 
-    @staticmethod
-    def _move_file(path: Path, new_file_path: Path) -> None:
-        # Check source file really exists.
-        if not path.is_file():
-            raise FileNotFoundError()
+    def get_perm_thumbnail_path(
+        self,
+        video_hash: str,
+        video_ext: str,
+        *,
+        num: int,
+    ) -> Path:
+        """
+        Returns permanent thumbnail path for the specified video file.
 
-        # Ensure dir exists.
-        parent = new_file_path.parent
-        if not parent.is_dir():
-            parent.mkdir(mode=0o755, parents=True)
+        If no matching video is found in cache, raises `FileNotFoundError`.
+        """
+        _ = self.get_file(video_hash, video_ext)
+        return self.get_path(f"{video_hash}_{num}{JPG_EXT}", temp=False)
 
-        if new_file_path.is_file():
-            # If a file with the hash already exists, we don't need another copy.
-            path.unlink()
-        else:
-            path.rename(new_file_path)
-            new_file_path.chmod(0o644)
+    def get_temp_thumbnail_path(self, video_hash: str, *, num: int) -> Path:
+        """Returns temporary thumbnail path for the specified video file."""
+        return self.get_path(f"{video_hash}_{num}{JPG_EXT}", temp=True)
 
-    async def add_file_from_temp(self, file: HashedVideoFile) -> None:
-        """Add a file to the storage that is currently stored in the temp dir."""
-        temp_path = self.get_path_in_temp(file)
-        new_file_path = self.get_path(file)
+    async def store_file_permanently(self, file_name: str) -> Path:
+        """
+        Moves specified file from temporary to permanent storage.
 
-        # Run in another thread as there is blocking io.
-        await asyncio.get_event_loop().run_in_executor(None, self._move_file, temp_path, new_file_path)
-        log.info("Added file with hash %s permanently to storage.", file.hash)
-        self._add_video_to_cache(file.hash, file.file_ext, new_file_path)
+        The full paths are calculated by the `get_path` method.
 
-    async def add_thumbs_from_temp(self, file: HashedVideoFile, thumb_count: int) -> None:
-        """Add thumbnails to the video that are currently stored in the temp dir."""
-        tasks = []
-        for thumb_nr in range(thumb_count):
-            old_thumb_path = self.get_thumb_path_in_temp(file, thumb_nr)
-            new_thumb_file = self.get_thumb_path(file, thumb_nr)
+        If the destination directory does not exist yet,
+        it is created and its permissions are set to 755.
 
-            # Run in another thread as there is blocking io.
-            tasks.append(asyncio.get_event_loop().run_in_executor(None, self._move_file, old_thumb_path,
-                                                                  new_thumb_file))
-        await asyncio.gather(*tasks)
-        log.info(f"Added {thumb_count} thumbnails for file with hash {file.hash} permanently to storage.")
+        If a file already exists at the calculated destination,
+        no copying is done and the source file is deleted.
 
-    async def remove(self, file: StoredHashedVideoFile) -> None:
-        file_path = self.get_path(file)
+        The operation is done in another thread to avoid blocking.
+        """
+        source = self.get_path(file_name, temp=True)
+        destination = self.get_path(file_name, temp=False)
+        await run_in_default_executor(move_file, source, destination, 0o755)
+        return destination
 
-        # Run in another thread as there is blocking io.
-        if not await asyncio.get_event_loop().run_in_executor(None, self._delete_file, file_path):
-            raise FileNotFoundError()
+    async def store_permanently(
+        self,
+        video_hash: str,
+        video_ext: str,
+        *,
+        thumbnail_count: Optional[int] = None
+    ) -> None:
+        """
+        Moves video and thumbnails from temporary to permanent storage.
 
-        # Remove file from cached files and delete all copies on distributor nodes.
+        See `store_file_permanently` for details.
+
+        Args:
+            video_hash:
+                The hash digest of the video file to be stored
+            video_ext:
+                The file extension of the video to be stored
+            thumbnail_count (optional):
+                If omitted or `None` (default), the number of thumbnails
+                to store is taken from `settings.thumbnails.suggestion_count`.
+        """
+        path = await self.store_file_permanently(video_hash + video_ext)
+        log.info(f"Video stored permanently: {video_hash}")
+        self._add_video_to_cache(video_hash, video_ext, path)
+        thumbnail_count = thumbnail_count or settings.thumbnails.suggestion_count
+        coroutines = (
+            self.store_file_permanently(f"{video_hash}_{num}{JPG_EXT}")
+            for num in range(thumbnail_count)
+        )
+        await gather(*coroutines)
+        log.info(
+            f"Permanently stored {thumbnail_count} thumbnails "
+            f"for video {video_hash}"
+        )
+
+    async def remove_video(self, file: StoredHashedVideoFile) -> None:
+        """
+        Removes the specified video file from storage.
+
+        Calls on the distributor nodes to remove the file as well.
+        Updates the total files size.
+
+        The operation is done in another thread to avoid blocking.
+        """
+        file_path = self.get_perm_video_path(file.hash, file.file_ext)
+        await run_in_default_executor(file_path.unlink)
         self._cached_files.pop(file.hash)
         self._cached_files_total_size -= file.file_size
         self.distribution_controller.remove_video(file)
+        log.info(f"Video removed from storage: {file.hash}")
 
-        log.info(f"Removed file with hash {file.hash} permanently from storage.")
+    async def remove_thumbnails(
+        self,
+        video_hash: str,
+        *,
+        count: Optional[int] = None,
+    ) -> None:
+        """
+        Removes the thumbnails for the specified video file from storage.
 
-    async def remove_thumbs(self, file: HashedVideoFile) -> None:
-        thumb_nr = 0
-        # Remove increasing thumbnail ids until file not found
-        while True:
-            thumb_path = self.get_thumb_path(file, thumb_nr)
+        The operations are done in another thread to avoid blocking.
+        """
+        count = count or settings.thumbnails.suggestion_count
+        coroutines = []
+        for num in range(count):
+            path = self.get_path(f"{video_hash}_{num}{JPG_EXT}", temp=False)
             try:
-                del self.thumb_memory_cache[thumb_path]
+                del self.thumb_memory_cache[path]
             except KeyError:
                 pass
-
-            # Run in another thread as there is blocking io.
-            if not await asyncio.get_event_loop().run_in_executor(None, self._delete_file, thumb_path):
-                break
-            thumb_nr += 1
-
-        log.info(f"Removed {thumb_nr} thumbnails for file with hash {file.hash} permanently from storage.")
+            coroutines.append(run_in_default_executor(path.unlink))
+        await gather(*coroutines)
+        log.info(f"Removed {count} thumbnails for video {video_hash}")
 
     async def remove_files(self, *hashes: str, origin: Optional[str] = None) -> set[str]:
         """
@@ -422,8 +429,8 @@ class FileStorage:
         log.info(f"{len(orphaned)} files are being deleted.")
         for video in orphaned:
             file = self._cached_files[video.hash]
-            await self.remove_thumbs(file)
-            await self.remove(file)
+            await self.remove_thumbnails(video.hash)
+            await self.remove_video(file)
             log.info(f"Deleted video {video.hash} permanently")
             hashes_set.discard(video.hash)
         return hashes_set
@@ -431,29 +438,26 @@ class FileStorage:
     def garbage_collect_temp_dir(self) -> int:
         """Delete files older than GC_TEMP_FILES_SECS."""
         count = 0
-        old = time.time() - self.GC_TEMP_FILES_SECS
+        old = time() - self.GC_TEMP_FILES_SECS
         for file in self.temp_dir.iterdir():
             if file.is_file() and file.stat().st_mtime < old:
                 # File is old and most likely not needed anymore.
                 file.unlink()
                 count += 1
-
         return count
 
     async def _garbage_collect_cron(self) -> None:
         """Endless loop that cleans up data periodically."""
         while True:
-            files_deleted = await asyncio.get_event_loop().run_in_executor(None, self.garbage_collect_temp_dir)
-            if files_deleted > 0:
-                log.info(f"Run GC of temp folder: Removed {files_deleted} file(s).")
-
-            await asyncio.sleep(self.GC_ITERATION_SECS)
+            files_deleted = await run_in_default_executor(self.garbage_collect_temp_dir)
+            log.info(f"Run GC of temp folder: Removed {files_deleted} file(s).")
+            await async_sleep(self.GC_ITERATION_SECS)
 
     async def get_status(self) -> StorageStatus:
         status = StorageStatus.construct()
         # Same attributes for storage and distributor nodes:
-        status.files_total_size = self.get_files_total_size_mb()
-        status.files_count = self.get_files_count()
+        status.files_total_size = self.files_total_size_mb
+        status.files_count = self.files_count
         status.free_space = await get_free_disk_space(str(settings.files_path))
         status.tx_max_rate = settings.tx_max_rate_mbit
         NetworkInterfaces.get_instance().update_node_status(status, logger=log)
@@ -461,76 +465,6 @@ class FileStorage:
         status.distributor_nodes = self.distribution_controller.get_dist_node_base_urls()
         status.num_current_uploads = self.num_current_uploads
         return status
-
-
-class TempFile:
-    """Used to handle files that are getting uploaded right now or were just uploaded, but not yet added to the
-    file storage finally.
-    """
-
-    def __init__(self, file: BinaryIO, path: Path, storage: FileStorage):
-        self.hash = FileStorage.get_hash_gen()  # type: ignore[no-untyped-call]
-        self.file = file
-        self.path: Path = path
-        self.storage = storage
-        self.size = 0
-        self.is_writing = False
-
-    async def write(self, data: bytes) -> None:
-        """Write data to the file and compute the hash on the fly."""
-        if self.is_writing:
-            raise PendingWriteOperationError()
-        self.size += len(data)
-        self.is_writing = True
-        # Run in another thread as there is blocking io.
-        await asyncio.get_event_loop().run_in_executor(None, self._update_hash_write_file, data)
-        self.is_writing = False
-
-    def _update_hash_write_file(self, data: bytes) -> None:
-        self.hash.update(data)
-        self.file.write(data)
-
-    async def close(self) -> None:
-        await asyncio.get_event_loop().run_in_executor(None, self.file.close)
-
-    async def persist(self, file_ext: str) -> HashedVideoFile:
-        """
-        Close file and name the file after its hash.
-        :param file_ext:
-        :return: The file hash.
-        """
-        if self.is_writing:
-            raise PendingWriteOperationError()
-        self.is_writing = True  # Don't allow any additional writes.
-        file = HashedVideoFile(self.hash.hexdigest(), file_ext)
-        # Run in another thread as there is blocking io.
-        await asyncio.get_event_loop().run_in_executor(None, self._move, file)
-        return file
-
-    def _move(self, file: HashedVideoFile) -> None:
-        new_path = self.get_path(self.storage.temp_dir, file)
-        if new_path.is_file():
-            # If a file with the hash already exists, we don't need another copy.
-            self.path.unlink()
-        else:
-            self.path.rename(new_path)
-
-    @classmethod
-    def get_path(cls, temp_dir: Path, file: HashedVideoFile) -> Path:
-        return Path(temp_dir, file.hash + file.file_ext)
-
-    @classmethod
-    def get_thumb_path(cls, temp_dir: Path, file: HashedVideoFile, thumb_nr: int) -> Path:
-        file_name = file.hash + "_" + str(thumb_nr) + JPG_EXT
-        return Path(temp_dir, file_name)
-
-    async def delete(self) -> None:
-        await asyncio.get_event_loop().run_in_executor(None, self._delete_file)
-
-    def _delete_file(self) -> None:
-        self.file.close()
-        if self.path.is_file():
-            self.path.unlink()
 
 
 def is_allowed_file_ending(filename: Optional[str]) -> bool:
@@ -542,13 +476,13 @@ def is_allowed_file_ending(filename: Optional[str]) -> bool:
 
 def schedule_video_delete(file_hash: str, file_ext: str, origin: Optional[str] = None) -> None:
     log.info(f"Delete video with hash {file_hash}")
-    TaskManager.fire_and_forget_task(asyncio.create_task(_video_delete_task(file_hash, file_ext, origin)))
+    TaskManager.fire_and_forget_task(create_task(_video_delete_task(file_hash, file_ext, origin)))
 
 
 async def _video_delete_task(file_hash: str, file_ext: str, origin: Optional[str] = None) -> None:
     file_storage = FileStorage.get_instance()
     try:
-        file = await file_storage.get_file(file_hash, file_ext)
+        file = file_storage.get_file(file_hash, file_ext)
     except FileNotFoundError:
         log.info(f"Video delete: file not found: {file_hash}{file_ext}.")
         return

@@ -166,7 +166,7 @@ python -m videbo -c ./config_storage.yaml storage
 The Storage Node will immediately begin its periodical checks of the status of the enabled Distributor Nodes. In the log output of the Storage Node, you should see a message like this:
 ```
 ...
-======== Running on http://127.0.0.1:9020 ========
+======== Running on http://127.0.0.1:8080 ========
 ...
 INFO:videbo.storage.distribution:<Distribution watcher http://localhost:8081> connected. Free space currently: ... MB
 INFO:videbo.storage.distribution:Found 0 files on http://localhost:8081

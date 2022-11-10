@@ -1,6 +1,6 @@
 from time import time
 from unittest import TestCase
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 from typing import Optional
 
 import jwt
@@ -124,6 +124,15 @@ class BaseJWTDataTestCase(TestCase):
         obj = models.BaseJWTData.decode(token, internal=internal, key=key)
         self.assertIsInstance(obj, models.BaseJWTData)
         self.assertDictEqual(data, obj.dict())
+
+    @patch.object(models, "time")
+    def test_default_expiration_from_now(self, mock_time: MagicMock) -> None:
+        mock_time.return_value = mock_now = 123
+        output = models.BaseJWTData.default_expiration_from_now()
+        self.assertEqual(
+            mock_now + models.BaseJWTData.DEFAULT_LIFE_TIME,
+            output,
+        )
 
 
 class RequestJWTDataTestCase(TestCase):
