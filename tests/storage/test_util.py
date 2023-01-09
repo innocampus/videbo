@@ -139,7 +139,10 @@ class FileStorageTestCase(SilentLogMixin, IsolatedAsyncioTestCase):
         create_temp_out_call = call(self.storage.temp_out_dir, 0o777, explicit_chmod=True)
         self.assertListEqual(self.mock_create_dir.call_args_list, [create_temp_call, create_temp_out_call])
 
-        self.mock_create_task.assert_called_once_with(self.mock_gc_cron())
+        self.mock_create_task.assert_called_once_with(
+            self.mock_gc_cron(),
+            name="storage_garbage_collector",
+        )
         self.mock_task_mgr.fire_and_forget_task.assert_called_once_with(self.mock_gc_task)
 
         with self.assertRaises(NotADirectoryError), self.assertLogs():

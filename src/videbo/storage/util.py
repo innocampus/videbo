@@ -119,7 +119,11 @@ class FileStorage:
         create_dir_if_not_exists(self.temp_dir, 0o755)
         create_dir_if_not_exists(self.temp_out_dir, 0o777, explicit_chmod=True)
 
-        self._garbage_collector_task = create_task(self._garbage_collect_cron())
+        # TODO: Consider using custom `Periodic` instead
+        self._garbage_collector_task = create_task(
+            self._garbage_collect_cron(),
+            name="storage_garbage_collector",
+        )
         TaskManager.fire_and_forget_task(self._garbage_collector_task)
 
     @classmethod

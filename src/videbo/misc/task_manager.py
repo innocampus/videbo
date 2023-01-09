@@ -17,6 +17,7 @@ class TaskManager:
 
     @classmethod
     async def shutdown(cls, *_: Any) -> None:
+        log.info("\n======== Shutting down ========")
         TaskManager.cancel_all()
 
     @classmethod
@@ -27,7 +28,7 @@ class TaskManager:
                 # This throws an exception if there was any in the task.
                 task.result()
             except CancelledError:
-                pass
+                log.info(f"Cancelled {task.get_name()}")
             except Exception as e:
                 log.exception(
                     "%s occurred in an fire-and-forget task.",

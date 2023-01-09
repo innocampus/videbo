@@ -1,6 +1,6 @@
 from __future__ import annotations
 import re
-from asyncio import Task, create_task, sleep
+from asyncio import CancelledError, Task, create_task, sleep
 from collections.abc import AsyncIterator
 from enum import Enum
 from logging import Logger, getLogger
@@ -103,7 +103,7 @@ class NetworkInterfaces:
     async def app_context(cls, _app: Application) -> AsyncIterator[None]:
         cls.get_instance().start_fetching()
         yield
-        cls.get_instance().stop_fetching()
+        await cls.get_instance().stop_fetching()
 
     @property
     def is_fetching(self) -> bool:
@@ -216,13 +216,19 @@ class NetworkInterfaces:
         """Starts the fetching process"""
         if self._fetch_task is not None:
             return
+        # TODO: Consider using custom `Periodic` instead
         self._fetch_task = create_task(self._fetch_loop())
         log.info("Started fetching network resources info")
 
-    def stop_fetching(self) -> None:
+    async def stop_fetching(self) -> None:
         """Stops the fetching process"""
         if self._fetch_task is not None:
+            log.debug("Stopping network resource info fetch task...")
             self._fetch_task.cancel()
+            try:
+                await self._fetch_task
+            except CancelledError:
+                pass
             self._fetch_task = None
             log.info("Stopped fetching network resources info")
 

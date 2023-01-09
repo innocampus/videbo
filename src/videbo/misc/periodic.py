@@ -1,3 +1,4 @@
+import logging
 from asyncio import Task, create_task, sleep
 from collections.abc import Awaitable, Callable
 from inspect import isawaitable
@@ -9,6 +10,8 @@ from .task_manager import TaskManager
 
 
 StopCallbackT = Callable[[], Union[Awaitable[None], None]]
+
+log = logging.getLogger(__name__)
 
 
 class Periodic:
@@ -65,10 +68,12 @@ class Periodic:
         """Stops the execution loop and calls all provided callback functions."""
         if self._task is None:
             raise NoRunningTask
+        log.debug(f"Stopping {self.task_name}...")
         await self._run_callbacks(self.pre_stop_callbacks)
         out = self._task.cancel()
         self._task = None
         await self._run_callbacks(self.post_stop_callbacks)
+        log.info(f"Stopped {self.task_name}")
         return out
 
     @staticmethod

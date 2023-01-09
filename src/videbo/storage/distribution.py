@@ -178,7 +178,7 @@ class DistributionNodeInfo:
             await asyncio.sleep(5)
 
     def start_watching(self) -> None:
-        self.watcher_task = asyncio.create_task(self.watcher())
+        self.watcher_task = asyncio.create_task(self.watcher(), name="distibutor_node_watcher")
         TaskManager.fire_and_forget_task(self.watcher_task)
 
     def stop_watching(self) -> None:
@@ -438,12 +438,14 @@ class DistributionController:
         return None
 
     def start_periodic_reset_task(self) -> None:
-        async def task() -> None:
-            await asyncio.gather(*(dist_node.free_up_space() for dist_node in self._dist_nodes))
+        async def reset_distributors() -> None:
             start = timer()
+            await asyncio.gather(*(node.free_up_space() for node in self._dist_nodes))
             self._reset()
-            log.info(f"Periodic reset task finished (took {(timer() - start):.2f}s)")
-        Periodic(task)(interval_seconds=settings.distribution.reset_views_every_minutes * 60)
+            log.info(f"Resetting distributors took {(timer() - start):.2f} s")
+        Periodic(reset_distributors)(
+            settings.distribution.reset_views_every_minutes * 60
+        )
 
     def count_file_access(self, file: StoredHashedVideoFile, rid: str) -> None:
         """Increment the video views counter if this is the first time the user viewed the video."""

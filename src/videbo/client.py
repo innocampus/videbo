@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+from asyncio.tasks import gather
 from collections.abc import AsyncIterator
 from json.decoder import JSONDecodeError
 from time import time
@@ -97,9 +98,9 @@ class Client:
     @classmethod
     async def close_all(cls) -> None:
         """Closes the session in every client instance."""
-        for client in cls._instances:
-            await client.close()
-        log.info("Closed all HTTP client sessions")
+        log.debug("Closing all open HTTP client sessions...")
+        await gather(*(client.close() for client in cls._instances))
+        log.info("HTTP clients closed")
 
     @classmethod
     async def app_context(cls, _app: Application) -> AsyncIterator[None]:

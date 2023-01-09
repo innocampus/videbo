@@ -236,7 +236,7 @@ class DistributorFileController:
             copy_status.event.set()
             new_file.copy_status = None
 
-        task = asyncio.create_task(do_copy())
+        task = asyncio.create_task(do_copy(), name="copy_file_from_node")
         TaskManager.fire_and_forget_task(task)
         return new_file
 

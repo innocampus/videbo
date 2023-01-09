@@ -42,8 +42,8 @@ class NetworkInterfacesTestCase(SilentLogMixin, IsolatedAsyncioTestCase):
         self.assertIs(instance, network.NetworkInterfaces.get_instance())
 
     @patch.object(network.NetworkInterfaces, "get_instance")
-    async def test_network_context(self, mock_get_ni_instance: MagicMock) -> None:
-        mock_start_fetching, mock_stop_fetching = MagicMock(), MagicMock()
+    async def test_app_context(self, mock_get_ni_instance: MagicMock) -> None:
+        mock_start_fetching, mock_stop_fetching = MagicMock(), AsyncMock()
         mock_get_ni_instance.return_value = MagicMock(
             start_fetching=mock_start_fetching,
             stop_fetching=mock_stop_fetching,
@@ -257,12 +257,14 @@ class NetworkInterfacesTestCase(SilentLogMixin, IsolatedAsyncioTestCase):
         mock__fetch_loop.assert_called_once_with()
         mock_create_task.assert_called_once_with(mock_coroutine)
 
-    def test_stop_fetching(self) -> None:
+    async def test_stop_fetching(self) -> None:
         self.ni._fetch_task = None
-        self.ni.stop_fetching()
-        self.ni._fetch_task = mock_task = MagicMock()
-        self.ni.stop_fetching()
-        mock_task.cancel.assert_called_once_with()
+        await self.ni.stop_fetching()
+        self.ni._fetch_task = task = create_task(AsyncMock().task())
+        await self.ni.stop_fetching()
+        self.assertIsNone(self.ni._fetch_task)
+        self.assertTrue(task.cancelled())
+        self.assertTrue(task.done())
 
     def test_get_first_interface(self) -> None:
         self.ni._interfaces = {}
