@@ -14,7 +14,7 @@ See the GNU General Public License for more details.
 You should have received a copy of the GNU General Public License along with videbo.
 If not, see <https://www.gnu.org/licenses/>."""
 
-__version__ = "0.2.0"
+__version__ = "0.3.0"
 
 __doc__ = """
 Top-level global settings object for convenient import.
