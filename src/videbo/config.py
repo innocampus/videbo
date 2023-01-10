@@ -9,6 +9,7 @@ import tomli
 from pydantic import BaseModel as PydanticBaseModel
 from pydantic import BaseSettings as PydanticBaseSettings
 from pydantic.class_validators import validator
+from pydantic.config import Extra
 from pydantic.env_settings import SettingsSourceCallable
 from pydantic.fields import ModelField, SHAPE_LIST, SHAPE_SET
 
@@ -22,11 +23,13 @@ __all__ = [
     'DEFAULT_CONFIG_FILE_PATHS',
     'CONFIG_FILE_PATHS_PARAM',
     'WebserverSettings',
+    'LMSSettings',
     'ThumbnailSettings',
     'VideoSettings',
     'DistributionSettings',
     'MonitoringSettings',
     'Settings',
+    'config_file_settings',
 ]
 
 M = TypeVar("M", bound=PydanticBaseModel)
@@ -62,6 +65,9 @@ class SettingsBaseModel(PydanticBaseModel):
             if isinstance(v, set):
                 return {element for element in v if element != ''}
         return v
+
+    class Config:
+        extra = Extra.forbid
 
 
 class BaseSettings(PydanticBaseSettings, SettingsBaseModel):
