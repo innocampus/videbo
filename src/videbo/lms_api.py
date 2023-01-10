@@ -40,7 +40,7 @@ class LMS:
 
     @classmethod
     async def app_context(cls, _app: Application) -> AsyncIterator[None]:
-        cls.add(*settings.lms_api_urls)
+        cls.add(*settings.lms.api_urls)
         yield
 
     @classmethod

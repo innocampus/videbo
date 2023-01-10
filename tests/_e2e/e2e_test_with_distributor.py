@@ -22,8 +22,8 @@ from tests._e2e.base import BaseE2ETestCase
 
 THIS_DIR = Path(__file__).parent
 # Read specific test node configs from here:
-TEST_CONFIG_STORAGE = Path(THIS_DIR, "config_storage.yaml")
-TEST_CONFIG_DIST = Path(THIS_DIR, "config_dist.yaml")
+TEST_CONFIG_STORAGE = Path(THIS_DIR, "config_storage.toml")
+TEST_CONFIG_DIST = Path(THIS_DIR, "config_dist.toml")
 # Temporarily pipe storage and distributor logs here:
 LOG_PATH_STORAGE = Path("test_storage.log")
 LOG_PATH_DIST = Path("test_dist.log")
@@ -168,7 +168,7 @@ class TwoNodesTestCase(BaseE2ETestCase):
         """
         # If this returns without error, we can assume the nodes are running:
         max_size = await self._get_max_size()
-        self.assertEqual(self.test_settings_storage.max_file_size_mb, max_size)
+        self.assertEqual(self.test_settings_storage.video.max_file_size_mb, max_size)
 
         temp_dir = Path(self.test_settings_storage.files_path, "temp")
         perm_dir = Path(self.test_settings_storage.files_path, "storage")

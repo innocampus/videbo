@@ -148,7 +148,7 @@ class DistributorFileController:
     async def get_free_space(self) -> float:
         """Returns free space in MB excluding the space that should be empty."""
         free = await get_free_disk_space(str(self.base_path))
-        return max(free - settings.leave_free_space_mb, 0.)
+        return max(free - settings.distribution.leave_free_space_mb, 0.)
 
     def copy_file(self, file: HashedVideoFile, from_url: str, expected_file_size: int) \
             -> DistributorHashedVideoFile:
@@ -260,7 +260,7 @@ class DistributorFileController:
         dist_file = self.files.get(file_hash)
         if dist_file is None:
             raise NoSuchFile()
-        cutoff_time = time() - (settings.last_request_safety_minutes * 60)
+        cutoff_time = time() - (settings.distribution.last_request_safety_minutes * 60)
         if safe and dist_file.last_requested > cutoff_time:
             raise NotSafeToDelete()
         del self.files[file_hash]

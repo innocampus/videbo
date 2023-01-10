@@ -69,19 +69,14 @@ class MainTestCase(TestCase):
         self.assertDictEqual(expected_output, output)
         mock_setup_cli_args.assert_called_once()
 
-    @patch.object(__main__.yaml, "dump")
     @patch.object(__main__.Path, "open")
-    def test_prepare_settings(
-        self,
-        mock_path_open: MagicMock,
-        mock_yaml_dump: MagicMock,
-    ) -> None:
+    def test_prepare_settings(self, mock_path_open: MagicMock) -> None:
         test_kwargs = {
             __main__.MODE: "foo",
             __main__.LISTEN_ADDRESS: "some.host",
             "spam": "eggs",
         }
-        expected_output = Path(".", ".videbo_foo_settings.yaml")
+        expected_output = Path(".", ".videbo_foo_settings.json")
 
         # Dev mode `False`:
 
@@ -96,7 +91,6 @@ class MainTestCase(TestCase):
             # Check that the dictionary was correctly reduced:
             self.assertDictEqual({"spam": "eggs"}, test_kwargs)
         mock_path_open.assert_not_called()
-        mock_yaml_dump.assert_not_called()
 
         test_kwargs = {
             __main__.MODE: "foo",
@@ -106,7 +100,7 @@ class MainTestCase(TestCase):
 
         # Dev mode `True` and able to open settings dump file:
 
-        mock_file = object()
+        mock_file = MagicMock()
         mock_path_open.return_value = MagicMock(
             __enter__=lambda _: mock_file,
             __exit__=MagicMock(),
@@ -122,16 +116,14 @@ class MainTestCase(TestCase):
             self.assertEqual("some.host", mock_settings.listen_address)
             # Check that the dictionary was correctly reduced:
             self.assertDictEqual({"spam": "eggs"}, test_kwargs)
-        mock_path_open.assert_called_once_with("w")
-        mock_yaml_dump.assert_called_once_with(
-            mock_settings.dict(),
-            mock_file,
-            allow_unicode=True,
-            sort_keys=False,
-        )
+            mock_path_open.assert_called_once_with("w")
+            mock_settings.json.assert_called_once_with(indent=4)
+            mock_file.write.assert_called_once_with(
+                mock_settings.json.return_value
+            )
 
         mock_path_open.reset_mock()
-        mock_yaml_dump.reset_mock()
+        mock_file.reset_mock()
         test_kwargs = {
             __main__.MODE: "foo",
             __main__.LISTEN_ADDRESS: "some.host",
@@ -152,8 +144,9 @@ class MainTestCase(TestCase):
             self.assertEqual("some.host", mock_settings.listen_address)
             # Check that the dictionary was correctly reduced:
             self.assertDictEqual({"spam": "eggs"}, test_kwargs)
-        mock_path_open.assert_called_once_with("w")
-        mock_yaml_dump.assert_not_called()
+            mock_path_open.assert_called_once_with("w")
+            mock_settings.json.assert_not_called()
+            mock_file.assert_not_called()
 
     @patch.object(__main__.logging, "basicConfig")
     @patch.object(__main__, "prepare_settings")

@@ -19,8 +19,8 @@ class LMSTestCase(SilentLogMixin, IsolatedAsyncioTestCase):
 
     @patch.object(lms_api, "settings")
     @patch.object(lms_api.LMS, "add")
-    async def test_lms_api_context(self, mock_lms_add: MagicMock, mock_settings: MagicMock) -> None:
-        mock_settings.lms_api_urls = mock_urls = ["foo", "bar", "baz"]
+    async def test_app_context(self, mock_lms_add: MagicMock, mock_settings: MagicMock) -> None:
+        mock_settings.lms.api_urls = mock_urls = ["foo", "bar", "baz"]
         iterator = lms_api.LMS.app_context(MagicMock())
         self.assertIsNone(await iterator.__anext__())
         mock_lms_add.assert_called_once_with(*mock_urls)

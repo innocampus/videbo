@@ -5,4 +5,3 @@ flake8==5.0.4
 mkdocs-material==8.5.6
 mkdocstrings[python]==0.19.0
 mypy==0.982
-types-pyyaml==6.0.12

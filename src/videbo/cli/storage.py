@@ -100,7 +100,7 @@ async def find_orphaned_files(
         return
     if response_dict["status"] == "ok":
         print(
-            f"{GREEN}Request was successful!{RESET}"
+            f"{GREEN}Request was successful!{RESET}\n"
             f"All orphaned files have been deleted from storage."
         )
         return

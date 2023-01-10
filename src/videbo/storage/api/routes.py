@@ -49,7 +49,7 @@ MULTIPART_FORM_DATA = "multipart/form-data"
 @routes.get_with_cors('/api/upload/maxsize')
 async def get_max_size(_: Request) -> Response:
     """Get max file size in MB."""
-    return json_response({'max_size': settings.max_file_size_mb})
+    return json_response({'max_size': settings.video.max_file_size_mb})
 
 
 async def get_video_payload(request: Request) -> BodyPartReader:
@@ -81,7 +81,7 @@ async def get_video_payload(request: Request) -> BodyPartReader:
     if not is_allowed_file_ending(field.filename):
         log.warning(f"File extension not allowed: {field.filename}")
         raise BadFileExtension()
-    if request.content_length and request.content_length > settings.max_file_size_mb * MEGA:
+    if request.content_length and request.content_length > settings.video.max_file_size_mb * MEGA:
         raise FileTooBigError()
     return field
 
@@ -95,7 +95,7 @@ def invalid_format_response() -> Response:
 def file_too_big_response() -> Response:
     """Respond with 413 and "max_size" information."""
     log.warning("File too big to upload")
-    return json_response({'max_size': settings.max_file_size_mb}, status=413)
+    return json_response({'max_size': settings.video.max_file_size_mb}, status=413)
 
 
 async def read_data(
@@ -122,7 +122,7 @@ async def read_data(
     # TODO: Check if it is possible to use `async for`-loop here instead
     data = await video_form_field.read_chunk(chunk_size_bytes)
     while len(data) > 0:
-        if temp_file.size > settings.max_file_size_mb * MEGA:
+        if temp_file.size > settings.video.max_file_size_mb * MEGA:
             raise FileTooBigError()
         await temp_file.write(data)
         data = await video_form_field.read_chunk(chunk_size_bytes)

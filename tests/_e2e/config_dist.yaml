@@ -1,5 +1,0 @@
-files_path: /tmp/videbo_test_dist
-listen_port: 9030
-internal_api_secret: secret
-external_api_secret: secure
-dev_mode: true

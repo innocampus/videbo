@@ -1,5 +1,5 @@
 # Configuration files:
-/config*.yaml
+/config*.toml
 
 # Python virtual environment:
 /.venv/

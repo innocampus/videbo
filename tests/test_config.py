@@ -2,8 +2,6 @@ from pathlib import Path
 from unittest import TestCase
 from unittest.mock import MagicMock, patch
 
-import yaml
-
 from tests.silent_log import SilentLogMixin
 from videbo import config
 
@@ -146,56 +144,33 @@ class SettingsTestCase(TestCase):
 
 
 class FunctionsTestCase(SilentLogMixin, TestCase):
-    @patch.object(config, "load_yaml")
-    def test_config_file_settings(self, mock_load_yaml: MagicMock) -> None:
-        mock_load_yaml.return_value = expected_output = {"foo": "bar"}
+    @patch.object(config, "load_toml")
+    def test_config_file_settings(self, mock_load_toml: MagicMock) -> None:
+        mock_load_toml.return_value = expected_output = {"foo": "bar"}
         path1 = MagicMock(is_file=lambda: False)
-        path2 = MagicMock(suffix=".yaml")
+        path2 = MagicMock(suffix=".toml")
         path3 = MagicMock(suffix=".unknown")
         mock_settings = MagicMock(
             get_config_file_paths=lambda: [path1, path2, path3]
         )
         output = config.config_file_settings(mock_settings)
         self.assertDictEqual(expected_output, output)
-        mock_load_yaml.assert_called_once_with(path2)
+        mock_load_toml.assert_called_once_with(path2)
 
-    @patch.object(config.yaml, "safe_load")
+    @patch.object(config.tomli, "load")
     @patch.object(config.Path, "open")
-    def test_load_yaml(
+    def test_load_toml(
         self,
         mock_path_open: MagicMock,
-        mock_safe_load: MagicMock,
+        mock_load: MagicMock,
     ) -> None:
         mock_file = object()
         mock_path_open.return_value = MagicMock(
             __enter__=lambda _: mock_file,
             __exit__=MagicMock(),
         )
-        mock_safe_load.return_value = object()
-        with self.assertRaises(TypeError):
-            config.load_yaml("foo")
-        mock_path_open.assert_called_once_with("r")
-        mock_safe_load.assert_called_once_with(mock_file)
-
-        mock_path_open.reset_mock()
-        mock_safe_load.reset_mock()
-
-        mock_safe_load.return_value = expected_output = {"spam": "eggs"}
-        output = config.load_yaml("foo")
+        mock_load.return_value = expected_output = {"spam": "eggs"}
+        output = config.load_toml("foo")
         self.assertDictEqual(expected_output, output)
-        mock_path_open.assert_called_once_with("r")
-        mock_safe_load.assert_called_once_with(mock_file)
-
-    def test_yaml_path_serializer(self) -> None:
-        expected_output = object()
-        mock_represent_str = MagicMock(return_value=expected_output)
-        mock_dumper = MagicMock(represent_str=mock_represent_str)
-        test_path = Path(__file__)
-        output = config.yaml_path_serializer(mock_dumper, test_path)
-        self.assertIs(expected_output, output)
-        mock_represent_str.assert_called_once_with(str(test_path.resolve()))
-
-        # Try it out; it should have been added on import:
-        expected_output = f"test: {test_path.resolve()}\n"
-        output = yaml.dump({"test": test_path})
-        self.assertEqual(expected_output, output)
+        mock_path_open.assert_called_once_with("rb")
+        mock_load.assert_called_once_with(mock_file)

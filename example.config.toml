@@ -1,0 +1,183 @@
+#############################
+# Videbo Configuration File #
+#############################
+
+# This file shows all available settings with their corresponding default values.
+
+
+####################
+# General settings #
+
+listen_address = "127.0.0.1"
+# The address the node should bind to
+
+listen_port = 9020
+# The port the node should bind to
+
+files_path = "/tmp/videbo"
+# Path to a directory in which the files will saved
+
+internal_api_secret = ""
+# Secret used in JWT required for internal requests (e.g. storage to distributor node)
+
+external_api_secret = ""
+# Secret used in JWT required for external requests (e.g. LMS to storage)
+
+public_base_url = "http://localhost:9020"
+# The storage node's public facing address;
+# must match between storage and distributor nodes!
+
+forbid_admin_via_proxy = true
+# If `true`, access to the administrative routes coming via a reverse proxy webserver will be forbidden.
+# (This is done by checking if the 'X-Forwarded-For' header is present in the request.)
+
+dev_mode = false
+# If `true`, reduces log level to send more messages to stdout,
+# and keeps a JSON representation of the settings object in
+# './.videbo_storage_settings.json' or './.videbo_distributor_settings.json'
+# while the node is running.
+
+tx_max_rate_mbit = 20.0
+# Maximum data transmission rate in Mbit per second
+
+network_info_fetch_interval = 10.0
+# Number of seconds between attempts to fetch network information
+
+test_video_file_path = "./tests/test_video.mp4"
+# Path to test video file for integration tests of storage routes;
+# no need to bother with this in production environments.
+
+
+[webserver]
+# Settings block related to the webserver (NGINX or Apache) in use;
+# can be omitted, if not applicable.
+
+#status_page =
+# URL to be checked for the webserver status (e.g. NGINX or Apache);
+# used for retrieving the number of current connections to a node;
+# can be omitted, if not relevant for monitoring purposes
+
+#x_accel_location =
+# If NGINX is used to serve the video files (recommended),
+# enter the internal location set in its configuration
+# as an alias for `files_path` (as defined above);
+# otherwise leave this empty.
+
+x_accel_limit_rate_mbit = 0.0
+# Corresponds to the NGINX `X-Accel-Limit-Rate` header parameter;
+# value in megabits (2^20 bits) per second;
+# a value of 0 disables the feature.
+
+
+[lms]
+# Settings block related to LMS (e.g. Moodle) that are using Videbo.
+
+api_urls = []
+# The API endpoints of the LMS (e.g. Moodle) using the server as a list of URLs;
+# these will be used for checking whether particular videos are still in use
+# or if they can be deleted from storage.
+
+
+[thumbnails]
+# Settings block related to video thumbnails
+
+suggestion_count = 3
+# The number of thumbnails (automatically generated upon video upload)
+
+height = 90
+# The height of thumbnails (automatically generated upon video upload) in pixels
+
+cache_max_mb = 30.0
+# Thumbnails are kept in RAM after being requested;
+# this defines the size of this cache in megabytes;
+# a value of 0 disables this feature
+
+[video]
+# Settings block related to video files (e.g. encoding)
+
+max_file_size_mb = 200.0
+# The maximum size an uploaded file may have
+
+binary_file = "file"
+# The path to the `file` command binary (can also be an alias or anything that can be found in $PATH)
+
+binary_ffmpeg = "ffmpeg"
+# The path to the `ffmpeg` program binary (can also be an alias or anything that can be found in $PATH)
+
+binary_ffprobe = "ffprobe"
+# The path to the `ffprobe` program binary (can also be an alias or anything that can be found in $PATH)
+
+#check_user =
+# If set, any `file`, `ffprobe`, and `ffmpeg` commands necessary to perform the aforementioned format checks,
+# thumbnail generation, etc. are prefixed with `sudo -u <check_user>`
+
+mime_types_allowed = [
+  "video/mp4",
+  "video/webm",
+]
+# List of MIME types that are allowed to be uploaded to this storage node;
+# any request with a different MIME type will be rejected.
+# CAUTION: Add to this list at your own risk; some browsers/OSs do not support certain types.
+
+container_formats_allowed = [
+  "mp4",
+  "webm",
+]
+# List of formats that the video container may have;
+# any video file with a different format will be rejected during the upload attempt.
+# CAUTION: Add to this list at your own risk; some browsers/OSs do not support certain formats.
+
+video_codecs_allowed = [
+  "h264",
+  "vp8",
+]
+# List of video codecs that the video file may use;
+# any video file with a different codec will be rejected during the upload attempt.
+# CAUTION: Add to this list at your own risk; some browsers/OSs do not support certain codecs.
+
+audio_codecs_allowed = [
+  "aac",
+  "vorbis",
+]
+# List of audio codecs that the video file may use;
+# any video file with a different codec will be rejected during the upload attempt.
+# CAUTION: Add to this list at your own risk; some browsers/OSs do not support certain codecs.
+
+[distribution]
+# Settings block related to the distribution of files by the storage node
+
+static_node_base_urls = []
+# List of base URLs of distributor nodes that the storage node should connect with
+
+copy_views_threshold = 3
+# Copy a video to a distributor node when there are as many as views than this within the time span.
+
+reset_views_every_minutes = 240.0
+# The period (in minutes) in which the internal view counter for the video files stored on the node is reset;
+# can not be less than 1.
+
+free_space_target_ratio = 0.1
+# Ratio of free space to total space on any distributor node that it should never fall below of
+
+max_parallel_copying_tasks = 20
+# Any time a video is copied to a distributor node, this a separate task is launched for it by the storage node;
+# this value sets the maximum number of such tasks that can run in parallel.
+
+leave_free_space_mb = 4000.0
+# The amount of free space (in megabytes) to reserve on the distributor node
+
+last_request_safety_minutes = 240.0
+# The minimum number of minutes to wait after the last request for a specific video file on the distributor node
+# before it should be considered safe do delete that file
+
+[monitoring]
+# Settings block related to monitoring (using Prometheus);
+# can be omitted, if no monitoring is intended.
+# Requires at least `videbo[full]` to be installed
+
+#prom_text_file =
+# The prometheus-format text file that the monitoring instance will write to;
+# if left blank, no monitoring will be launched.
+
+update_freq_sec = 15.0
+# The period (in seconds) between consecutive writes to the prometheus text file

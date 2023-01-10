@@ -112,7 +112,7 @@ class FileStorage:
         self._cached_files: _StoredFilesDict = {}  # map hashes to files
         self._cached_files_total_size: int = 0  # in bytes
         self.num_current_uploads: int = 0
-        self.thumb_memory_cache = BytesLimitLRU(settings.thumbnails.cache_max_mb * MEGA)
+        self.thumb_memory_cache = BytesLimitLRU(int(settings.thumbnails.cache_max_mb * MEGA))
         self.http_client: Client = Client()
         self.distribution_controller: DistributionController = DistributionController(http_client=self.http_client)
 

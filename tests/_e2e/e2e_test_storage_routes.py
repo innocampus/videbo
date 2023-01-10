@@ -85,7 +85,7 @@ class RoutesIntegrationTestCaseFail(BaseE2ETestCase):
         self.assertEqual(415, resp.status)
 
         # File too big:
-        settings.max_file_size_mb = self.test_vid_size_mb - 1
+        settings.video.max_file_size_mb = self.test_vid_size_mb - 1
         with open(settings.test_video_file_path, 'rb') as f:
             payload = FormData()
             payload.add_field('video', f,
@@ -169,7 +169,7 @@ class RoutesIntegrationTestCaseFail(BaseE2ETestCase):
 class RoutesIntegrationTestCaseCorrect(BaseE2ETestCase):
     async def test_get_max_size(self):
         method, url = 'GET', '/api/upload/maxsize'
-        expected_response_text = json.dumps({'max_size': settings.max_file_size_mb})
+        expected_response_text = json.dumps({'max_size': settings.video.max_file_size_mb})
         resp = await self.client.request(method, url)
         self.assertEqual(resp.status, 200)
         self.assertEqual(await resp.text(), expected_response_text)
@@ -188,7 +188,7 @@ class RoutesIntegrationTestCaseCorrect(BaseE2ETestCase):
             is_allowed_to_upload_file=True
         )
         headers = self.get_auth_header(jwt_data.encode())
-        settings.max_file_size_mb = self.test_vid_size_mb + 1
+        settings.video.max_file_size_mb = self.test_vid_size_mb + 1
         with open(settings.test_video_file_path, 'rb') as f:
             payload = FormData()
             payload.add_field('video', f,

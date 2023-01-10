@@ -2,10 +2,10 @@ from __future__ import annotations
 import logging
 import re
 from collections.abc import Callable
-from pathlib import Path, PosixPath, WindowsPath
+from pathlib import Path
 from typing import Any, Optional, TypeVar, Union
 
-import yaml
+import tomli
 from pydantic import BaseModel as PydanticBaseModel
 from pydantic import BaseSettings as PydanticBaseSettings
 from pydantic.class_validators import validator
@@ -35,7 +35,7 @@ log = logging.getLogger(__name__)
 
 _THIS_DIR = Path(__file__).parent
 PROJECT_DIR = _THIS_DIR.parent.parent
-DEFAULT_CONFIG_FILE_NAME = 'config.yaml'
+DEFAULT_CONFIG_FILE_NAME = 'config.toml'
 DEFAULT_CONFIG_FILE_PATHS = [
     Path('/etc/videbo', DEFAULT_CONFIG_FILE_NAME),
     Path(PROJECT_DIR, DEFAULT_CONFIG_FILE_NAME),
@@ -133,13 +133,24 @@ class WebserverSettings(SettingsBaseModel):
         return int(self.x_accel_limit_rate_mbit * MEGA / 8)
 
 
+class LMSSettings(SettingsBaseModel):
+    api_urls: list[str] = []
+
+    _norm_lms_api_urls = validator(
+        "api_urls",
+        each_item=True,
+        allow_reuse=True,
+    )(no_slash_at_the_end)
+
+
 class ThumbnailSettings(SettingsBaseModel):
     suggestion_count: int = 3
     height: int = 90
-    cache_max_mb: int = 30
+    cache_max_mb: float = 30.0
 
 
 class VideoSettings(SettingsBaseModel):
+    max_file_size_mb: float = 200.0
     binary_file: str = 'file'
     binary_ffmpeg: str = 'ffmpeg'
     binary_ffprobe: str = 'ffprobe'
@@ -156,6 +167,8 @@ class DistributionSettings(SettingsBaseModel):
     reset_views_every_minutes: float = 4. * 60
     free_space_target_ratio: float = 0.1
     max_parallel_copying_tasks: int = 20
+    leave_free_space_mb: float = 4000.0
+    last_request_safety_minutes: float = 4. * 60
 
     @validator('reset_views_every_minutes')
     def ensure_min_reset_freq(cls, freq: float) -> float:
@@ -174,7 +187,6 @@ class MonitoringSettings(SettingsBaseModel):
 
 
 class Settings(BaseSettings):
-    # Relevant for any node:
     listen_address: str = '127.0.0.1'
     listen_port: int = 9020
     files_path: Path = Path('/tmp/videbo')
@@ -186,30 +198,16 @@ class Settings(BaseSettings):
     tx_max_rate_mbit: float = 20.0
     network_info_fetch_interval: float = 10.0
     webserver: WebserverSettings = WebserverSettings()
-
-    # Only relevant for storage node:
-    lms_api_urls: list[str] = []
-    max_file_size_mb: float = 200.0
+    lms: LMSSettings = LMSSettings()
     thumbnails: ThumbnailSettings = ThumbnailSettings()
     video: VideoSettings = VideoSettings()
     distribution: DistributionSettings = DistributionSettings()
     monitoring: MonitoringSettings = MonitoringSettings()
-
-    # Only relevant for distributor node:
-    leave_free_space_mb: float = 4000.0
-    last_request_safety_minutes: float = 4. * 60
-
-    # Only relevant for testing:
     test_video_file_path: Path = Path(PROJECT_DIR, 'tests', 'test_video.mp4')
 
     # Additional validators:
     _norm_public_base_url = validator(
         "public_base_url",
-        allow_reuse=True,
-    )(no_slash_at_the_end)
-    _norm_lms_api_urls = validator(
-        "lms_api_urls",
-        each_item=True,
         allow_reuse=True,
     )(no_slash_at_the_end)
 
@@ -233,26 +231,13 @@ def config_file_settings(settings: BaseSettings) -> dict[str, Any]:
             log.info("No file found at '%s'", str(path.resolve()))
             continue
         log.info("Reading config file '%s'", str(path.resolve()))
-        if path.suffix in {".yaml", ".yml"}:
-            config.update(load_yaml(path))
+        if path.suffix == ".toml":
+            config.update(load_toml(path))
         else:
             log.warning("Unknown config file extension '%s'", path.suffix)
     return config
 
 
-def load_yaml(path: PathT) -> dict[str, Any]:
-    with Path(path).open("r") as f:
-        config = yaml.safe_load(f)
-    if not isinstance(config, dict):
-        raise TypeError(
-            f"Config file has no top-level mapping: {path}"
-        )
-    return config
-
-
-def yaml_path_serializer(dumper: yaml.Dumper, data: Path) -> yaml.ScalarNode:
-    return dumper.represent_str(str(data.resolve()))
-
-
-yaml.add_representer(PosixPath, yaml_path_serializer)
-yaml.add_representer(WindowsPath, yaml_path_serializer)
+def load_toml(path: PathT) -> dict[str, Any]:
+    with Path(path).open("rb") as f:
+        return tomli.load(f)

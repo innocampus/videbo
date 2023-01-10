@@ -15,8 +15,6 @@ from collections.abc import Sequence
 from pathlib import Path
 from typing import Any, Optional
 
-import yaml
-
 from videbo import settings
 from videbo.cli.args import execute_cli_command, setup_cli_args
 from videbo.config import DEFAULT_CONFIG_FILE_PATHS, CONFIG_FILE_PATHS_PARAM
@@ -83,14 +81,14 @@ def prepare_settings(cli_kwargs: dict[str, Any]) -> Path:
             settings_init_kwargs[key] = value
     mode = cli_kwargs.pop(MODE)
     settings.__init__(**settings_init_kwargs)  # type: ignore[misc]
-    settings_path = Path(".", f".videbo_{mode}_settings.yaml")
+    settings_path = Path(".", f".videbo_{mode}_settings.json")
     if not settings.dev_mode:
         return settings_path
     main_log = logging.getLogger("videbo")
     main_log.setLevel(logging.DEBUG)
     try:
         with settings_path.open("w") as f:
-            yaml.dump(settings.dict(), f, allow_unicode=True, sort_keys=False)
+            f.write(settings.json(indent=4))
     except PermissionError:
         msg = "Development mode enabled, but no permissions to write %s"
     else:
