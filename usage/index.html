@@ -13,7 +13,7 @@
         <link rel="canonical" href="https://innocampus.github.io/videbo/usage/">
       
       <link rel="icon" href="../assets/images/favicon.png">
-      <meta name="generator" content="mkdocs-1.4.0, mkdocs-material-8.5.6">
+      <meta name="generator" content="mkdocs-1.4.2, mkdocs-material-8.5.6">
     
     
       
@@ -531,19 +531,19 @@
 <h2 id="running-a-storage-node">Running a Storage Node</h2>
 <h3 id="creating-a-config-file">Creating a config file</h3>
 <p>After <a href="/#installation">installing</a> Videbo, create a configuration file:
-<div class="highlight"><pre><span></span><code>mkdir /etc/videbo
-touch /etc/videbo/config.yaml
+<div class="highlight"><pre><span></span><code>mkdir<span class="w"> </span>/etc/videbo
+touch<span class="w"> </span>/etc/videbo/config.toml
 </code></pre></div>
-Videbo uses the <a class="external-link" href="https://yaml.org/" target="_blank">YAML</a> format for all its configuration files. The default configuration file path for a Videbo node is <code>/etc/videbo/config.yaml</code>.</p>
+Videbo uses the <a class="external-link" href="https://toml.io/" target="_blank">TOML</a> format for all its configuration files. The default configuration file path for a Videbo node is <code>/etc/videbo/config.toml</code>.</p>
 <p>The minimum recommendation is to at least configure your storage directory. This is where all the video files will be uploaded, where the thumbnails will be save, etc.</p>
 <p>By default, files will be stored in <code>/tmp/videbo</code>.</p>
 <p>To specify your storage directory, open the configuration file and add the following:
-<div class="highlight"><span class="filename">config.yaml</span><pre><span></span><code><span class="nt">files_path</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">/path/to/video/storage</span><span class="w"></span>
+<div class="highlight"><span class="filename">config.toml</span><pre><span></span><code><span class="n">files_path</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">&quot;/path/to/video/storage&quot;</span>
 </code></pre></div></p>
 <p>Make sure the directory exists and your user has write access to it.</p>
 <h3 id="starting-the-server">Starting the server</h3>
 <p>Now you can run the storage node:
-<div class="highlight"><pre><span></span><code>python -m videbo storage
+<div class="highlight"><pre><span></span><code>python<span class="w"> </span>-m<span class="w"> </span>videbo<span class="w"> </span>storage
 </code></pre></div></p>
 <p>You should immediately see a few log messages appear in your terminal followed by a notice about where your server is listening:
 <div class="highlight"><pre><span></span><code>...
@@ -553,11 +553,11 @@ INFO:videbo.storage.util:Found 0 videos in storage
 (Press CTRL+C to quit)
 </code></pre></div></p>
 <p>As you can see, by default, the server will listen for incoming requests on <a href="http://127.0.0.1:9020">http://127.0.0.1:9020</a>. If you want it to bind to a different port, say <code>8080</code>, you can do so via the command line:
-<div class="highlight"><pre><span></span><code>python -m videbo -P <span class="m">8080</span> storage
+<div class="highlight"><pre><span></span><code>python<span class="w"> </span>-m<span class="w"> </span>videbo<span class="w"> </span>-P<span class="w"> </span><span class="m">8080</span><span class="w"> </span>storage
 </code></pre></div></p>
 <p>Alternatively, you can set the port in your config file:
-<div class="highlight"><span class="filename">config.yaml</span><pre><span></span><code><span class="nt">files_path</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">/path/to/video/storage</span><span class="w"></span>
-<span class="hll"><span class="nt">listen_port</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">8080</span><span class="w"></span>
+<div class="highlight"><span class="filename">config.toml</span><pre><span></span><code><span class="n">files_path</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">&quot;/path/to/video/storage&quot;</span>
+<span class="hll"><span class="n">listen_port</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">8080</span>
 </span></code></pre></div></p>
 <div class="admonition note">
 <p class="admonition-title">Note</p>
@@ -570,23 +570,23 @@ INFO:videbo.storage.util:Found 0 videos in storage
 <div class="highlight"><span class="filename">video_server_url</span><pre><span></span><code>http://localhost:8080
 </code></pre></div></p>
 <p>Since we changed the listen port, we will need to adjust the "public" facing URL of our Storage Node accordingly, so that Moodle can route our video requests properly:
-<div class="highlight"><span class="filename">config.yaml</span><pre><span></span><code><span class="nt">files_path</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">/path/to/video/storage</span><span class="w"></span>
-<span class="nt">listen_port</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">8080</span><span class="w"></span>
-<span class="hll"><span class="nt">public_base_url</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">http://localhost:8080</span><span class="w"></span>
+<div class="highlight"><span class="filename">config.toml</span><pre><span></span><code><span class="n">files_path</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">&quot;/path/to/video/storage&quot;</span>
+<span class="n">listen_port</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">8080</span>
+<span class="hll"><span class="n">public_base_url</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">&quot;http://localhost:8080&quot;</span>
 </span></code></pre></div></p>
 <p>Then create a <strong><code>Video</code></strong> activity within a course. Inside that activity you can now upload, manage, stream, and download videos. The files should appear inside your <code>/path/to/video/storage</code> directory.</p>
 <h3 id="securing-the-storage-node">Securing the Storage Node</h3>
 <p>In production, this setup would be completely insecure because we did not define a <strong>shared secret</strong> between our Moodle instance and <strong>Videbo</strong>. Without that, anyone could theoretically upload videos to a public facing Storage Node. We secure our <strong>Videbo</strong> Node in the config file:
-<div class="highlight"><span class="filename">config.yaml</span><pre><span></span><code><span class="nt">files_path</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">/path/to/video/storage</span><span class="w"></span>
-<span class="nt">listen_port</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">8080</span><span class="w"></span>
-<span class="nt">public_base_url</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">http://localhost:8080</span><span class="w"></span>
-<span class="hll"><span class="nt">internal_api_secret</span><span class="p">:</span><span class="w"> </span><span class="s">&#39;OUR_SUPER_SECURE_INTERNAL_SECRET&#39;</span><span class="w"></span>
-</span><span class="hll"><span class="nt">external_api_secret</span><span class="p">:</span><span class="w"> </span><span class="s">&#39;OUR_SUPER_SECURE_EXTERNAL_SECRET&#39;</span><span class="w"></span>
+<div class="highlight"><span class="filename">config.toml</span><pre><span></span><code><span class="n">files_path</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">&quot;/path/to/video/storage&quot;</span>
+<span class="n">listen_port</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">8080</span>
+<span class="n">public_base_url</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">&quot;http://localhost:8080&quot;</span>
+<span class="hll"><span class="n">internal_api_secret</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">&#39;OUR_SUPER_SECURE_INTERNAL_SECRET&#39;</span>
+</span><span class="hll"><span class="n">external_api_secret</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">&#39;OUR_SUPER_SECURE_EXTERNAL_SECRET&#39;</span>
 </span></code></pre></div></p>
 <p>The <code>internal_api_secret</code> is what secures the node for administrative commands.</p>
 <div class="admonition note">
 <p class="admonition-title">Note</p>
-<p>In YAML a string value can be safely enclosed in single quotes <code>'</code>, if it is made up of digits only (e.g. <code>123456</code>) or contains special characters or character sequences (e.g. <code>jC\n:6s[z</code>).</p>
+<p>In TOML a <a class="external-link" href="https://toml.io/en/latest#string" target="_blank">string</a> value can be safely enclosed in single quotes <code>'</code>, if it is supposed to be a literal and not have special escape sequences (e.g. <code>jC\n:6s[z</code>). This is useful for things like passwords. If the string itself may contain single quotes, a multi-line literal can be used that is enclosed by three single quotes <code>'''</code>.</p>
 </div>
 <p>The <code>external_api_secret</code> is shared with our Moodle instance. We again set it in the <code>Video service</code> Plugin settings:
 <div class="highlight"><span class="filename">video_api_secret</span><pre><span></span><code>OUR_SUPER_SECURE_EXTERNAL_SECRET
@@ -595,43 +595,44 @@ INFO:videbo.storage.util:Found 0 videos in storage
 <h3 id="configuring-the-nodes">Configuring the nodes</h3>
 <p>The setup for a Distributor Node is essentially the same as with the Storage Node. Following installation we need to create a config file.</p>
 <p>If we just want to have a local testing setup, we can spin up a Distributor Node on the same host as our Storage Node. To do that, we need to put the Distributor Node configuration in a separate file:
-<div class="highlight"><span class="filename">config.yaml (Distributor)</span><pre><span></span><code><span class="nt">files_path</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">/path/to/video/distributor</span><span class="w"></span>
-<span class="nt">listen_port</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">8081</span><span class="w"></span>
-<span class="nt">public_base_url</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">http://localhost:8080</span><span class="w"></span>
-<span class="nt">internal_api_secret</span><span class="p">:</span><span class="w"> </span><span class="s">&#39;OUR_SUPER_SECURE_INTERNAL_SECRET&#39;</span><span class="w"></span>
-<span class="nt">external_api_secret</span><span class="p">:</span><span class="w"> </span><span class="s">&#39;OUR_SUPER_SECURE_EXTERNAL_SECRET&#39;</span><span class="w"></span>
+<div class="highlight"><span class="filename">config.toml (Distributor)</span><pre><span></span><code><span class="n">files_path</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">&quot;/path/to/video/distributor&quot;</span>
+<span class="n">listen_port</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">8081</span>
+<span class="n">public_base_url</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">&quot;http://localhost:8080&quot;</span>
+<span class="n">internal_api_secret</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">&#39;OUR_SUPER_SECURE_INTERNAL_SECRET&#39;</span>
+<span class="n">external_api_secret</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">&#39;OUR_SUPER_SECURE_EXTERNAL_SECRET&#39;</span>
 </code></pre></div></p>
 <p>We already discussed why we configure the files path, listen port, and secrets in the <a href="#running-a-storage-node">Storage section</a>. We let our Distributor Node bind locally to port <code>8081</code> in this example.</p>
 <p>The config parameter <code>public_base_url</code> must to be set to the <strong>same value as on our Storage Node</strong>. In this case, since we are creating a local test-setup, the url is <code>http://localhost:8080</code> as we configured it in the previous chapter.</p>
 <div class="admonition tip">
 <p class="admonition-title">Tip</p>
-<p>If we just want to have a local testing setup, we can spin up a Distributor Node on the same host as our Storage Node. To do that, we need to put the Distributor Node configuration in a separate file (say <code>/etc/videbo/config_dist.yaml</code>) and launch it with the <code>-c</code> command line option (see below).</p>
+<p>If we just want to have a local testing setup, we can spin up a Distributor Node on the same host as our Storage Node. To do that, we need to put the Distributor Node configuration in a separate file (say <code>/etc/videbo/config_dist.toml</code>) and launch it with the <code>-c</code> command line option (see below).</p>
 </div>
 <p>Next, we need to configure our Storage Node to make it aware of the available Distributor:
-<div class="highlight"><span class="filename">config.yaml</span><pre><span></span><code><span class="nt">files_path</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">/path/to/video/storage</span><span class="w"></span>
-<span class="nt">listen_port</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">8080</span><span class="w"></span>
-<span class="nt">public_base_url</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">http://localhost:8080</span><span class="w"></span>
-<span class="nt">internal_api_secret</span><span class="p">:</span><span class="w"> </span><span class="s">&#39;OUR_SUPER_SECURE_INTERNAL_SECRET&#39;</span><span class="w"></span>
-<span class="nt">external_api_secret</span><span class="p">:</span><span class="w"> </span><span class="s">&#39;OUR_SUPER_SECURE_EXTERNAL_SECRET&#39;</span><span class="w"></span>
-<span class="hll"><span class="nt">distribution</span><span class="p">:</span><span class="w"></span>
-</span><span class="hll"><span class="w">  </span><span class="nt">static_node_base_urls</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">http://localhost:8081</span><span class="w"></span>
+<div class="highlight"><span class="filename">config.toml</span><pre><span></span><code><span class="n">files_path</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">&quot;/path/to/video/storage&quot;</span>
+<span class="n">listen_port</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">8080</span>
+<span class="n">public_base_url</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">&quot;http://localhost:8080&quot;</span>
+<span class="n">internal_api_secret</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">&#39;OUR_SUPER_SECURE_INTERNAL_SECRET&#39;</span>
+<span class="n">external_api_secret</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">&#39;OUR_SUPER_SECURE_EXTERNAL_SECRET&#39;</span>
+
+<span class="hll"><span class="k">[distribution]</span>
+</span><span class="hll"><span class="n">static_node_base_urls</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">&quot;http://localhost:8081&quot;</span>
 </span></code></pre></div>
 The <code>static_node_base_urls</code> parameter accepts either an array or a comma-separated list of Distributor Node base URLs. (If there is only one distributor node, a single URL is also valid.)</p>
 <h3 id="starting-the-distributor-node">Starting the Distributor Node</h3>
 <p>Once the setup is complete, we can start the Distributor Node:
-<div class="highlight"><pre><span></span><code>python -m videbo distributor
+<div class="highlight"><pre><span></span><code>python<span class="w"> </span>-m<span class="w"> </span>videbo<span class="w"> </span>distributor
 </code></pre></div></p>
 <p>Again, you should see some logs appear in the terminal and a notice about where the server is listening. <strong>Only now</strong>, once the the Distributor has started, should you (re-)start the Storage Node from a separate terminal:
-<div class="highlight"><pre><span></span><code>python -m videbo storage
+<div class="highlight"><pre><span></span><code>python<span class="w"> </span>-m<span class="w"> </span>videbo<span class="w"> </span>storage
 </code></pre></div></p>
 <p>If the config files are located under different paths (e.g. because we want two nodes running on the same host), we can specify them using the <code>-c</code>/<code>--config-file-paths</code> CLI option:
-<div class="highlight"><pre><span></span><code>python -m videbo -c ./config_dist.yaml distributor
+<div class="highlight"><pre><span></span><code>python<span class="w"> </span>-m<span class="w"> </span>videbo<span class="w"> </span>-c<span class="w"> </span>./config_dist.toml<span class="w"> </span>distributor
 </code></pre></div></p>
-<div class="highlight"><pre><span></span><code>python -m videbo -c ./config_storage.yaml storage
+<div class="highlight"><pre><span></span><code>python<span class="w"> </span>-m<span class="w"> </span>videbo<span class="w"> </span>-c<span class="w"> </span>./config_storage.toml<span class="w"> </span>storage
 </code></pre></div>
 <p>The Storage Node will immediately begin its periodical checks of the status of the enabled Distributor Nodes. In the log output of the Storage Node, you should see a message like this:
 <div class="highlight"><pre><span></span><code>...
-======== Running on http://127.0.0.1:9020 ========
+======== Running on http://127.0.0.1:8080 ========
 ...
 INFO:videbo.storage.distribution:&lt;Distribution watcher http://localhost:8081&gt; connected. Free space currently: ... MB
 INFO:videbo.storage.distribution:Found 0 files on http://localhost:8081

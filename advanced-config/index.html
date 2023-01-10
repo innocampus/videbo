@@ -13,7 +13,7 @@
         <link rel="canonical" href="https://innocampus.github.io/videbo/advanced-config/">
       
       <link rel="icon" href="../assets/images/favicon.png">
-      <meta name="generator" content="mkdocs-1.4.0, mkdocs-material-8.5.6">
+      <meta name="generator" content="mkdocs-1.4.2, mkdocs-material-8.5.6">
     
     
       
@@ -406,17 +406,17 @@
 <p>This means for example that the <code>listen_port</code> directive in a configuration file will always be ignored in favor of a <code>-P</code>/<code>--listen-port</code> option provided on the command line.</p>
 <p>By default, Videbo will search for configuration files in the following locations in that order:</p>
 <ol>
-<li><code>/etc/videbo/config.yaml</code></li>
-<li><code>./config.yaml</code></li>
+<li><code>/etc/videbo/config.toml</code></li>
+<li><code>./config.toml</code></li>
 </ol>
 <p>The order of precedence is analogous to the one described above. If you provide custom configuration file paths via the <code>-c</code>/<code>--config-file-paths</code> command line option, directives placed there will take precedence over those in the default config files listed above.</p>
 <h2 id="environment-variables">Environment variables</h2>
 <p>In addition to CLI and config files, you have the option of setting <em>any</em> configuration directive via an environment variable. All environment variables for Videbo must have the following form:
 <div class="highlight"><pre><span></span><code>VIDEBO_[DIRECTIVE]
 </code></pre></div></p>
-<p>Here <code>[DIRECTIVE]</code> must correspond to a valid configuration directive. See the <a class="external-link" href="https://github.com/innocampus/videbo/blob/master/example.config.yaml" target="_blank"><code>example.config.yaml</code></a> for an exhaustive listing of all available directives and their meaning. Environment variable names are <strong>not</strong> case-sensitive. The following are both valid for example:
-<div class="highlight"><pre><span></span><code><span class="nb">export</span> <span class="nv">VIDEBO_INTERNAL_API_SECRET</span><span class="o">=</span>supersecretstring
-<span class="nb">export</span> <span class="nv">videbo_listen_port</span><span class="o">=</span><span class="m">9001</span>
+<p>Here <code>[DIRECTIVE]</code> must correspond to a valid configuration directive. See the <a class="external-link" href="https://github.com/innocampus/videbo/blob/master/example.config.toml" target="_blank"><code>example.config.toml</code></a> for an exhaustive listing of all available directives and their meaning. Environment variable names are <strong>not</strong> case-sensitive. The following are both valid for example:
+<div class="highlight"><pre><span></span><code><span class="nb">export</span><span class="w"> </span><span class="nv">VIDEBO_INTERNAL_API_SECRET</span><span class="o">=</span>supersecretstring
+<span class="nb">export</span><span class="w"> </span><span class="nv">videbo_listen_port</span><span class="o">=</span><span class="m">9001</span>
 </code></pre></div></p>
 
 
