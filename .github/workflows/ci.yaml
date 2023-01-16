@@ -7,13 +7,14 @@ on:
 
 jobs:
   unit-tests:
-    name: Python ${{ matrix.python-version }} unit tests
+    name: Unit tests (Python ${{ matrix.python-version }})
     runs-on: ubuntu-latest
     strategy:
       matrix:
         python-version:
         - '3.9'
         - '3.10'
+        - '3.11'
     steps:
     - uses: actions/checkout@v3
 
@@ -27,17 +28,17 @@ jobs:
       run: pip install -U pip
 
     - name: Install dependencies
-      run: pip install -U -r requirements/dev.txt
+      run: pip install -Ur requirements/dev.txt
 
-    - name: Install videbo
+    - name: Install Videbo
       run: pip install -e .
 
     - name: Run unit tests for Python ${{ matrix.python-version }}
-      if: ${{ matrix.python-version != '3.10' }}
+      if: ${{ matrix.python-version != '3.11' }}
       run: python -m tests
 
-    - name: Run unit test coverage script for Python 3.10 and save total percentage
-      if: ${{ matrix.python-version == '3.10' }}
+    - name: Run unit test coverage script for Python 3.11 and save total percentage
+      if: ${{ matrix.python-version == '3.11' }}
       run: |
         total=$(./scripts/cov.sh)
         [[ $? -eq 0 ]] && echo "coverage=${total}" >> $GITHUB_ENV
@@ -46,13 +47,14 @@ jobs:
       coverage: ${{ env.coverage }}
 
   e2e-tests:
-    name: Python ${{ matrix.python-version }} end-to-end tests
+    name: End-to-end tests (Python ${{ matrix.python-version }})
     runs-on: ubuntu-latest
     strategy:
       matrix:
         python-version:
         - '3.9'
         - '3.10'
+        - '3.11'
     steps:
     - uses: actions/checkout@v3
 
@@ -69,9 +71,9 @@ jobs:
       run: pip install -U pip
 
     - name: Install dependencies
-      run: pip install -U -r requirements/dev.txt
+      run: pip install -Ur requirements/dev.txt
 
-    - name: Install videbo
+    - name: Install Videbo
       run: pip install -e .
 
     - name: Create temporary storage directory
@@ -81,14 +83,20 @@ jobs:
       run: python -m tests 'e2e_test*.py'
 
   type-checks:
-    name: Type checks with mypy
+    name: Type checks with mypy (Python ${{ matrix.python-version }})
     runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version:
+        - '3.9'
+        - '3.10'
+        - '3.11'
     steps:
     - uses: actions/checkout@v3
 
     - uses: actions/setup-python@v3
       with:
-        python-version: '3.9'
+        python-version: ${{ matrix.python-version }}
         cache: 'pip'
         cache-dependency-path: 'requirements/dev.txt'
 
@@ -96,20 +104,26 @@ jobs:
       run: pip install -U pip
 
     - name: Install dependencies
-      run: pip install -U -r requirements/dev.txt
+      run: pip install -Ur requirements/dev.txt
 
     - name: Run mypy
       run: mypy
 
   lint:
-    name: Lint with flake8
+    name: Lint with flake8 (Python ${{ matrix.python-version }})
     runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version:
+        - '3.9'
+        - '3.10'
+        - '3.11'
     steps:
     - uses: actions/checkout@v3
 
     - uses: actions/setup-python@v3
       with:
-        python-version: '3.9'
+        python-version: ${{ matrix.python-version }}
         cache: 'pip'
         cache-dependency-path: 'requirements/dev.txt'
 
