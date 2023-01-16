@@ -19,6 +19,7 @@ __all__ = [
 ]
 
 
+# TODO: Define an enum for `codec_type`:
 class FFProbeStream(BaseModel):
     """Relevant parts of the `stream` section of a `ffprobe` output."""
 
@@ -89,8 +90,10 @@ class VideoInfo(BaseModel):
         assert isinstance(fmt, FFProbeFormat)
         if not v:
             return fmt.get_suggested_file_extension()
-        if v in fmt.names:
+        if v.startswith(".") and v[1:] in fmt.names:
             return v
+        elif not v.startswith(".") and v in fmt.names:
+            return "." + v
         raise ValueError(f"{v} does not match formats {fmt.names}")
 
     def get_first_stream_of_type(self, codec: str) -> Optional[FFProbeStream]:

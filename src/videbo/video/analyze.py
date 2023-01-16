@@ -1,4 +1,4 @@
-from asyncio import TimeoutError as AsyncioTimeoutError
+from asyncio.exceptions import TimeoutError as AsyncioTimeoutError
 from asyncio.tasks import gather, wait_for
 from pathlib import Path
 from subprocess import PIPE
@@ -137,7 +137,6 @@ async def get_ffprobe_info(
 
 class CreateThumbnailKwargs(TypedDict, total=False):
     """Should match the signature of `create_thumbnail` below."""
-
     video_path: PathT
     thumbnail_dst: PathT
     offset: int
