@@ -1,16 +1,20 @@
 from collections import OrderedDict
 from collections.abc import Iterable, Hashable
+from typing import TypeVar
 
 from videbo.exceptions import SizeError
 
 
-class BytesLimitLRU(OrderedDict[Hashable, bytes]):
+_KT = TypeVar("_KT", bound=Hashable)
+
+
+class BytesLimitLRU(OrderedDict[_KT, bytes]):
     """
     Limit object memory size, evicting the least recently accessed key when the specified maximum is exceeded.
     Only `bytes` type values are accepted. Their size is calculated by passing them into the builtin `len()` function.
     """
 
-    def __init__(self, max_bytes: int, other: Iterable[tuple[Hashable, bytes]] = (), **kwargs: bytes) -> None:
+    def __init__(self, max_bytes: int, other: Iterable[tuple[_KT, bytes]] = (), **kwargs: bytes) -> None:
         """
         Uses the `dict` constructor to initialize; in addition the `.max_bytes` attribute is set and the protected
         attribute `._total_bytes` used for keeping track of the total size of the values stored is initialized.
@@ -23,24 +27,24 @@ class BytesLimitLRU(OrderedDict[Hashable, bytes]):
         This could cause unexpected behaviour, so the `__setitem__` method checks if the object is still initializing,
         if the maximum size is exceeded after adding an element, and raises an error in that case.
         """
-        self.max_bytes = max_bytes
+        self._max_bytes = max_bytes
         self._total_bytes = 0
         self.__initializing = True
         super().__init__(other, **kwargs)
         self.__initializing = False
 
-    def __delitem__(self, key: Hashable) -> None:
+    def __delitem__(self, key: _KT) -> None:
         """Usage is `del instance[key]` as with other mapping classes."""
         self._total_bytes -= len(self[key])
         super().__delitem__(key)
 
-    def __getitem__(self, key: Hashable) -> bytes:
+    def __getitem__(self, key: _KT) -> bytes:
         """Usage is `instance[key]` as with other mapping classes."""
         value = super().__getitem__(key)
         self.move_to_end(key)
         return value
 
-    def __setitem__(self, key: Hashable, value: bytes) -> None:
+    def __setitem__(self, key: _KT, value: bytes) -> None:
         """
         Calling `instance[key] = value` adds a key-value-pair as with other mapping classes.
         Only accepts `bytes` objects as values; raises a `TypeError` otherwise.
@@ -72,6 +76,10 @@ class BytesLimitLRU(OrderedDict[Hashable, bytes]):
             # Delete the current oldest item, by instantiating an iterator over all keys (in order)
             # and passing its next item (i.e. the first one in order) to `__delitem__`
             del self[next(iter(self))]
+
+    @property
+    def max_bytes(self) -> int:
+        return self._max_bytes
 
     @property
     def total_bytes(self) -> int:

@@ -321,16 +321,11 @@ async def handle_thumbnail_request(
         log.debug(f"Serve temp thumbnail {num} for temp video {hash_}")
     else:
         raise RuntimeError("invalid request type")  # should be unreachable
-    body = file_storage.thumb_memory_cache.get(path, b"")
-    if not body:
-        try:
-            body = await run_in_default_executor(path.read_bytes)
-        except FileNotFoundError:
-            log.warning(f"File does not exist: {path}")
-            raise HTTPNotFound()
-        # Setting cache maximum size to 0 effectively disables it:
-        if settings.thumbnails.cache_max_mb > 0:
-            file_storage.thumb_memory_cache[path] = body
+    try:
+        body = await file_storage.thumb_memory_cache.get_and_update(path)
+    except FileNotFoundError:
+        log.warning(f"File does not exist: {path}")
+        raise HTTPNotFound()
     return Response(
         body=body,
         content_type="image/jpeg",

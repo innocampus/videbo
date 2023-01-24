@@ -15,11 +15,11 @@ from videbo.exceptions import CouldNotCreateDir, LMSInterfaceError
 from videbo.lms_api import LMS
 from videbo.misc import JPG_EXT, MEGA
 from videbo.misc.functions import get_free_disk_space, move_file, rel_path, run_in_default_executor
-from videbo.misc.lru_dict import BytesLimitLRU
 from videbo.misc.task_manager import TaskManager
 from videbo.network import NetworkInterfaces
 from .distribution import DistributionController, FileNodes
 from .exceptions import HashedFileInvalidExtensionError
+from .thumbnail_cache import ThumbnailCache
 from .api.models import FileType, StorageStatus
 
 
@@ -112,7 +112,7 @@ class FileStorage:
         self._cached_files: _StoredFilesDict = {}  # map hashes to files
         self._cached_files_total_size: int = 0  # in bytes
         self.num_current_uploads: int = 0
-        self.thumb_memory_cache = BytesLimitLRU(int(settings.thumbnails.cache_max_mb * MEGA))
+        self.thumb_memory_cache = ThumbnailCache()
         self.http_client: Client = Client()
         self.distribution_controller: DistributionController = DistributionController(http_client=self.http_client)
 
