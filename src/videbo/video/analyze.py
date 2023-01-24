@@ -1,5 +1,6 @@
 from asyncio.exceptions import TimeoutError as AsyncioTimeoutError
 from asyncio.tasks import gather, wait_for
+from logging import Logger, getLogger
 from pathlib import Path
 from subprocess import PIPE
 from typing import Optional, TypedDict
@@ -11,6 +12,8 @@ from videbo.exceptions import (
     FFMpegError,
     FFProbeError,
     FileCmdError,
+    MimeTypeNotAllowed,
+    VideoNotAllowed,
 )
 from videbo.misc import JPG_EXT
 from videbo.misc.functions import (
@@ -25,11 +28,13 @@ from .models import VideoInfo
 __all__ = [
     "get_video_mime_type",
     "get_ffprobe_info",
+    "get_video_info",
     "create_thumbnail",
     "create_thumbnail_securely",
     "generate_thumbnails",
 ]
 
+_log = getLogger(__name__)
 
 DEFAULT_SUBPROCESS_TIMEOUT: float = 10.0  # seconds
 
@@ -133,6 +138,38 @@ async def get_ffprobe_info(
         return VideoInfo.parse_raw(stdout.decode())
     except ValidationError:
         raise FFProbeError(stderr=stderr.decode())
+
+
+async def get_video_info(path: PathT, log: Logger = _log) -> VideoInfo:
+    """
+    Runs metadata checks on the video at `path` and returns the information.
+
+    Logs failed checks as expressive warnings.
+
+    Args:
+        path: Path to the video file to analyze
+        log (optional): Logger instance to use (defaults to the module log)
+
+    Returns:
+        Instance of `VideoInfo` if the checks were passed
+
+    Raises:
+        `MimeTypeNotAllowed` if the video's MIME type is not whitelisted
+        `FFProbeError` if analysis with `ffprobe` could not be completed
+        `VideoNotAllowed` if the video's codec or format is not whitelisted
+    """
+    mime_type = await get_video_mime_type(path)
+    if mime_type not in settings.video.mime_types_allowed:
+        exception = MimeTypeNotAllowed(mime_type)
+        log.warning(repr(exception))
+        raise exception
+    try:
+        probe_info = await get_ffprobe_info(path)
+        probe_info.ensure_is_allowed()
+    except (FFProbeError, VideoNotAllowed) as e:
+        log.warning(repr(e))
+        raise
+    return probe_info
 
 
 class CreateThumbnailKwargs(TypedDict, total=False):

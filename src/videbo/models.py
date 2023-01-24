@@ -1,5 +1,6 @@
 from __future__ import annotations
 from enum import Enum, IntEnum
+from logging import Logger, getLogger
 from time import time
 from typing import Any, ClassVar, Optional, TypeVar, Union
 
@@ -30,6 +31,8 @@ J = TypeVar('J', bound='BaseJWTData')
 
 DEFAULT_JWT_ALG = 'HS256'
 
+_log = getLogger(__name__)
+
 
 class BaseModel(PydanticBaseModel):
     pass
@@ -40,8 +43,26 @@ class BaseRequestModel(BaseModel):
 
 
 class BaseResponseModel(BaseModel):
-    def json_response(self, status_code: int = 200, **kwargs: Any) -> Response:
-        return Response(text=self.json(**kwargs), status=status_code, content_type='application/json')
+    _status_code: int = 200
+
+    def _log_response(self, log: Logger) -> None:
+        pass
+
+    def json_response(
+        self,
+        status_code: Optional[int] = None,
+        log: Logger = _log,
+        **kwargs: Any,
+    ) -> Response:
+        self._log_response(log)
+        return Response(
+            text=self.json(**kwargs),
+            status=status_code or self._status_code,
+            content_type="application/json",
+        )
+
+    class Config:
+        underscore_attrs_are_private = True
 
 
 class TokenIssuer(str, Enum):
@@ -61,6 +82,7 @@ class BaseJWTData(BaseModel):
 
     exp: int  # expiration time claim
     iss: TokenIssuer  # issuer claim
+    # TODO: implement `internal` convenience property
 
     @validator('iss', pre=True)
     def iss_is_enum_member(cls, v: Union[TokenIssuer, str]) -> TokenIssuer:
@@ -81,7 +103,7 @@ class BaseJWTData(BaseModel):
         """
         Replaces enum members with their values in the dictionary representation.
 
-        This is makes the dictionary serializable (for JWT), but preserves the enum sugar in the model attribute,
+        This makes the dictionary serializable (for JWT), but preserves the enum sugar in the model attribute,
         which would be lost, if we were to use the `use_enum_values` configuration option.
         """
         d = super().dict(*args, **kwargs)

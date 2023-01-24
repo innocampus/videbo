@@ -239,10 +239,45 @@ class NetworkInterfaces:
             return None
 
     def get_tx_current_rate(self, interface_name: Optional[str] = None) -> Optional[float]:
-        interface = self.get_first_interface() if interface_name is None else self._interfaces.get(interface_name)
+        """
+        Returns the current TX throughput in bytes per second.
+
+        Args:
+            interface_name (optional):
+                If provided, the stats are taken from the interface with the
+                specified name; if no interface with that name is found,
+                `None` is returned. If omitted or `None` (default), the first
+                listed interface is used; if no interface at all was found,
+                `None` is returned.
+
+        Returns:
+            The TX rate of the chosen interface in bytes per second or `None`,
+            if no (matching) interface was found.
+        """
+        if interface_name is None:
+            interface = self.get_first_interface()
+        else:
+            interface = self._interfaces.get(interface_name)
         if interface is None:
             return None
-        return interface.tx.throughput * 8 / 1_000_000
+        return interface.tx.throughput
+
+    def get_tx_load(self, interface_name: Optional[str] = None) -> Optional[float]:
+        """
+        Returns the current TX load of the network interface.
+
+        Args:
+            interface_name (optional): same as in `get_tx_current_rate`
+
+        Returns:
+            The TX load of the chosen interface as a ratio of the current TX
+            throughput in Mbit/s to the configured `tx_max_rate_mbit` or
+            `None`, if no (matching) interface was found.
+        """
+        current_rate = self.get_tx_current_rate(interface_name=interface_name)
+        if current_rate is None:
+            return None
+        return (current_rate * 8 / 1_000_000) / settings.tx_max_rate_mbit
 
     def update_node_status(self, status_obj: NodeStatus, logger: Logger = log) -> None:
         """Updates a given `NodeStatus` (subclass) instance with network interface information"""

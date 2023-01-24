@@ -84,7 +84,7 @@ async def delete_files(_request: Request, _jwt_data: RequestJWTData, data: Distr
     return DistributorDeleteFilesResponse(files_skipped=files_skipped, free_space=free_space).json_response()
 
 
-@routes.get('/file')
+@routes.get(r'/file')
 @ensure_auth(Role.client)
 async def request_file(request: Request, jwt_data: RequestFileJWTData) -> Union[Response, FileResponse]:
     file_controller = DistributorFileController.get_instance()

@@ -1,3 +1,4 @@
+import logging
 from asyncio.tasks import sleep
 from pathlib import Path
 from unittest import IsolatedAsyncioTestCase
@@ -144,6 +145,72 @@ class AnalyzeTestCase(IsolatedAsyncioTestCase):
         mock_proc.kill.assert_not_called()
         mock_ffprobe_error_init.assert_called_once_with(stderr="bar")
         mock_video_info_parse_raw.assert_called_once_with("foo")
+
+    @patch.object(analyze, "get_ffprobe_info")
+    @patch.object(analyze.MimeTypeNotAllowed, "__init__", return_value=None)
+    @patch.object(analyze, "settings")
+    @patch.object(analyze, "get_video_mime_type")
+    async def test_get_video_info(
+        self,
+        mock_get_video_mime_type: AsyncMock,
+        mock_settings: MagicMock,
+        mock_mime_type_not_allowed_init: MagicMock,
+        mock_get_ffprobe_info: AsyncMock,
+    ) -> None:
+        # Fail due to wrong mime type:
+        mock_settings.video.mime_types_allowed = {"foo", "bar"}
+        mock_get_video_mime_type.return_value = mime_type = "baz"
+        path = "abc"
+        with self.assertRaises(analyze.MimeTypeNotAllowed):
+            with self.assertLogs(analyze._log, logging.WARNING):
+                await analyze.get_video_info(path)
+        mock_get_video_mime_type.assert_called_once_with(path)
+        mock_mime_type_not_allowed_init.assert_called_once_with(mime_type)
+        mock_get_ffprobe_info.assert_not_called()
+
+        mock_get_video_mime_type.reset_mock()
+        mock_mime_type_not_allowed_init.reset_mock()
+
+        mock_get_video_mime_type.return_value = "foo"
+        ffprobe_err = analyze.FFProbeError()
+        vid_not_allowed = analyze.VideoNotAllowed()
+        mock_info = MagicMock(
+            ensure_is_allowed=MagicMock(
+                side_effect=(ffprobe_err, vid_not_allowed, None)
+            )
+        )
+        mock_get_ffprobe_info.return_value = mock_info
+
+        # Fail due to ffprobe error:
+        with self.assertRaises(analyze.FFProbeError) as ctx:
+            with self.assertLogs(analyze._log, logging.WARNING):
+                await analyze.get_video_info(path)
+        self.assertIs(ffprobe_err, ctx.exception)
+        mock_get_video_mime_type.assert_called_once_with(path)
+        mock_mime_type_not_allowed_init.assert_not_called()
+        mock_get_ffprobe_info.assert_called_once_with(path)
+
+        mock_get_video_mime_type.reset_mock()
+        mock_get_ffprobe_info.reset_mock()
+
+        # Fail due to video not allowed:
+        with self.assertRaises(analyze.VideoNotAllowed) as ctx:
+            with self.assertLogs(analyze._log, logging.WARNING):
+                await analyze.get_video_info(path)
+        self.assertIs(vid_not_allowed, ctx.exception)
+        mock_get_video_mime_type.assert_called_once_with(path)
+        mock_mime_type_not_allowed_init.assert_not_called()
+        mock_get_ffprobe_info.assert_called_once_with(path)
+
+        mock_get_video_mime_type.reset_mock()
+        mock_get_ffprobe_info.reset_mock()
+
+        # Succeed:
+        output = await analyze.get_video_info(path)
+        self.assertIs(mock_info, output)
+        mock_get_video_mime_type.assert_called_once_with(path)
+        mock_mime_type_not_allowed_init.assert_not_called()
+        mock_get_ffprobe_info.assert_called_once_with(path)
 
     @patch.object(analyze.FFMpegError, "__init__", return_value=None)
     @patch.object(analyze, "create_user_subprocess")
@@ -329,5 +396,3 @@ class AnalyzeTestCase(IsolatedAsyncioTestCase):
             offset=expected_offset,
             interim_path=Path(interim_dir, expected_destination.name),
         )
-
-

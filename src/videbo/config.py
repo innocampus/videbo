@@ -166,6 +166,10 @@ class VideoSettings(SettingsBaseModel):
     video_codecs_allowed: set[str] = {'h264', 'vp8'}
     audio_codecs_allowed: set[str] = {'aac', 'vorbis'}
 
+    @property
+    def max_file_size_bytes(self) -> int:
+        return int(self.max_file_size_mb * MEGA)
+
 
 class DistributionSettings(SettingsBaseModel):
     static_node_base_urls: list[str] = []

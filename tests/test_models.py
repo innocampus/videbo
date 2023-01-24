@@ -14,14 +14,18 @@ SETTINGS_PATH = TESTED_MODULE_PATH + '.settings'
 
 
 class BaseResponseModelTestCase(TestCase):
-    def test_json_response(self) -> None:
+    def test__log_response(self) -> None:
+        obj = models.BaseResponseModel()
+        self.assertIsNone(obj._log_response(MagicMock()))
+
+    @patch.object(models.BaseResponseModel, "_log_response")
+    def test_json_response(self, mock__log_response: MagicMock) -> None:
         class ModelForTesting(models.BaseResponseModel):
             foo: int
             bar: str
             baz: Optional[str] = None
 
-        data = dict(foo=42, bar='baz')
-        obj = ModelForTesting(**data)
+        obj = ModelForTesting(foo=42, bar='baz')
 
         json_kwargs = dict(exclude_unset=True)
         text = obj.json(**json_kwargs)
@@ -29,6 +33,7 @@ class BaseResponseModelTestCase(TestCase):
         response = obj.json_response(status_code=status, **json_kwargs)
         self.assertEqual(text, response.text)
         self.assertEqual(status, response.status)
+        mock__log_response.assert_called_once_with(models._log)
 
 
 class BaseJWTDataTestCase(TestCase):

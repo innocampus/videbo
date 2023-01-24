@@ -1,14 +1,28 @@
 from __future__ import annotations
 from enum import Enum
-from typing import Optional
+from logging import Logger, getLogger
+from typing import Literal, Optional
+
+from pydantic.fields import Field
+from pydantic.networks import AnyHttpUrl
 
 from videbo import settings
-from videbo.models import BaseJWTData, BaseModel, BaseRequestModel, BaseResponseModel, RequestJWTData, NodeStatus, Role, TokenIssuer
+from videbo.models import (
+    BaseJWTData,
+    BaseModel,
+    BaseRequestModel,
+    BaseResponseModel,
+    NodeStatus,
+    RequestJWTData,
+    Role,
+    TokenIssuer,
+)
 from videbo.distributor.api.models import DistributorStatus
 
 
 __all__ = [
     'FileType',
+    'Status',
     'UploadFileJWTData',
     'SaveFileJWTData',
     'DeleteFileJWTData',
@@ -19,8 +33,17 @@ __all__ = [
     'DistributorNodeInfo',
     'DistributorStatusDict',
     'DeleteFilesList',
-    'FileUploadedResponseJWT'
+    'FileUploadedResponseJWT',
+    'OK',
+    'MaxSizeMB',
+    'FileTooBig',
+    'InvalidFormat',
+    'FileUploaded',
+    'FileDoesNotExist',
+    'NotAllFilesDeleted',
 ]
+
+_log = getLogger(__name__)
 
 
 class FileType(Enum):
@@ -33,6 +56,15 @@ class FileType(Enum):
     def values(cls) -> frozenset[str]:
         return frozenset(member.value for member in cls.__members__.values())
 
+
+class Status(str, Enum):
+    OK = "ok"
+    ERROR = "error"
+    INCOMPLETE = "incomplete"
+
+
+#######################
+# JWT request models: #
 
 class UploadFileJWTData(RequestJWTData):
     is_allowed_to_upload_file: bool
@@ -113,6 +145,174 @@ class RequestFileJWTData(RequestJWTData):
         """Returns the file url with the encoded JWT as a query parameter."""
         return f"{settings.public_base_url}/file?jwt={self.encode()}"
 
+    @classmethod
+    def get_urls(
+        cls,
+        file_hash: str,
+        file_ext: str,
+        *,
+        temp: bool,
+        thumb_count: int,
+        exp: Optional[int] = None,
+    ) -> tuple[str, list[str]]:
+        """
+        Constructs the URLs for requesting a video file and its thumbnails.
+
+        Each URL is created via the `encode_public_file_url` method.
+
+        Args:
+            file_hash:
+                The hash hexdigest of the video file in question
+            file_ext:
+                The extension of the video file in question
+            temp:
+                If `True`, the video is assumed to not be saved permanently yet,
+                but only recently uploaded.
+            thumb_count:
+                The number of thumbnails that can be requested for the video
+            exp (optional):
+                If provided, it will be set as the value for the `exp` field
+                on the JWT model; otherwise the default expiration time is used.
+
+        Returns:
+            2-tuple with the first element being the URL by which to request
+            the video and the second being a list of the thumbnail URLs
+        """
+        exp = exp or cls.default_expiration_from_now()
+        video_url = cls.client_default(
+            file_hash,
+            file_ext,
+            temp=temp,
+            expiration_time=exp,
+        ).encode_public_file_url()
+        thumbnail_urls = []
+        for thumb_id in range(thumb_count):
+            thumbnail_urls.append(
+                cls.client_default(
+                    file_hash,
+                    file_ext,
+                    temp=temp,
+                    expiration_time=exp,
+                    thumb_id=thumb_id,
+                ).encode_public_file_url()
+            )
+        return video_url, thumbnail_urls
+
+
+########################
+# JWT response models: #
+
+class FileUploadedResponseJWT(BaseJWTData):
+    hash: str
+    file_ext: str
+    thumbnails_available: int
+    duration: float
+
+
+#########################
+# Response body models: #
+
+
+class StatusResponseModel(BaseResponseModel):
+    status: Status
+
+
+class OK(StatusResponseModel):
+    status: Status = Status.OK
+
+
+class _Error(StatusResponseModel):
+    status: Status = Status.ERROR
+
+
+class _Incomplete(StatusResponseModel):
+    status: Status = Status.INCOMPLETE
+
+
+class MaxSizeMB(BaseResponseModel):
+    max_size: float = Field(default_factory=lambda: settings.video.max_file_size_mb)
+
+
+class FileTooBig(_Error, MaxSizeMB):
+    _status_code: int = 413
+
+    def _log_response(self, log: Logger) -> None:
+        log.warning("File too big to upload")
+
+
+class InvalidFormat(_Error):
+    _status_code: int = 415
+    error: Literal["invalid_format"] = "invalid_format"
+
+    def _log_response(self, log: Logger) -> None:
+        log.warning("No or invalid file in request")
+
+
+# TODO: See if we can make it consistent by replacing `result` with `status`
+class FileUploaded(BaseResponseModel):
+    result: Literal["ok"] = "ok"
+    jwt: str
+    url: AnyHttpUrl
+    thumbnails: list[AnyHttpUrl]
+
+    @classmethod
+    def from_video(
+        cls,
+        file_hash: str,
+        file_ext: str,
+        *,
+        thumbnails_available: int,
+        duration: float,
+    ) -> FileUploaded:
+        """
+        Returns an instance with data for the client after successful upload.
+
+        The JWT will be an encoded instance of `FileUploadedResponseJWT`, for
+        which the `iss` field will be assigned `TokenIssuer.external` and the
+        return value of `default_expiration_from_now` is assigned to `exp`.
+
+        Args:
+            file_hash:
+                Assigned to the `hash` field of the JWT
+            file_ext:
+                Assigned to the `file_ext` field of the JWT
+            thumbnails_available:
+                Assigned to the `thumbnails_available` field of the JWT
+            duration:
+                Assigned to the `duration` field of the JWT
+
+        Returns:
+            Instance of the class with data of the uploaded video.
+        """
+        jwt_data = FileUploadedResponseJWT(
+            exp=FileUploadedResponseJWT.default_expiration_from_now(),
+            iss=TokenIssuer.external,
+            hash=file_hash,
+            file_ext=file_ext,
+            thumbnails_available=thumbnails_available,
+            duration=duration,
+        )
+        vid_url, thumb_urls = RequestFileJWTData.get_urls(
+            file_hash,
+            file_ext,
+            temp=True,
+            thumb_count=thumbnails_available,
+        )
+        return cls.parse_obj({
+            "jwt": jwt_data.encode(),
+            "url": vid_url,
+            "thumbnails": thumb_urls,
+        })
+
+
+class FileDoesNotExist(_Error):
+    _status_code: int = 404
+    error: Literal["file_does_not_exist"] = "file_does_not_exist"
+    file_hash: str = Field(exclude=True)
+
+    def _log_response(self, log: Logger) -> None:
+        log.error(f"Save request failed; file(s) not found: {self.file_hash}")
+
 
 class StorageStatus(NodeStatus):
     distributor_nodes: list[str]  # list of base_urls
@@ -138,20 +338,21 @@ class StorageFilesList(BaseResponseModel):
     files: list[StorageFileInfo]
 
 
-class DistributorNodeInfo(BaseRequestModel):
-    base_url: str
+class NotAllFilesDeleted(_Incomplete):
+    not_deleted: list[str]
 
 
 class DistributorStatusDict(BaseResponseModel):
     nodes: dict[str, DistributorStatus]  # keys are base urls
 
 
+########################
+# Request body models: #
+# (admin interface)    #
+
+class DistributorNodeInfo(BaseRequestModel):
+    base_url: str
+
+
 class DeleteFilesList(BaseRequestModel):
     hashes: list[str]
-
-
-class FileUploadedResponseJWT(BaseJWTData):
-    hash: str
-    file_ext: str
-    thumbnails_available: int
-    duration: float

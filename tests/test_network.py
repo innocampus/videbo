@@ -280,11 +280,27 @@ class NetworkInterfacesTestCase(SilentLogMixin, IsolatedAsyncioTestCase):
         mock_get_first_interface.reset_mock()
 
         # interface "foo" with throughput of 1M bytes per second:
+        x = 1_000_000
         self.ni._interfaces = {
-            "foo": MagicMock(tx=MagicMock(throughput=1_000_000)),
-            "bar": MagicMock()
+            "foo": MagicMock(tx=MagicMock(throughput=x)),
+            "bar": MagicMock(),
         }
-        self.assertEqual(8., self.ni.get_tx_current_rate(interface_name="foo"))
+        self.assertEqual(x, self.ni.get_tx_current_rate(interface_name="foo"))
+
+    @patch.object(network.NetworkInterfaces, "get_tx_current_rate")
+    def test_get_tx_load(self, mock_get_tx_current_rate: MagicMock) -> None:
+        mock_get_tx_current_rate.return_value = None
+        name = MagicMock()
+        self.assertIsNone(self.ni.get_tx_load(name))
+        mock_get_tx_current_rate.assert_called_once_with(interface_name=name)
+        mock_get_tx_current_rate.reset_mock()
+
+        mock_get_tx_current_rate.return_value = current_rate = 1_000_000
+        self.mock_settings.tx_max_rate_mbit = max_rate = 10
+        expected_output = current_rate * 8 / 1_000_000 / max_rate
+        output = self.ni.get_tx_load(name)
+        self.assertEqual(expected_output, output)
+        mock_get_tx_current_rate.assert_called_once_with(interface_name=name)
 
     @patch.object(network.NetworkInterfaces, "get_first_interface")
     def test_update_node_status(self, mock_get_first_interface: MagicMock) -> None:
