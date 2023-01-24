@@ -16,9 +16,9 @@ class HTTPUtilTestCase(SilentLogMixin, IsolatedAsyncioTestCase):
     @patch.object(http_util, "is_allowed_file_ending")
     @patch.object(http_util, "isinstance")
     async def test_get_video_payload(
-        self,
-        mock_isinstance: MagicMock,
-        mock_is_allowed_file_ending: MagicMock,
+            self,
+            mock_isinstance: MagicMock,
+            mock_is_allowed_file_ending: MagicMock,
     ) -> None:
         # Missing `video` field:
         mock_request = create_autospec(Request, instance=True)
@@ -114,9 +114,9 @@ class HTTPUtilTestCase(SilentLogMixin, IsolatedAsyncioTestCase):
     @patch.object(http_util, "get_video_info")
     @patch.object(http_util, "read_data")
     async def test_save_temp_video(
-        self,
-        mock_read_data: AsyncMock,
-        mock_get_video_info: AsyncMock,
+            self,
+            mock_read_data: AsyncMock,
+            mock_get_video_info: AsyncMock,
     ) -> None:
         # Mock `VideoInfo`:
         mock_get_video_info.return_value = mock_video_info = MagicMock()
@@ -156,13 +156,13 @@ class HTTPUtilTestCase(SilentLogMixin, IsolatedAsyncioTestCase):
     @patch.object(http_util, "FileTooBig")
     @patch.object(http_util, "save_temp_video")
     async def test_save_temp_and_get_response(
-        self,
-        mock_save_temp_video: AsyncMock,
-        mock_file_too_big_cls: MagicMock,
-        mock_invalid_format_cls: MagicMock,
-        mock_generate_thumbnails: AsyncMock,
-        mock_get_storage_instance: MagicMock,
-        mock_get_response_data_from_video: MagicMock,
+            self,
+            mock_save_temp_video: AsyncMock,
+            mock_file_too_big_cls: MagicMock,
+            mock_invalid_format_cls: MagicMock,
+            mock_generate_thumbnails: AsyncMock,
+            mock_get_storage_instance: MagicMock,
+            mock_get_response_data_from_video: MagicMock,
     ) -> None:
         # Mock `FileUploaded`:
         response = object()
@@ -259,8 +259,8 @@ class HTTPUtilTestCase(SilentLogMixin, IsolatedAsyncioTestCase):
 
     @patch.object(http_util, "run_in_default_executor")
     async def test_verify_file_exists(
-        self,
-        mock_run_in_default_executor: AsyncMock,
+            self,
+            mock_run_in_default_executor: AsyncMock,
     ) -> None:
         mock_run_in_default_executor.return_value = True
         path = MagicMock()
@@ -273,3 +273,154 @@ class HTTPUtilTestCase(SilentLogMixin, IsolatedAsyncioTestCase):
             with self.assertLogs(http_util._log, logging.WARNING):
                 await http_util.verify_file_exists(path)
         mock_run_in_default_executor.assert_awaited_once_with(path.is_file)
+
+    @patch.object(http_util, "file_serve_headers")
+    @patch.object(http_util.FileStorage, "get_instance")
+    async def test_handle_thumbnail_request(
+            self,
+            mock_get_storage_instance: MagicMock,
+            mock_file_serve_headers: MagicMock,
+    ) -> None:
+        mock_cache = MagicMock()
+        mock_get_storage_instance.return_value = mock_storage = MagicMock(
+            thumb_memory_cache=mock_cache
+        )
+        mock_file_serve_headers.return_value = mock_headers = {"foo": "bar"}
+        mock_jwt_data = MagicMock(thumb_id=None)
+
+        # Missing thumbnail ID:
+        with self.assertRaises(http_util.HTTPBadRequest):
+            with self.assertLogs(http_util._log, logging.WARNING):
+                await http_util.handle_thumbnail_request(mock_jwt_data)
+        mock_get_storage_instance.assert_not_called()
+        mock_storage.get_perm_thumbnail_path.assert_not_called()
+        mock_storage.get_temp_thumbnail_path.assert_not_called()
+        mock_cache.get_and_update.assert_not_called()
+        mock_file_serve_headers.assert_not_called()
+
+        mock_jwt_data.thumb_id = num = 123
+        mock_jwt_data.hash = hash_ = 123
+        mock_jwt_data.file_ext = ext = 123
+        mock_jwt_data.type = None  # invalid
+
+        # This should be unreachable because of the file type enum:
+        with self.assertRaises(RuntimeError):
+            await http_util.handle_thumbnail_request(mock_jwt_data)
+        mock_get_storage_instance.assert_called_once_with()
+        mock_storage.get_perm_thumbnail_path.assert_not_called()
+        mock_storage.get_temp_thumbnail_path.assert_not_called()
+        mock_cache.get_and_update.assert_not_called()
+        mock_file_serve_headers.assert_not_called()
+
+        mock_get_storage_instance.reset_mock()
+
+        mock_jwt_data.type = http_util.FileType.THUMBNAIL_TEMP
+        mock_storage.get_temp_thumbnail_path.return_value = path = object()
+        mock_cache.get_and_update.side_effect = FileNotFoundError
+
+        # Temp thumbnail could not be found on disk:
+        with self.assertRaises(http_util.HTTPNotFound):
+            await http_util.handle_thumbnail_request(mock_jwt_data)
+        mock_get_storage_instance.assert_called_once_with()
+        mock_storage.get_perm_thumbnail_path.assert_not_called()
+        mock_storage.get_temp_thumbnail_path.assert_called_once_with(
+            hash_, num=num
+        )
+        mock_cache.get_and_update.assert_called_once_with(path)
+        mock_file_serve_headers.assert_not_called()
+
+        mock_get_storage_instance.reset_mock()
+        mock_storage.get_temp_thumbnail_path.reset_mock()
+        mock_cache.get_and_update.reset_mock()
+
+        mock_body = b"spam"
+        mock_cache.get_and_update = AsyncMock(return_value=mock_body)
+
+        # Temp thumbnail successfully returned:
+        output = await http_util.handle_thumbnail_request(mock_jwt_data)
+        self.assertIsInstance(output, http_util.Response)
+        self.assertEqual(mock_headers["foo"], output.headers["foo"])
+        self.assertEqual(mock_body, output.body)
+        self.assertEqual("image/jpeg", output.content_type)
+        mock_get_storage_instance.assert_called_once_with()
+        mock_storage.get_perm_thumbnail_path.assert_not_called()
+        mock_storage.get_temp_thumbnail_path.assert_called_once_with(
+            hash_, num=num
+        )
+        mock_cache.get_and_update.assert_called_once_with(path)
+        mock_file_serve_headers.assert_called_once_with()
+
+        mock_get_storage_instance.reset_mock()
+        mock_storage.get_temp_thumbnail_path.reset_mock()
+        mock_cache.get_and_update.reset_mock()
+        mock_file_serve_headers.reset_mock()
+
+        mock_jwt_data.type = http_util.FileType.THUMBNAIL
+        mock_storage.get_perm_thumbnail_path.return_value = path = object()
+
+        # Permanently stored thumbnail successfully returned:
+        output = await http_util.handle_thumbnail_request(mock_jwt_data)
+        self.assertIsInstance(output, http_util.Response)
+        self.assertEqual(mock_headers["foo"], output.headers["foo"])
+        self.assertEqual(mock_body, output.body)
+        self.assertEqual("image/jpeg", output.content_type)
+        mock_get_storage_instance.assert_called_once_with()
+        mock_storage.get_perm_thumbnail_path.assert_called_once_with(
+            hash_, ext, num=num
+        )
+        mock_storage.get_temp_thumbnail_path.assert_not_called()
+        mock_cache.get_and_update.assert_called_once_with(path)
+        mock_file_serve_headers.assert_called_once_with()
+
+        mock_get_storage_instance.reset_mock()
+        mock_storage.get_perm_thumbnail_path.reset_mock()
+        mock_cache.get_and_update.reset_mock()
+        mock_file_serve_headers.reset_mock()
+
+        mock_storage.get_perm_thumbnail_path.side_effect = FileNotFoundError
+
+        # Supposedly permanent thumbnail not known to file storage:
+        with self.assertRaises(http_util.HTTPNotFound):
+            await http_util.handle_thumbnail_request(mock_jwt_data)
+        mock_get_storage_instance.assert_called_once_with()
+        mock_storage.get_perm_thumbnail_path.assert_called_once_with(
+            hash_, ext, num=num
+        )
+        mock_storage.get_temp_thumbnail_path.assert_not_called()
+        mock_cache.get_and_update.assert_not_called()
+        mock_file_serve_headers.assert_not_called()
+
+    @patch.object(http_util.FileStorage, "get_instance")
+    def test_set_dist_node_state(
+        self,
+        mock_get_storage_instance: MagicMock,
+    ) -> None:
+        mock_get_storage_instance.return_value = mock_storage = MagicMock()
+        mock_set_state = MagicMock()
+        mock_storage.distribution_controller.set_node_state = mock_set_state
+
+        url, enabled = "foo", True
+
+        self.assertIsNone(http_util.set_dist_node_state(url, enabled))
+        mock_get_storage_instance.assert_called_once_with()
+        mock_set_state.assert_called_once_with(url, enabled=enabled)
+
+        mock_get_storage_instance.reset_mock()
+        mock_set_state.reset_mock()
+
+        mock_set_state.side_effect = http_util.UnknownDistURL
+
+        with self.assertRaises(http_util.HTTPGone):
+            http_util.set_dist_node_state(url, enabled)
+        mock_get_storage_instance.assert_called_once_with()
+        mock_set_state.assert_called_once_with(url, enabled=enabled)
+
+        mock_get_storage_instance.reset_mock()
+        mock_set_state.reset_mock()
+
+        mock_set_state.side_effect = http_util.DistAlreadyEnabled
+
+        with self.assertRaises(http_util.HTTPConflict):
+            http_util.set_dist_node_state(url, enabled)
+        mock_get_storage_instance.assert_called_once_with()
+        mock_set_state.assert_called_once_with(url, enabled=enabled)

@@ -324,7 +324,7 @@ async def handle_thumbnail_request(
     try:
         body = await file_storage.thumb_memory_cache.get_and_update(path)
     except FileNotFoundError:
-        log.warning(f"File does not exist: {path}")
+        log.error(f"File does not exist: {path}")
         raise HTTPNotFound()
     return Response(
         body=body,
@@ -333,7 +333,7 @@ async def handle_thumbnail_request(
     )
 
 
-async def set_dist_node_state(base_url: str, enabled: bool, log: Logger = _log) -> None:
+def set_dist_node_state(base_url: str, enabled: bool, log: Logger = _log) -> None:
     prefix = 'en' if enabled else 'dis'
     try:
         FileStorage.get_instance().distribution_controller.set_node_state(base_url, enabled=enabled)
