@@ -641,25 +641,20 @@ class FunctionsTestCase(IsolatedAsyncioTestCase):
         test_name = 'something.MP4'
         self.assertTrue(util.is_allowed_file_ending(test_name))
 
-    @patch.object(util, "create_task")
     @patch.object(util, "_video_delete_task", new_callable=MagicMock)  # No need for async mock
-    @patch.object(util, "TaskManager")
+    @patch.object(util.TaskManager, "fire_and_forget")
     def test_schedule_video_delete(
         self,
-        mock_task_mgr: MagicMock,
+        mock_fire_and_forget: MagicMock,
         mock__video_delete_task: MagicMock,
-        mock_create_task: MagicMock,
     ) -> None:
-        mock_create_task.return_value = mock_task = object()
-
         self.assertIsNone(util.schedule_video_delete(
             file_hash=FOO,
             file_ext=BAR,
             origin=BAZ,
         ))
         mock__video_delete_task.assert_called_once_with(FOO, BAR, BAZ)
-        mock_create_task.assert_called_once_with(mock__video_delete_task.return_value)
-        mock_task_mgr.fire_and_forget_task.assert_called_once_with(mock_task)
+        mock_fire_and_forget.assert_called_once_with(mock__video_delete_task.return_value)
 
     @patch.object(util.FileStorage, "get_instance")
     async def test__video_delete_task(self, mock_get_instance: MagicMock) -> None:

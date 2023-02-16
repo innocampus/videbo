@@ -1,9 +1,10 @@
 from __future__ import annotations
-import asyncio
-import logging
 import os
-from asyncio import get_running_loop, Event, wait_for
+from asyncio import get_running_loop, wait_for
+from asyncio.exceptions import TimeoutError as AsyncTimeoutError
+from asyncio.locks import Event
 from collections.abc import AsyncIterator
+from logging import getLogger
 from pathlib import Path
 from time import time
 from typing import Optional
@@ -21,7 +22,7 @@ from videbo.storage.api.models import RequestFileJWTData, FileType
 from videbo.distributor.api.models import DistributorCopyFileStatus
 
 
-log = logging.getLogger(__name__)
+log = getLogger(__name__)
 
 
 class CopyFileStatus:
@@ -109,7 +110,7 @@ class DistributorFileController:
     async def file_exists(self, file_hash: str, wait: int) -> bool:
         try:
             await self.get_file(file_hash=file_hash, wait=wait)
-        except (NoSuchFile, TooManyWaitingClients, asyncio.TimeoutError):
+        except (NoSuchFile, TooManyWaitingClients, AsyncTimeoutError):
             return False
         else:
             return True
@@ -236,8 +237,7 @@ class DistributorFileController:
             copy_status.event.set()
             new_file.copy_status = None
 
-        task = asyncio.create_task(do_copy(), name="copy_file_from_node")
-        TaskManager.fire_and_forget_task(task)
+        TaskManager.fire_and_forget(do_copy(), name="copy_file_from_node")
         return new_file
 
     async def delete_file(self, file_hash: str, safe: bool = True) -> None:

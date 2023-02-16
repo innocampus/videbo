@@ -1,5 +1,5 @@
 import logging
-from asyncio import Task, create_task, sleep
+from asyncio import Task, sleep
 from collections.abc import Awaitable, Callable
 from inspect import isawaitable
 from time import time
@@ -54,7 +54,7 @@ class Periodic:
 
     def __call__(self, interval_seconds: float, limit: Optional[int] = None, call_immediately: bool = False) -> None:
         """Starts the execution loop (see above) with the provided options."""
-        self._task = create_task(
+        self._task = TaskManager.fire_and_forget(
             self.loop(
                 interval_seconds,
                 limit=limit,
@@ -62,7 +62,6 @@ class Periodic:
             ),
             name=self.task_name,
         )
-        TaskManager.fire_and_forget_task(self._task)
 
     async def stop(self) -> bool:
         """Stops the execution loop and calls all provided callback functions."""

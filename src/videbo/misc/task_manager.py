@@ -1,9 +1,12 @@
-import logging
-from asyncio import CancelledError, Task
-from typing import Any
+from asyncio import CancelledError, Task, create_task
+from collections.abc import Coroutine
+from logging import getLogger
+from typing import Any, Optional, TypeVar
 
 
-log = logging.getLogger(__name__)
+log = getLogger(__name__)
+
+_T = TypeVar("_T")
 
 
 class TaskManager:
@@ -21,8 +24,14 @@ class TaskManager:
         TaskManager.cancel_all()
 
     @classmethod
-    def fire_and_forget_task(cls, task: Task[Any]) -> None:
+    def fire_and_forget(
+        cls,
+        coroutine: Coroutine[Any, Any, _T],
+        name: Optional[str] = None,
+    ) -> Task[_T]:
         """Checks if there was an exception in the task when the task ends."""
+        task = create_task(coroutine, name=name)
+
         def task_done(_future: Any) -> None:
             try:
                 # This throws an exception if there was any in the task.
@@ -39,3 +48,4 @@ class TaskManager:
 
         cls._tasks.add(task)
         task.add_done_callback(task_done)
+        return task

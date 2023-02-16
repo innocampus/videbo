@@ -63,17 +63,14 @@ class PeriodicTestCase(IsolatedAsyncioTestCase):
         mock_func.assert_awaited_with(*test_args, **test_kwargs)
         mock_time.assert_called_with()
 
-    @patch.object(periodic.TaskManager, "fire_and_forget_task")
-    @patch.object(periodic, "create_task")
+    @patch.object(periodic.TaskManager, "fire_and_forget")
     @patch.object(periodic.Periodic, "loop", new_callable=MagicMock)
     def test___call__(
         self,
         mock_loop: MagicMock,
-        mock_create_task: MagicMock,
-        mock_fire_and_forget_task: MagicMock,
+        mock_fire_and_forget: MagicMock,
     ) -> None:
         mock_loop.return_value = mock_awaitable = object()
-        mock_create_task.return_value = mock_task = object()
 
         obj = periodic.Periodic(MagicMock(__name__="foo"))
 
@@ -89,11 +86,10 @@ class PeriodicTestCase(IsolatedAsyncioTestCase):
             limit=limit,
             call_immediately=immediate,
         )
-        mock_create_task.assert_called_once_with(
+        mock_fire_and_forget.assert_called_once_with(
             mock_awaitable,
             name=obj.task_name,
         )
-        mock_fire_and_forget_task.assert_called_once_with(mock_task)
 
     @patch.object(periodic.Periodic, "_run_callbacks")
     async def test_stop(self, mock__run_callbacks: AsyncMock) -> None:

@@ -1,6 +1,4 @@
-from asyncio import CancelledError
-from collections.abc import Callable
-from typing import Any
+from asyncio.exceptions import CancelledError
 from unittest import IsolatedAsyncioTestCase
 from unittest.mock import MagicMock, patch
 
@@ -25,21 +23,20 @@ class TaskManagerTestCase(SilentLogMixin, IsolatedAsyncioTestCase):
         self.assertIsNone(await task_manager.TaskManager.shutdown(1, "2", 3))
         mock_cancel_all.assert_called_once_with()
 
-    def test_fire_and_forget_task(self) -> None:
-        class MockTask(MagicMock):
-            done_callback: Callable[..., Any]
-
-            def add_done_callback(self, obj: Callable[..., Any]) -> None:
-                self.done_callback = obj
-
+    @patch.object(task_manager, "create_task")
+    def test_fire_and_forget(self, mock_create_task: MagicMock) -> None:
         mock_result = MagicMock()
-        mock_task = MockTask(result=mock_result)
+        mock_create_task.return_value = mock_task = MagicMock(
+            result=mock_result
+        )
+        mock_coroutine = MagicMock()
 
         self.assertSetEqual(set(), task_manager.TaskManager._tasks)
-        task_manager.TaskManager.fire_and_forget_task(mock_task)
-        self.assertSetEqual({mock_task}, task_manager.TaskManager._tasks)
 
-        self.assertIsNone(mock_task.done_callback("foobar"))
+        task_manager.TaskManager.fire_and_forget(mock_coroutine)
+        self.assertSetEqual({mock_task}, task_manager.TaskManager._tasks)
+        task_done_cb = mock_task.add_done_callback.call_args[0][0]
+        task_done_cb(object())
         mock_result.assert_called_once_with()
         self.assertSetEqual(set(), task_manager.TaskManager._tasks)
 
@@ -47,9 +44,10 @@ class TaskManagerTestCase(SilentLogMixin, IsolatedAsyncioTestCase):
 
         mock_result.side_effect = CancelledError
 
-        task_manager.TaskManager.fire_and_forget_task(mock_task)
+        task_manager.TaskManager.fire_and_forget(mock_coroutine)
         self.assertSetEqual({mock_task}, task_manager.TaskManager._tasks)
-        self.assertIsNone(mock_task.done_callback("foobar"))
+        task_done_cb = mock_task.add_done_callback.call_args[0][0]
+        task_done_cb(object())
         mock_result.assert_called_once_with()
         self.assertSetEqual(set(), task_manager.TaskManager._tasks)
 
@@ -57,10 +55,11 @@ class TaskManagerTestCase(SilentLogMixin, IsolatedAsyncioTestCase):
 
         mock_result.side_effect = Exception("foo")
 
-        task_manager.TaskManager.fire_and_forget_task(mock_task)
+        task_manager.TaskManager.fire_and_forget(mock_coroutine)
         self.assertSetEqual({mock_task}, task_manager.TaskManager._tasks)
+        task_done_cb = mock_task.add_done_callback.call_args[0][0]
         self.videbo_main_log.setLevel(self.log_lvl)
         with self.assertLogs():
-            self.assertIsNone(mock_task.done_callback("foobar"))
+            task_done_cb(object())
         mock_result.assert_called_once_with()
         self.assertSetEqual(set(), task_manager.TaskManager._tasks)

@@ -71,12 +71,10 @@ class StoredVideoFileTestCase(TestCase):
         self.assertTupleEqual(expected_output, output)
         mock_sorted.assert_called_once_with(file.nodes)
 
-    @patch.object(stored_file, "create_task")
-    @patch.object(stored_file.TaskManager, "fire_and_forget_task")
+    @patch.object(stored_file.TaskManager, "fire_and_forget")
     def test_remove_from_distributors(
         self,
-        mock_fire_and_forget_task: MagicMock,
-        mock_create_task: MagicMock,
+        mock_fire_and_forget: MagicMock,
     ) -> None:
         file = stored_file.StoredVideoFile(file_hash="foo", file_ext=".bar")
         mock_coro1, mock_coro2 = MagicMock(), MagicMock()
@@ -88,9 +86,5 @@ class StoredVideoFileTestCase(TestCase):
         node2.remove_videos.assert_called_once_with([file], False)
         self.assertListEqual(
             [call(mock_coro1), call(mock_coro2)],
-            mock_create_task.call_args_list,
-        )
-        self.assertListEqual(
-            [call(mock_create_task.return_value)] * 2,
-            mock_fire_and_forget_task.call_args_list,
+            mock_fire_and_forget.call_args_list,
         )

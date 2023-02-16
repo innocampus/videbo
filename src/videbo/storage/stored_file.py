@@ -1,5 +1,4 @@
 from __future__ import annotations
-from asyncio import create_task
 from time import time
 from typing import Optional, TYPE_CHECKING
 
@@ -89,6 +88,4 @@ class StoredVideoFile(HashedFile):
 
     def remove_from_distributors(self) -> None:
         for node in self.nodes:
-            TaskManager.fire_and_forget_task(
-                create_task(node.remove_videos([self], False))
-            )
+            TaskManager.fire_and_forget(node.remove_videos([self], False))

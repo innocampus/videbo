@@ -1,5 +1,5 @@
 from __future__ import annotations
-from asyncio.tasks import create_task, gather
+from asyncio.tasks import gather
 from collections.abc import AsyncIterator, Iterable, Iterator
 from logging import getLogger
 from pathlib import Path
@@ -415,6 +415,8 @@ class FileStorage:
         return status
 
 
+# TODO: Cleanup those functions
+
 def is_allowed_file_ending(filename: Optional[str]) -> bool:
     """Simple check that the file ending is on the whitelist."""
     if filename is None:
@@ -424,7 +426,7 @@ def is_allowed_file_ending(filename: Optional[str]) -> bool:
 
 def schedule_video_delete(file_hash: str, file_ext: str, origin: Optional[str] = None) -> None:
     log.info(f"Delete video with hash {file_hash}")
-    TaskManager.fire_and_forget_task(create_task(_video_delete_task(file_hash, file_ext, origin)))
+    TaskManager.fire_and_forget(_video_delete_task(file_hash, file_ext, origin))
 
 
 async def _video_delete_task(file_hash: str, file_ext: str, origin: Optional[str] = None) -> None:

@@ -1,6 +1,5 @@
 from __future__ import annotations
-
-from asyncio.tasks import Task, create_task, sleep as async_sleep
+from asyncio.tasks import Task, sleep as async_sleep
 from logging import getLogger
 from typing import Optional, Iterable
 
@@ -138,8 +137,10 @@ class DistributorNode:
             await async_sleep(5)
 
     def start_watching(self) -> None:
-        self.watcher_task = create_task(self.watcher(), name="distibutor_node_watcher")
-        TaskManager.fire_and_forget_task(self.watcher_task)
+        self.watcher_task = TaskManager.fire_and_forget(
+            self.watcher(),
+            name="distributor_node_watcher",
+        )
 
     def stop_watching(self) -> None:
         if self.watcher_task is None:
@@ -194,7 +195,7 @@ class DistributorNode:
             return
         from_url = from_node.base_url if from_node else settings.public_base_url
         if len(self.loading) < settings.distribution.max_parallel_copying_tasks:
-            TaskManager.fire_and_forget_task(create_task(self._copy_file_task(file, from_url)))
+            TaskManager.fire_and_forget(self._copy_file_task(file, from_url))
         else:
             self.awaiting_download.schedule(file, from_url)
 
@@ -236,7 +237,7 @@ class DistributorNode:
                 next_file, next_from_url = self.awaiting_download.next()
             except DownloadScheduler.NothingScheduled:
                 return
-            TaskManager.fire_and_forget_task(create_task(self._copy_file_task(next_file, next_from_url)))
+            TaskManager.fire_and_forget(self._copy_file_task(next_file, next_from_url))
 
     async def _remove_files(self, rem_files: list[FileID], safe: bool = True) -> DistributorDeleteFilesResponse:
         url = f'{self.base_url}/api/distributor/delete'
