@@ -60,31 +60,32 @@ class StoredVideoFile(HashedFile):
                 break
             del self.unique_views[rid]
 
-    def get_least_busy_nodes(self) -> list[DistributorNode]:
-        return sorted(self.nodes)
-
     def find_good_node(self) -> tuple[Optional[DistributorNode], bool]:
         """
-        Find a node that can serve the file and that is not too busy. May also return a node that is currently
-        loading the file (if there is no other node).
+        Find a node that can serve the file and that is not too busy.
 
-        :returns (node, False if node currently loads this file)
+        If all other nodes are busy, it may also return a node that is
+        currently loading the file.
+
+        Returns:
+            2-tuple where the first item is the node that can serve the file
+            or `None` if no good node was found, and the second is `True`,
+            if the node has the complete file already and `False`, if the
+            node is currently still downloading the file.
         """
         node_loads_file = None
         for node in sorted(self.nodes):
-            if node.can_serve:
-                if self in node.loading:
-                    if node_loads_file is None:
-                        node_loads_file = node
-                else:
-                    # We found a good node.
-                    return node, True
-        # We don't have a non-busy node.
-        if node_loads_file:
-            # But we have at least one node that is currently loading the file.
-            return node_loads_file, False
-        # We don't have any node.
-        return None, False
+            if not node.can_serve:
+                continue
+            if self in node.loading and node_loads_file is None:
+                # First node that is at least currently loading the file
+                node_loads_file = node
+            else:
+                # We found a good node; no need to keep looking
+                return node, True
+        # All nodes are busy, but if at least one currently loads the file,
+        # then it will be in `node_loads_file`, otherwise that will be `None`.
+        return node_loads_file, False
 
     def remove_from_distributors(self) -> None:
         for node in self.nodes:
