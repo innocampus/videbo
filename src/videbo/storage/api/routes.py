@@ -26,7 +26,6 @@ from videbo.storage.http_util import (
     get_video_payload,
     handle_thumbnail_request,
     save_temp_and_get_response,
-    set_dist_node_state,
     verify_file_exists,
     video_check_redirect,
 )
@@ -217,21 +216,22 @@ async def request_file(request: Request, jwt_data: RequestFileJWTData) -> Union[
             if a permanently stored video was requested, but no video with
             the provided file hash and extension was found.
     """
-    hash_, ext = jwt_data.hash, jwt_data.file_ext
+    hash_, ext, type_ = jwt_data.hash, jwt_data.file_ext, jwt_data.type
+    internal = jwt_data.iss == TokenIssuer.internal
     file_storage = FileStorage.get_instance()
-    if jwt_data.type == FileType.VIDEO:
+    if type_ == FileType.VIDEO:
         try:
             path = file_storage.get_perm_video_path(hash_, ext)
         except FileNotFoundError:
             raise HTTPNotFound()
         # Don't consider redirecting internal requests:
-        if jwt_data.iss != TokenIssuer.internal:
+        if not internal:
             stored_file = file_storage.get_file(hash_, ext)
-            file_storage.distribution_controller.count_file_access(stored_file, jwt_data.rid)
+            stored_file.register_view_by(jwt_data.rid)
             # May raise 302 redirect:
             await video_check_redirect(request, stored_file, log=log)
         log.debug(f"Serve video {hash_}")
-    elif jwt_data.type == FileType.VIDEO_TEMP:
+    elif type_ == FileType.VIDEO_TEMP:
         path = file_storage.get_temp_video_path(hash_, ext)
         await verify_file_exists(path, log=log)  # no guarantee until the response!
         log.debug(f"Serve temp video {hash_}")
@@ -241,9 +241,7 @@ async def request_file(request: Request, jwt_data: RequestFileJWTData) -> Union[
     if not settings.webserver.x_accel_location:
         return FileResponse(path, headers=file_serve_headers(dl_name))
     uri = Path(settings.webserver.x_accel_location, rel_path(path.name))
-    limit_rate = settings.webserver.get_x_accel_limit_rate(
-        internal=jwt_data.iss == TokenIssuer.internal
-    )
+    limit_rate = settings.webserver.get_x_accel_limit_rate(internal=internal)
     return serve_file_via_x_accel(uri, limit_rate, download_filename=dl_name)
 
 
@@ -271,7 +269,7 @@ async def remove_dist_node(_request: Request, _jwt_data: RequestJWTData, data: D
 @ensure_auth(Role.admin)
 @ensure_json_body
 async def disable_dist_node(_request: Request, _jwt_data: RequestJWTData, data: DistributorNodeInfo) -> NoReturn:
-    set_dist_node_state(data.base_url, enabled=False, log=log)
+    FileStorage.get_instance().distribution_controller.disable_dist_node(data.base_url)
     raise HTTPOk()
 
 
@@ -279,7 +277,7 @@ async def disable_dist_node(_request: Request, _jwt_data: RequestJWTData, data: 
 @ensure_auth(Role.admin)
 @ensure_json_body
 async def enable_dist_node(_request: Request, _jwt_data: RequestJWTData, data: DistributorNodeInfo) -> NoReturn:
-    set_dist_node_state(data.base_url, enabled=True, log=log)
+    FileStorage.get_instance().distribution_controller.enable_dist_node(data.base_url)
     raise HTTPOk()
 
 

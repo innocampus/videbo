@@ -5,8 +5,6 @@ from pathlib import Path
 from aiohttp.multipart import BodyPartReader
 from aiohttp.web_exceptions import (
     HTTPBadRequest,
-    HTTPConflict,
-    HTTPGone,
     HTTPNotFound,
     HTTPServiceUnavailable,
 )
@@ -30,14 +28,11 @@ from .api.models import (
 )
 from .exceptions import (
     BadFileExtension,
-    DistAlreadyDisabled,
-    DistAlreadyEnabled,
     FormFieldMissing,
     FileTooBigError,
-    UnknownDistURL,
 )
-from .util import FileStorage, StoredHashedVideoFile, is_allowed_file_ending
-
+from .stored_file import StoredVideoFile
+from .util import FileStorage, is_allowed_file_ending
 
 __all__ = [
     "CHUNK_SIZE_DEFAULT",
@@ -46,7 +41,6 @@ __all__ = [
     "video_check_redirect",
     "verify_file_exists",
     "handle_thumbnail_request",
-    "set_dist_node_state",
 ]
 
 _log = getLogger(__name__)
@@ -192,7 +186,7 @@ async def save_temp_and_get_response(
 
 async def video_check_redirect(
     request: Request,
-    file: StoredHashedVideoFile,
+    file: StoredVideoFile,
     log: Logger = _log,
 ) -> None:
     """
@@ -211,7 +205,7 @@ async def video_check_redirect(
         request:
             The `aiohttp.web_request.Request` instance
         file:
-            The `StoredHashedVideoFile` object representing the file
+            The `StoredVideoFile` object representing the file
         log (optional):
             Logger instance to use (defaults to the module log)
 
@@ -224,11 +218,11 @@ async def video_check_redirect(
     if request.http_range.start is not None and request.http_range.start > 0:
         return  # Do not redirect if the range header is present and the start is not zero
     own_tx_load = NetworkInterfaces.get_instance().get_tx_load() or 0.
-    node, has_complete_file = file.nodes.find_good_node(file)
+    node, has_complete_file = file.find_good_node()
     if node is None:
         # There is no distribution node.
-        if file.views >= settings.distribution.copy_views_threshold:
-            if file.nodes.copying:
+        if file.num_views >= settings.distribution.copy_views_threshold:
+            if file.copying:
                 # When we are here this means that there is no non-busy distribution node. Even the dist node that
                 # is currently loading the file is too busy.
                 log.info(f"Cannot serve video, node too busy (tx load {own_tx_load:.2f} "
@@ -331,15 +325,3 @@ async def handle_thumbnail_request(
         content_type="image/jpeg",
         headers=file_serve_headers(),
     )
-
-
-def set_dist_node_state(base_url: str, enabled: bool, log: Logger = _log) -> None:
-    prefix = 'en' if enabled else 'dis'
-    try:
-        FileStorage.get_instance().distribution_controller.set_node_state(base_url, enabled=enabled)
-    except UnknownDistURL:
-        log.error(f"Request to {prefix}able unknown distributor node with URL `{base_url}`")
-        raise HTTPGone()
-    except (DistAlreadyDisabled, DistAlreadyEnabled):
-        log.warning(f"Cannot to {prefix}able distributor node `{base_url}`; already {prefix}abled.")
-        raise HTTPConflict()

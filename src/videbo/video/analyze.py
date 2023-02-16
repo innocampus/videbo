@@ -144,6 +144,8 @@ async def get_video_info(path: PathT, log: Logger = _log) -> VideoInfo:
     """
     Runs metadata checks on the video at `path` and returns the information.
 
+    Convenience function calling `get_video_mime_type` and `get_ffprobe_info`
+    with default arguments before running checks.
     Logs failed checks as expressive warnings.
 
     Args:

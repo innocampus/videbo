@@ -37,6 +37,15 @@ dev_mode = false
 # './.videbo_storage_settings.json' or './.videbo_distributor_settings.json'
 # while the node is running.
 
+max_temp_storage_hours = 12.0
+# The maximum guaranteed retention time (in hours) for uploaded files in temporary storage,
+# i.e. files that have uploaded but not saved to permanent storage (yet). Files older than that
+# will be removed by the cleanup task (see `temp_file_cleanup_freq_hours` below).
+
+temp_file_cleanup_freq_hours = 1.0
+# The fequency with which the temporary storage cleanup task is executed;
+# temporary files older than `max_temp_storage_hours` (see above) are deleted.
+
 tx_max_rate_mbit = 20.0
 # Maximum data transmission rate in Mbit per second
 
@@ -150,11 +159,22 @@ static_node_base_urls = []
 # List of base URLs of distributor nodes that the storage node should connect with
 
 copy_views_threshold = 3
-# Copy a video to a distributor node when there are as many as views than this within the time span.
+# A video is copied to a distributor node, when it has this many unique views
+# within the `views_retention_minutes` (see below) time span.
 
-reset_views_every_minutes = 240.0
-# The period (in minutes) in which the internal view counter for the video files stored on the node is reset;
-# can not be less than 1.
+views_retention_minutes = 240.0
+# If a video reaches the `copy_views_threshold` (see above) within this timespan,
+# it is copied to a distributor node.
+
+views_update_freq_minutes = 30.0
+# Views that were registered more than `views_retention_minutes` ago (see above)
+# are periodically forgotten for all stored videos;
+# this parameter determines how often that periodic tasks checks all files
+# and discards all older views.
+
+node_cleanup_freq_minutes = 240.0
+# Distributor nodes are periodically cleaned of less requested videos
+# to ensure the `free_space_target_ratio` (see below) is maintained.
 
 free_space_target_ratio = 0.1
 # Ratio of free space to total space on any distributor node that it should never fall below of

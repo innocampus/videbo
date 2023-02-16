@@ -274,7 +274,7 @@ class LMSRequestJWTData(RequestJWTData):
 
 class VideoModel(BaseModel):
     hash: str
-    file_ext: str
+    ext: str
 
     class Config:
         orm_mode = True

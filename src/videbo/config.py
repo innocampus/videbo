@@ -16,6 +16,7 @@ from pydantic.fields import ModelField, SHAPE_LIST, SHAPE_SET
 from videbo.misc import MEGA
 from videbo.types import PathT
 
+# TODO: Use Pydantic's constrained types for basic sanity validation
 
 __all__ = [
     'PROJECT_DIR',
@@ -174,15 +175,13 @@ class VideoSettings(SettingsBaseModel):
 class DistributionSettings(SettingsBaseModel):
     static_node_base_urls: list[str] = []
     copy_views_threshold: int = 3
-    reset_views_every_minutes: float = 4. * 60
+    views_retention_minutes: float = 4. * 60
+    views_update_freq_minutes: float = 30.
+    node_cleanup_freq_minutes: float = 4. * 60
     free_space_target_ratio: float = 0.1
     max_parallel_copying_tasks: int = 20
     leave_free_space_mb: float = 4000.0
     last_request_safety_minutes: float = 4. * 60
-
-    @validator('reset_views_every_minutes')
-    def ensure_min_reset_freq(cls, freq: float) -> float:
-        return max(freq, 1.)
 
     _norm_node_urls = validator(
         "static_node_base_urls",
@@ -205,6 +204,8 @@ class Settings(BaseSettings):
     public_base_url: str = 'http://localhost:9020'
     forbid_admin_via_proxy: bool = True
     dev_mode: bool = False
+    max_temp_storage_hours: float = 12.
+    temp_file_cleanup_freq_hours: float = 1.
     tx_max_rate_mbit: float = 20.0
     network_info_fetch_interval: float = 10.0
     webserver: WebserverSettings = WebserverSettings()
@@ -225,6 +226,26 @@ class Settings(BaseSettings):
         if not path.startswith("/"):
             path = "/" + path
         return f"{scheme}://{self.listen_address}:{self.listen_port}{path}"
+
+    @property
+    def temp_file_cleanup_freq(self) -> float:
+        """The value of `temp_file_cleanup_freq_hours` in seconds"""
+        return self.temp_file_cleanup_freq_hours * 60 * 60
+
+    @property
+    def views_retention_seconds(self) -> float:
+        """The value of `distribution.views_retention_minutes` in seconds"""
+        return self.distribution.views_retention_minutes * 60
+
+    @property
+    def views_update_freq(self) -> float:
+        """The value of `distribution.views_update_freq_minutes` in seconds"""
+        return self.distribution.views_update_freq_minutes * 60
+
+    @property
+    def dist_cleanup_freq(self) -> float:
+        """The value of `distribution.node_cleanup_freq_minutes` in seconds"""
+        return self.distribution.node_cleanup_freq_minutes * 60
 
 
 def config_file_settings(settings: BaseSettings) -> dict[str, Any]:

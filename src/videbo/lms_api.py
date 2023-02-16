@@ -17,8 +17,7 @@ from videbo.models import (
 )
 
 if TYPE_CHECKING:
-    from videbo.storage.util import StoredHashedVideoFile as StoredFile
-
+    from videbo.storage.stored_file import StoredVideoFile as StoredFile
 
 __all__ = ['LMS']
 
@@ -93,7 +92,7 @@ class LMS:
 
         Args:
             *files:
-                Any number of `StoredHashedVideoFile` objects to check for their orphan status.
+                Any number of `StoredVideoFile` objects to check for their orphan status.
                 They should all be files that are actually managed by the central `FileStorage`.
             client:
                 The client to use for performing requests to the LMS sites.

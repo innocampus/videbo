@@ -1,130 +1,69 @@
 from __future__ import annotations
-import logging
-from asyncio import sleep as async_sleep
 from asyncio.tasks import create_task, gather
 from collections.abc import AsyncIterator, Iterable, Iterator
+from logging import getLogger
 from pathlib import Path
 from time import time
-from typing import Optional, Union
+from typing import ClassVar, Optional
 
 from aiohttp.web_app import Application
 
 from videbo import settings
 from videbo.client import Client
-from videbo.exceptions import CouldNotCreateDir, LMSInterfaceError
+from videbo.exceptions import LMSInterfaceError
 from videbo.lms_api import LMS
 from videbo.misc import JPG_EXT, MEGA
 from videbo.misc.functions import get_free_disk_space, move_file, rel_path, run_in_default_executor
+from videbo.misc.periodic import Periodic
 from videbo.misc.task_manager import TaskManager
 from videbo.network import NetworkInterfaces
-from .distribution import DistributionController, FileNodes
-from .exceptions import HashedFileInvalidExtensionError
+from .distribution import DistributionController
+from .stored_file import StoredVideoFile
 from .thumbnail_cache import ThumbnailCache
 from .api.models import FileType, StorageStatus
 
 
-log = logging.getLogger(__name__)
+log = getLogger(__name__)
 
 
 FILE_EXT_WHITELIST = ('.mp4', '.webm')
 VALID_EXTENSIONS = frozenset(FILE_EXT_WHITELIST + (JPG_EXT,))
 
 
-class HashedVideoFile:
-    __slots__ = 'hash', 'file_ext'
-
-    hash: str
-    file_ext: str
-
-    def __init__(self, file_hash: str, file_ext: str) -> None:
-        self.hash = file_hash
-        self.file_ext = file_ext
-
-        # Extension has to start with a dot.
-        if file_ext[0] != '.':
-            raise HashedFileInvalidExtensionError(file_ext)
-
-    # TODO: Add __repr__
-    def __str__(self) -> str:
-        return self.hash + self.file_ext
-
-    def __hash__(self) -> int:
-        return int(self.hash, 16)
-
-    def __eq__(self, other: object) -> bool:
-        if not isinstance(other, HashedVideoFile) or type(self) is not type(other):
-            return NotImplemented
-        return self.hash == other.hash
-
-
-class StoredHashedVideoFile(HashedVideoFile):
-    __slots__ = 'file_size', 'views', 'nodes'
-
-    file_size: int  # in bytes
-    views: int
-    nodes: FileNodes
-
-    def __init__(self, file_hash: str, file_ext: str) -> None:
-        super().__init__(file_hash, file_ext)
-        self.file_size = -1
-        self.views = 0
-        self.nodes = FileNodes()
-
-    def __lt__(self, other: StoredHashedVideoFile) -> bool:
-        """Compare videos by their view counters."""
-        return self.views < other.views
-
-
-_FilesDict = dict[str, HashedVideoFile]
-_StoredFilesDict = dict[str, StoredHashedVideoFile]
-
-
-# TODO: Check the necessity for this function and move it to misc.functions
-def create_dir_if_not_exists(path: Union[Path, str], mode: int = 0o777, explicit_chmod: bool = False) -> None:
-    path = Path(path)
-    if path.is_dir():
-        return
-    path.mkdir(mode=mode)
-    if explicit_chmod:
-        path.chmod(mode)
-    if not path.is_dir():
-        raise CouldNotCreateDir(str(path))
-    log.info(f"Created {path}")
-
-
 class FileStorage:
     """Manages all stored files with their hashes as file names."""
-    _instance: Optional[FileStorage] = None
+    _instance: ClassVar[Optional[FileStorage]] = None
 
-    # garbage collector
-    GC_TEMP_FILES_SECS = 12 * 3600
-    GC_ITERATION_SECS = 3600  # run gc every n secs
+    storage_dir: Path  # permanent storage
+    temp_dir: Path  # temporary storage
+    temp_out_dir: Path  # thumbnail creation
+    thumb_memory_cache: ThumbnailCache
+    distribution_controller: DistributionController
+    http_client: Client
+    num_current_uploads: int
+    _cached_files: dict[str, StoredVideoFile]  # map hashes to files
+    _cached_files_total_size: int  # in bytes
 
-    def __init__(self, path: Path):
-        if not path.is_dir():
-            log.fatal(f"videos dir {path} does not exist")
-            raise NotADirectoryError(path)
+    def __init__(self) -> None:
+        if not settings.files_path.is_dir():
+            log.fatal(f"Files path {settings.files_path} does not exist")
+            raise NotADirectoryError(settings.files_path)
+        self._prepare_directories()
 
-        self.path: Path = path
-        self.storage_dir: Path = Path(self.path, "storage")
-        self.temp_dir: Path = Path(self.path, "temp")
-        self.temp_out_dir: Path = Path(self.temp_dir, "out")
-        self._cached_files: _StoredFilesDict = {}  # map hashes to files
-        self._cached_files_total_size: int = 0  # in bytes
-        self.num_current_uploads: int = 0
         self.thumb_memory_cache = ThumbnailCache()
-        self.http_client: Client = Client()
-        self.distribution_controller: DistributionController = DistributionController(http_client=self.http_client)
-
-        create_dir_if_not_exists(self.temp_dir, 0o755)
-        create_dir_if_not_exists(self.temp_out_dir, 0o777, explicit_chmod=True)
-
-        # TODO: Consider using custom `Periodic` instead
-        self._garbage_collector_task = create_task(
-            self._garbage_collect_cron(),
-            name="storage_garbage_collector",
+        self.http_client = Client()
+        self.distribution_controller = DistributionController(
+            node_urls=settings.distribution.static_node_base_urls,
+            http_client=self.http_client,
         )
-        TaskManager.fire_and_forget_task(self._garbage_collector_task)
+        self.num_current_uploads = 0
+        self._cached_files = {}
+        self._cached_files_total_size = 0
+
+        self._load_file_list()
+
+        Periodic(self.remove_old_temp_files)(settings.temp_file_cleanup_freq)
+        Periodic(self.discard_old_video_views)(settings.views_update_freq)
 
     @classmethod
     async def app_context(cls, _app: Application) -> AsyncIterator[None]:
@@ -135,12 +74,18 @@ class FileStorage:
     @classmethod
     def get_instance(cls) -> FileStorage:
         if cls._instance is None:
-            cls._instance = FileStorage(settings.files_path)
-            cls._instance._load_file_list()
-            for url in settings.distribution.static_node_base_urls:
-                cls._instance.distribution_controller.add_new_dist_node(url)
-            cls._instance.distribution_controller.start_periodic_reset_task()
+            cls._instance = cls()
         return cls._instance
+
+    def _prepare_directories(self) -> None:
+        self.storage_dir = Path(settings.files_path, "storage")
+        self.storage_dir.mkdir(exist_ok=True)
+        self.temp_dir = Path(settings.files_path, "temp")
+        self.temp_dir.mkdir(exist_ok=True)
+        # TODO: Use other sandboxing approach
+        self.temp_out_dir = Path(self.temp_dir, "out")
+        self.temp_out_dir.mkdir(exist_ok=True)
+        self.temp_out_dir.chmod(0o777)
 
     def _load_file_list(self) -> None:
         """Load all video files in memory"""
@@ -163,18 +108,22 @@ class FileStorage:
             log.exception(f"{str(e)} in load_file_list")
         log.info(f"Found {len(self._cached_files)} videos in storage")
 
-    def _add_video_to_cache(self, file_hash: str, file_ext: str, file_path: Path) -> StoredHashedVideoFile:
-        file = StoredHashedVideoFile(file_hash, file_ext)
+    def _add_video_to_cache(self, file_hash: str, file_ext: str, file_path: Path) -> StoredVideoFile:
+        file = StoredVideoFile(file_hash, file_ext)
         try:
             stat = file_path.stat()
         except FileNotFoundError:
             log.exception("FileNotFoundError in _add_video_to_cache")
             return file
-        file.file_size = stat.st_size
+        file.size = stat.st_size
         self._cached_files[file_hash] = file
-        self._cached_files_total_size += file.file_size
-        self.distribution_controller.add_video(file)
+        self._cached_files_total_size += file.size
         return file
+
+    async def discard_old_video_views(self) -> None:
+        cutoff_timestamp = time() - settings.views_retention_seconds
+        for file in self.iter_files():
+            file.discard_views_older_than(cutoff_timestamp)
 
     @property
     def files_total_size_mb(self) -> float:
@@ -184,14 +133,14 @@ class FileStorage:
     def files_count(self) -> int:
         return len(self._cached_files)
 
-    def iter_files(self) -> Iterator[StoredHashedVideoFile]:
+    def iter_files(self) -> Iterator[StoredVideoFile]:
         return iter(self._cached_files.values())
 
     # TODO: Allow actually passing `None` for any filter parameter
     async def filtered_files(self, orphaned: Optional[bool] = None, extensions: Iterable[str] = VALID_EXTENSIONS,
-                             types: Iterable[str] = FileType.values()) -> AsyncIterator[StoredHashedVideoFile]:
+                             types: Iterable[str] = FileType.values()) -> AsyncIterator[StoredVideoFile]:
         """
-        Yields `StoredHashedVideoFile` instances that match the filter criteria.
+        Yields `StoredVideoFile` instances that match the filter criteria.
 
         All parameters act as filters;
         if `None` is passed as an argument, no filtering is applied with respect to that parameter.
@@ -208,9 +157,9 @@ class FileStorage:
                 Iterable of strings representing the FileType members the filtered files should correspond to
         """
         if orphaned is None:
-            matching_orphan_status = set(self._cached_files.values())
+            matching_orphan_status = set(self.iter_files())
         else:
-            matching_orphan_status = await self._filter_by_orphan_status(self._cached_files.values(), orphaned)
+            matching_orphan_status = await self._filter_by_orphan_status(self.iter_files(), orphaned)
 
         extensions = set(extensions)
         invalid_extensions = extensions.difference(VALID_EXTENSIONS)
@@ -222,8 +171,8 @@ class FileStorage:
         if invalid_types:
             raise ValueError(f"Invalid file type(s): {invalid_types}")
 
-        for file in self._cached_files.values():
-            if file.file_ext not in extensions:
+        for file in self.iter_files():
+            if file.ext not in extensions:
                 continue
             if file not in matching_orphan_status:
                 continue
@@ -231,14 +180,14 @@ class FileStorage:
             assert types is not None
             yield file
 
-    async def _filter_by_orphan_status(self, files: Iterable[StoredHashedVideoFile], orphaned: bool
-                                       ) -> set[StoredHashedVideoFile]:
+    async def _filter_by_orphan_status(self, files: Iterable[StoredVideoFile], orphaned: bool
+                                       ) -> set[StoredVideoFile]:
         """
         Checks all registered LMS for the orphan status of the provided `files`.
 
         Args:
             files:
-                An iterable of `StoredHashedVideoFile` objects.
+                An iterable of `StoredVideoFile` objects.
                 They should all be files that are actually managed by the `FileStorage`.
             orphaned:
                 If `True` the method returns only the subset of `files` that are orphaned;
@@ -258,14 +207,14 @@ class FileStorage:
             return orphaned_files
         return set(files).difference(orphaned_files)
 
-    def get_file(self, file_hash: str, file_ext: str) -> StoredHashedVideoFile:
+    def get_file(self, file_hash: str, file_ext: str) -> StoredVideoFile:
         """
         Returns stored video file with the specified hash and extension.
 
         If no matching file is found in cache, raises `FileNotFoundError`.
         """
         file = self._cached_files.get(file_hash)
-        if file is None or file.file_ext != file_ext:
+        if file is None or file.ext != file_ext:
             raise FileNotFoundError
         return file
 
@@ -361,7 +310,7 @@ class FileStorage:
             f"for video {video_hash}"
         )
 
-    async def remove_video(self, file: StoredHashedVideoFile) -> None:
+    async def remove_video(self, file: StoredVideoFile) -> None:
         """
         Removes the specified video file from storage.
 
@@ -370,11 +319,11 @@ class FileStorage:
 
         The operation is done in another thread to avoid blocking.
         """
-        file_path = self.get_perm_video_path(file.hash, file.file_ext)
+        file_path = self.get_perm_video_path(file.hash, file.ext)
         await run_in_default_executor(file_path.unlink)
         self._cached_files.pop(file.hash)
-        self._cached_files_total_size -= file.file_size
-        self.distribution_controller.remove_video(file)
+        self._cached_files_total_size -= file.size
+        file.remove_from_distributors()
         log.info(f"Video removed from storage: {file.hash}")
 
     async def remove_thumbnails(
@@ -439,23 +388,18 @@ class FileStorage:
             hashes_set.discard(video.hash)
         return hashes_set
 
-    def garbage_collect_temp_dir(self) -> int:
-        """Delete files older than GC_TEMP_FILES_SECS."""
+    def _remove_old_temp_files(self) -> int:
         count = 0
-        old = time() - self.GC_TEMP_FILES_SECS
+        old = time() - 60 * 60 * settings.max_temp_storage_hours
         for file in self.temp_dir.iterdir():
             if file.is_file() and file.stat().st_mtime < old:
-                # File is old and most likely not needed anymore.
                 file.unlink()
                 count += 1
         return count
 
-    async def _garbage_collect_cron(self) -> None:
-        """Endless loop that cleans up data periodically."""
-        while True:
-            files_deleted = await run_in_default_executor(self.garbage_collect_temp_dir)
-            log.info(f"Run GC of temp folder: Removed {files_deleted} file(s).")
-            await async_sleep(self.GC_ITERATION_SECS)
+    async def remove_old_temp_files(self) -> None:
+        count = await run_in_default_executor(self._remove_old_temp_files)
+        log.info(f"Cleaned up temp directory: Removed {count} old file(s).")
 
     async def get_status(self) -> StorageStatus:
         status = StorageStatus.construct()

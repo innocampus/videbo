@@ -389,38 +389,3 @@ class HTTPUtilTestCase(SilentLogMixin, IsolatedAsyncioTestCase):
         mock_storage.get_temp_thumbnail_path.assert_not_called()
         mock_cache.get_and_update.assert_not_called()
         mock_file_serve_headers.assert_not_called()
-
-    @patch.object(http_util.FileStorage, "get_instance")
-    def test_set_dist_node_state(
-        self,
-        mock_get_storage_instance: MagicMock,
-    ) -> None:
-        mock_get_storage_instance.return_value = mock_storage = MagicMock()
-        mock_set_state = MagicMock()
-        mock_storage.distribution_controller.set_node_state = mock_set_state
-
-        url, enabled = "foo", True
-
-        self.assertIsNone(http_util.set_dist_node_state(url, enabled))
-        mock_get_storage_instance.assert_called_once_with()
-        mock_set_state.assert_called_once_with(url, enabled=enabled)
-
-        mock_get_storage_instance.reset_mock()
-        mock_set_state.reset_mock()
-
-        mock_set_state.side_effect = http_util.UnknownDistURL
-
-        with self.assertRaises(http_util.HTTPGone):
-            http_util.set_dist_node_state(url, enabled)
-        mock_get_storage_instance.assert_called_once_with()
-        mock_set_state.assert_called_once_with(url, enabled=enabled)
-
-        mock_get_storage_instance.reset_mock()
-        mock_set_state.reset_mock()
-
-        mock_set_state.side_effect = http_util.DistAlreadyEnabled
-
-        with self.assertRaises(http_util.HTTPConflict):
-            http_util.set_dist_node_state(url, enabled)
-        mock_get_storage_instance.assert_called_once_with()
-        mock_set_state.assert_called_once_with(url, enabled=enabled)

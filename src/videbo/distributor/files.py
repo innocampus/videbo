@@ -16,7 +16,7 @@ from videbo.misc import MEGA
 from videbo.misc.functions import get_free_disk_space, rel_path
 from videbo.misc.task_manager import TaskManager
 from videbo.models import Role, TokenIssuer
-from videbo.storage.util import HashedVideoFile
+from videbo.hashed_file import HashedFile
 from videbo.storage.api.models import RequestFileJWTData, FileType
 from videbo.distributor.api.models import DistributorCopyFileStatus
 
@@ -34,7 +34,7 @@ class CopyFileStatus:
         await wait_for(self.event.wait(), max_time)
 
 
-class DistributorHashedVideoFile(HashedVideoFile):
+class DistributorHashedVideoFile(HashedFile):
     __slots__ = 'copy_status', 'file_size', 'last_requested'
 
     def __init__(self, file_hash: str, file_ext: str) -> None:
@@ -92,7 +92,7 @@ class DistributorFileController:
             log.info("Skip logging the other files that were found")
         log.info(f"Found {len(self.files)} videos")
 
-    def get_path(self, file: HashedVideoFile, temp: bool = False, relative: bool = False) -> Path:
+    def get_path(self, file: HashedFile, temp: bool = False, relative: bool = False) -> Path:
         """
         Returns the path to a video file that supposedly exists on the node.
 
@@ -150,7 +150,7 @@ class DistributorFileController:
         free = await get_free_disk_space(str(self.base_path))
         return max(free - settings.distribution.leave_free_space_mb, 0.)
 
-    def copy_file(self, file: HashedVideoFile, from_url: str, expected_file_size: int) \
+    def copy_file(self, file: HashedFile, from_url: str, expected_file_size: int) \
             -> DistributorHashedVideoFile:
         if file.hash in self.files:
             # File is already there or it is downloaded right now.
@@ -159,7 +159,7 @@ class DistributorFileController:
 
         log.info(f"Start copying file {file} from {from_url}")
         copy_status = CopyFileStatus()
-        new_file = DistributorHashedVideoFile(file.hash, file.file_ext)
+        new_file = DistributorHashedVideoFile(file.hash, file.ext)
         new_file.copy_status = copy_status
         self.files[file.hash] = new_file
         self.files_being_copied.add(new_file)
@@ -190,7 +190,7 @@ class DistributorFileController:
                     role=Role.node,
                     type=FileType.VIDEO,
                     hash=file.hash,
-                    file_ext=file.file_ext,
+                    file_ext=file.ext,
                     rid='',
                 )
                 last_update_time = time()
@@ -273,7 +273,7 @@ class DistributorFileController:
         now = time()
         return [
             DistributorCopyFileStatus(
-                hash=file.hash, file_ext=file.file_ext, loaded=file.copy_status.loaded_bytes,
+                hash=file.hash, file_ext=file.ext, loaded=file.copy_status.loaded_bytes,
                 file_size=file.file_size, duration=now - file.copy_status.started
             ) for file in self.files_being_copied if file.copy_status
         ]

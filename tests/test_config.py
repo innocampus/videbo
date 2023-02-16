@@ -119,13 +119,10 @@ class WebserverSettingsTestCase(TestCase):
 
 
 class DistributionSettingsTestCase(TestCase):
-    def test_ensure_min_reset_freq(self) -> None:
-        obj = config.DistributionSettings(reset_views_every_minutes=-10)
-        self.assertEqual(1., obj.reset_views_every_minutes)
-        obj = config.DistributionSettings(reset_views_every_minutes=0)
-        self.assertEqual(1., obj.reset_views_every_minutes)
-        obj = config.DistributionSettings(reset_views_every_minutes=2.5)
-        self.assertEqual(2.5, obj.reset_views_every_minutes)
+    def test_slash_removal(self) -> None:
+        data = {"static_node_base_urls": ["foo/", "bar"]}
+        obj = config.DistributionSettings.parse_obj(data)
+        self.assertListEqual(["foo", "bar"], obj.static_node_base_urls)
 
 
 class SettingsTestCase(TestCase):
@@ -141,6 +138,32 @@ class SettingsTestCase(TestCase):
         obj = config.Settings(listen_address=addr, listen_port=port)
         output = obj.make_url(path="/" + path, scheme=scheme)
         self.assertEqual(expected_output, output)
+
+    def test_temp_file_cleanup_freq(self) -> None:
+        hours = 123.456
+        obj = config.Settings(temp_file_cleanup_freq_hours=hours)
+        self.assertEqual(hours * 3600, obj.temp_file_cleanup_freq)
+
+    def test_views_retention_seconds(self) -> None:
+        minutes = 420.69
+        obj = config.Settings.parse_obj(
+            {"distribution": {"views_retention_minutes": minutes}}
+        )
+        self.assertEqual(minutes * 60, obj.views_retention_seconds)
+
+    def test_views_update_freq(self) -> None:
+        minutes = 123.456
+        obj = config.Settings.parse_obj(
+            {"distribution": {"views_update_freq_minutes": minutes}}
+        )
+        self.assertEqual(minutes * 60, obj.views_update_freq)
+
+    def test_dist_cleanup_freq(self) -> None:
+        minutes = 123.456
+        obj = config.Settings.parse_obj(
+            {"distribution": {"node_cleanup_freq_minutes": minutes}}
+        )
+        self.assertEqual(minutes * 60, obj.dist_cleanup_freq)
 
 
 class FunctionsTestCase(SilentLogMixin, TestCase):

@@ -5,16 +5,16 @@ from aiohttp.web_exceptions import HTTPFound
 from aiohttp.web_request import Request
 
 from videbo.auth import extract_jwt_from_request
-from videbo.storage.distribution import DistributionNodeInfo
-from videbo.storage.util import StoredHashedVideoFile
+from videbo.distributor.node import DistributorNode
+from videbo.storage.stored_file import StoredVideoFile
 
 
 class RedirectToDistributor(HTTPFound):
     def __init__(
         self,
         request: Request,
-        node: DistributionNodeInfo,
-        file: StoredHashedVideoFile,
+        node: DistributorNode,
+        file: StoredVideoFile,
         log: Logger,
     ) -> None:
         """
@@ -29,13 +29,13 @@ class RedirectToDistributor(HTTPFound):
                 the `downloadas` parameter it is propagated in the redirect;
                 the JWT needed for the url parameter is extracted from it.
             node:
-                The `DistributionNodeInfo` object representing the distributor
+                The `DistributorNode` object representing the distributor
                 node; the file request path is appended to it, the `jwt` query
                 parameter is added with the encoded JWT value extracted from
                 the request, and if `downloadas` is present, that parameter is
                 added as well.
             file:
-                The `StoredHashedVideoFile` object representing the file;
+                The `StoredVideoFile` object representing the file;
                 needed for logging purposes only
             log:
                 The `Logger` object to use for logging the redirect

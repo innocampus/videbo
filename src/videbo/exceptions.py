@@ -77,10 +77,6 @@ class PendingWriteOperationError(FilesystemError):
     pass
 
 
-class CouldNotCreateDir(FilesystemError):
-    pass
-
-
 class RoutingError(VideboBaseException):
     pass
 

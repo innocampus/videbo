@@ -16,7 +16,7 @@ from videbo.misc.functions import rel_path
 from videbo.models import TokenIssuer, Role, RequestJWTData
 from videbo.network import NetworkInterfaces
 from videbo.web import ensure_json_body, file_serve_headers, serve_file_via_x_accel
-from videbo.storage.util import HashedVideoFile
+from ...hashed_file import HashedFile
 from videbo.storage.api.models import RequestFileJWTData, FileType
 from videbo.distributor.files import DistributorFileController, TooManyWaitingClients, NoSuchFile, NotSafeToDelete
 from .models import *
@@ -50,7 +50,7 @@ async def get_status(_request: Request, _jwt_data: RequestJWTData) -> Response:
 async def get_all_files(_request: Request, _jwt_data: RequestJWTData) -> Response:
     all_files: list[tuple[str, str]] = []
     for file in DistributorFileController.get_instance().files.values():
-        all_files.append((file.hash, file.file_ext))
+        all_files.append((file.hash, file.ext))
     return DistributorFileList(files=all_files).json_response()
 
 
@@ -59,7 +59,7 @@ async def get_all_files(_request: Request, _jwt_data: RequestJWTData) -> Respons
 @ensure_json_body
 async def copy_file(request: Request, _jwt_data: RequestJWTData, data: DistributorCopyFile) -> NoReturn:
     file_controller = DistributorFileController.get_instance()
-    file = HashedVideoFile(request.match_info['hash'], request.match_info['file_ext'])
+    file = HashedFile(request.match_info['hash'], request.match_info['file_ext'])
     new_file = file_controller.copy_file(file, data.from_base_url, data.file_size)
     if new_file.copy_status:
         await new_file.copy_status.wait_for(3600)
