@@ -2,10 +2,10 @@
 /config*.toml
 
 # Python virtual environment:
-/.venv/
-/venv/
-/.env/
-/env/
+/.venv*/
+/venv*/
+/.env*/
+/env*/
 
 # IDE settings:
 /.idea/
