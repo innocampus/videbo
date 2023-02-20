@@ -1,7 +1,7 @@
 -r full.txt
-build==0.9.0
-coverage==7.0.4
+build==0.10.0
+coverage==7.1.0
 flake8==6.0.0
-mkdocs-material==9.0.3
-mkdocstrings[python]==0.19.1
-mypy==0.991
+mkdocs-material==9.0.13
+mkdocstrings[python]==0.20.0
+mypy==1.0.1

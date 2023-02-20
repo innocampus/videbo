@@ -1,2 +1,2 @@
 -r common.txt
-prometheus-client==0.15.0
+prometheus-client==0.16.0
