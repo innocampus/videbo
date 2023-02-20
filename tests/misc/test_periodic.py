@@ -6,22 +6,28 @@ from videbo.misc import periodic
 
 class PeriodicTestCase(IsolatedAsyncioTestCase):
     def test___init__(self) -> None:
-        async def test_function() -> None:
-            pass
-        test_args = (1, 2, 3)
+        async def test_function(x: int, y: int, foo: str, spam: str) -> None:
+            print(x, y, foo, spam)
+        test_args = (1, 2)
         test_kwargs = {"foo": "bar", "spam": "eggs"}
         obj = periodic.Periodic(test_function, *test_args, **test_kwargs)
         self.assertIs(test_function, obj.async_func)
         self.assertTupleEqual(test_args, obj.args)
         self.assertDictEqual(test_kwargs, obj.kwargs)
         self.assertEqual("periodic-test_function", obj.task_name)
-        self.assertIsNone(obj._task)
         self.assertListEqual([], obj.pre_stop_callbacks)
         self.assertListEqual([], obj.post_stop_callbacks)
+        self.assertIsNone(obj._task)
+
+    def test_is_running(self) -> None:
+        obj = periodic.Periodic(MagicMock(__name__="foo"))
+        self.assertFalse(obj.is_running)
+        obj._task = object()
+        self.assertTrue(obj.is_running)
 
     @patch.object(periodic, "sleep")
     @patch.object(periodic, "time")
-    async def test_loop(
+    async def test__loop(
         self,
         mock_time: MagicMock,
         mock_sleep: AsyncMock,
@@ -37,7 +43,7 @@ class PeriodicTestCase(IsolatedAsyncioTestCase):
         limit = 2
         immediate = False
 
-        await obj.loop(interval, limit=limit, call_immediately=immediate)
+        await obj._loop(interval, limit=limit, call_immediately=immediate)
         mock_sleep.assert_has_awaits([
             call(interval),
             call(interval - 1),
@@ -54,7 +60,7 @@ class PeriodicTestCase(IsolatedAsyncioTestCase):
         limit = 3
         immediate = True
 
-        await obj.loop(interval, limit=limit, call_immediately=immediate)
+        await obj._loop(interval, limit=limit, call_immediately=immediate)
         mock_sleep.assert_has_awaits([
             call(0),
             call(interval - 1),
@@ -64,13 +70,13 @@ class PeriodicTestCase(IsolatedAsyncioTestCase):
         mock_time.assert_called_with()
 
     @patch.object(periodic.TaskManager, "fire_and_forget")
-    @patch.object(periodic.Periodic, "loop", new_callable=MagicMock)
+    @patch.object(periodic.Periodic, "_loop", new_callable=MagicMock)
     def test___call__(
         self,
-        mock_loop: MagicMock,
+        mock__loop: MagicMock,
         mock_fire_and_forget: MagicMock,
     ) -> None:
-        mock_loop.return_value = mock_awaitable = object()
+        mock__loop.return_value = mock_awaitable = object()
 
         obj = periodic.Periodic(MagicMock(__name__="foo"))
 
@@ -81,7 +87,7 @@ class PeriodicTestCase(IsolatedAsyncioTestCase):
         self.assertIsNone(
             obj(interval, limit=limit, call_immediately=immediate)
         )
-        mock_loop.assert_called_once_with(
+        mock__loop.assert_called_once_with(
             interval,
             limit=limit,
             call_immediately=immediate,

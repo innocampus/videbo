@@ -3,45 +3,81 @@ from asyncio import Task, sleep
 from collections.abc import Awaitable, Callable
 from inspect import isawaitable
 from time import time
-from typing import Any, Optional, Union
+from typing import Generic, Optional, Union
+from typing_extensions import ParamSpec, TypeAlias
 
 from videbo.exceptions import NoRunningTask
 from .task_manager import TaskManager
 
 
-StopCallbackT = Callable[[], Union[Awaitable[None], None]]
+StopCallbackT: TypeAlias = Callable[[], Union[Awaitable[None], None]]
+_P = ParamSpec("_P")
 
 log = logging.getLogger(__name__)
 
 
-class Periodic:
-    """Provides a simple utility for launching (and stopping) the periodic execution of asynchronous tasks."""
-    def __init__(self, __async_func__: Callable[..., Awaitable[None]], /, *args: Any, **kwargs: Any) -> None:
+class Periodic(Generic[_P]):
+    """Simple utility for the periodic execution of asynchronous tasks."""
+    async_func: Callable[_P, Awaitable[None]]
+    args: _P.args
+    kwargs: _P.kwargs
+    task_name: str
+    pre_stop_callbacks: list[StopCallbackT]
+    post_stop_callbacks: list[StopCallbackT]
+    _task: Optional[Task[None]]
+
+    def __init__(
+        self,
+        __async_func__: Callable[_P, Awaitable[None]],
+        /,
+        *args: _P.args,
+        **kwargs: _P.kwargs,
+    ) -> None:
         """
-        To initialize, simply provide the async function object and the positional and/or keyword arguments with which
-        it should be called every time.
+        Prepares task parameters; does not launch execution.
+
+        A default for the task name is generated based on the function name;
+        it can be changed by setting a different `task_name` attribute after
+        initialization, but the change will only affect future launches.
+
+        Args:
+            __async_func__: The asynchronous function to periodically execute
+            *args: Positional arguments to pass to `__async_func__` every time
+            **kwargs: Keyword-arguments to pass to `__async_func__` every time
         """
         self.async_func = __async_func__
         self.args = args
-        self.kwargs = kwargs
-        self.task_name: str = f'periodic-{self.async_func.__name__}'  # for convenience
-        self._task: Optional[Task[None]] = None  # initialized upon starting periodic execution
-        self.pre_stop_callbacks: list[StopCallbackT] = []
-        self.post_stop_callbacks: list[StopCallbackT] = []
+        self.kwargs = kwargs if kwargs is not None else {}
+        self.task_name = f'periodic-{self.async_func.__name__}'
+        self.pre_stop_callbacks = []
+        self.post_stop_callbacks = []
+        self._task = None  # initialized upon starting periodic execution
 
-    async def loop(self, interval_seconds: float, limit: Optional[int] = None, call_immediately: bool = False) -> None:
+    @property
+    def is_running(self) -> bool:
+        return self._task is not None
+
+    async def _loop(
+        self,
+        interval_seconds: float,
+        limit: Optional[int] = None,
+        call_immediately: bool = False,
+    ) -> None:
         """
-        The main execution loop that can be repeated indefinitely or a limited number of times.
-        Normally, this function should not be called from the outside directly.
+        The main execution loop repeatedly calling the function.
 
         Args:
             interval_seconds:
                 The time in seconds to wait in between two executions
             limit (optional):
-                If provided an integer, the number of executions will not exceed this value
+                If passed an integer, determines the maximum number of times
+                the function will be called; if omitted or `None` (default),
+                execution will be repeated forever (until stopped).
             call_immediately (optional):
-                If `False`, the first execution will only happen after the specified time interval has elapsed;
-                if `True`, it will happen immediately and only the following executions will honor the interval.
+                If `False` (default), the first execution will only happen
+                after the specified time interval has elapsed; if `True`,
+                it will happen immediately and only the following executions
+                will honor the interval.
         """
         exec_time = interval_seconds if call_immediately else 0
         i = 0
@@ -52,10 +88,30 @@ class Periodic:
             i += 1
             exec_time = time() - started
 
-    def __call__(self, interval_seconds: float, limit: Optional[int] = None, call_immediately: bool = False) -> None:
-        """Starts the execution loop (see above) with the provided options."""
+    def __call__(
+        self,
+        interval_seconds: float,
+        limit: Optional[int] = None,
+        call_immediately: bool = False,
+    ) -> None:
+        """
+        Starts the execution loop with the provided options.
+
+        Args:
+            interval_seconds:
+                The time in seconds to wait in between two executions
+            limit (optional):
+                If passed an integer, determines the maximum number of times
+                the function will be called; if omitted or `None` (default),
+                execution will be repeated forever (until stopped).
+            call_immediately (optional):
+                If `False` (default), the first execution will only happen
+                after the specified time interval has elapsed; if `True`,
+                it will happen immediately and only the following executions
+                will honor the interval.
+        """
         self._task = TaskManager.fire_and_forget(
-            self.loop(
+            self._loop(
                 interval_seconds,
                 limit=limit,
                 call_immediately=call_immediately,
@@ -64,7 +120,7 @@ class Periodic:
         )
 
     async def stop(self) -> bool:
-        """Stops the execution loop and calls all provided callback functions."""
+        """Stops the execution loop and executes all callback functions."""
         if self._task is None:
             raise NoRunningTask
         log.debug(f"Stopping {self.task_name}...")
@@ -77,7 +133,7 @@ class Periodic:
 
     @staticmethod
     async def _run_callbacks(callbacks: list[StopCallbackT]) -> None:
-        """Taking into account if the callback functions require the `await` syntax, they are executed in order."""
+        """Runs/awaits the `callbacks` in order."""
         for func in callbacks:
             out = func()
             if isawaitable(out):

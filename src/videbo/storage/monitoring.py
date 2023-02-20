@@ -40,7 +40,7 @@ class Monitoring:
         log.info(f"Deleted monitoring text file {settings.monitoring.prom_text_file}")
 
     def __init__(self) -> None:
-        self._periodic: Periodic = Periodic(self.update_all_metrics)
+        self._periodic: Periodic[[]] = Periodic(self.update_all_metrics)
         self._periodic.post_stop_callbacks.append(self.delete_text_file)
 
         self.update_freq_sec: float = settings.monitoring.update_freq_sec
