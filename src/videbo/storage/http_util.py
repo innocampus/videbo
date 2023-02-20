@@ -229,7 +229,7 @@ async def video_check_redirect(
                          f"and waiting for copying to complete")
                 raise HTTPServiceUnavailable()
             else:
-                to_node = FileStorage.get_instance().distribution_controller.copy_file_to_one_node(file)
+                to_node = FileStorage.get_instance().distribution_controller.copy_file(file)
                 if to_node is None:
                     if own_tx_load > 0.9:
                         # There is no dist node to copy the file to and this storage node is too busy.

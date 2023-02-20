@@ -32,7 +32,7 @@ class DistributorNode:
     def __init__(self, base_url: str, http_client: Optional[Client] = None) -> None:
         self.base_url: str = base_url
         self.http_client: Client = Client() if http_client is None else http_client
-        self.status: Optional[DistributorStatus] = None
+        self._status: Optional[DistributorStatus] = None
         self.stored_videos: set[StoredVideoFile] = set()
         self.loading: set[StoredVideoFile] = set()  # Node is currently downloading these files.
         self.awaiting_download = DownloadScheduler()  # Files waiting to be downloaded
@@ -49,6 +49,12 @@ class DistributorNode:
         return self.tx_load < other.tx_load
 
     @property
+    def status(self) -> DistributorStatus:
+        if self._status is None:
+            raise DistStatusUnknown
+        return self._status
+
+    @property
     def is_enabled(self) -> bool:
         return self._enabled
 
@@ -58,32 +64,22 @@ class DistributorNode:
 
     @property
     def tx_load(self) -> float:
-        if self.status is None:
-            raise DistStatusUnknown
         return self.status.tx_current_rate / self.status.tx_max_rate
 
     @property
     def free_space(self) -> float:
-        if self.status is None:
-            raise DistStatusUnknown
         return self.status.free_space
 
     @free_space.setter
     def free_space(self, megabytes: float) -> None:
-        if self.status is None:
-            raise DistStatusUnknown
         self.status.free_space = megabytes
 
     @property
     def total_space(self) -> float:
-        if self.status is None:
-            raise DistStatusUnknown
         return self.status.free_space + self.status.files_total_size
 
     @property
     def free_space_ratio(self) -> float:
-        if self.status is None:
-            raise DistStatusUnknown
         return self.status.free_space / self.total_space
 
     @property
@@ -126,7 +122,7 @@ class DistributorNode:
             else:
                 print_exception = True
                 if code == 200:
-                    self.status = ret
+                    self._status = ret
                     if not self.is_good:
                         log.info(f"<Distribution watcher {self.base_url}> connected. "
                                  f"Free space currently: {self.free_space} MB")

@@ -410,7 +410,9 @@ class FileStorage:
         status.tx_max_rate = settings.tx_max_rate_mbit
         NetworkInterfaces.get_instance().update_node_status(status, logger=log)
         # Specific to storage node:
-        status.distributor_nodes = self.distribution_controller.get_dist_node_base_urls()
+        status.distributor_nodes = [
+            node.base_url for node in self.distribution_controller.iter_nodes()
+        ]
         status.num_current_uploads = self.num_current_uploads
         return status
 
