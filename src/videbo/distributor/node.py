@@ -1,14 +1,15 @@
 from __future__ import annotations
-from asyncio.tasks import Task, sleep as async_sleep
 from logging import getLogger
-from typing import Optional, Iterable
+from typing import Optional
 
 from videbo import settings
 from videbo.client import Client
-from videbo.exceptions import HTTPClientError, NoRunningTask
+from videbo.exceptions import HTTPClientError
 from videbo.misc import MEGA
+from videbo.misc.periodic import Periodic
 from videbo.misc.task_manager import TaskManager
 from videbo.storage.exceptions import (
+    DistributionError,
     DistNodeAlreadyDisabled,
     DistNodeAlreadyEnabled,
     DistStatusUnknown,
@@ -29,299 +30,527 @@ log = getLogger(__name__)
 
 
 class DistributorNode:
-    def __init__(self, base_url: str, http_client: Optional[Client] = None) -> None:
-        self.base_url: str = base_url
-        self.http_client: Client = Client() if http_client is None else http_client
-        self._status: Optional[DistributorStatus] = None
-        self.stored_videos: set[StoredVideoFile] = set()
-        self.loading: set[StoredVideoFile] = set()  # Node is currently downloading these files.
-        self.awaiting_download = DownloadScheduler()  # Files waiting to be downloaded
-        self.watcher_task: Optional[Task[None]] = None
-        self._good: bool = False  # node is reachable
-        self._enabled: bool = True
+    """
+    Provides an interface for a single distributor node.
+
+    Keeps track of all files hosted on that node, as well as files currently
+    being downloaded and scheduled for download by that node.
+    """
+
+    base_url: str
+    http_client: Client
+    _status: Optional[DistributorStatus]
+    _good: bool
+    _enabled: bool
+    _files_hosted: set[StoredVideoFile]
+    _files_loading: set[StoredVideoFile]
+    _files_awaiting_download: DownloadScheduler
+    _log_connection_error: bool
+    _periodic_watcher: Periodic[[]]
+
+    def __init__(
+        self,
+        base_url: str,
+        enable: bool = True,
+        http_client: Optional[Client] = None,
+    ) -> None:
+        """
+        Initializes all attributes and the periodic fetch task.
+
+        Args:
+            base_url:
+                The base URL of the distributor node
+            enable (optional):
+                If `True` (default), a periodic task fetching and updating
+                the node status is immediately started upon initialization;
+                otherwise the node remains disabled and status unknown,
+                until the `enable` method is called.
+            http_client (optional):
+                If omitted, a new HTTP `Client` is initialized
+        """
+        self.base_url = base_url
+        self.http_client = Client() if http_client is None else http_client
+        self._status = None
+        self._good = False  # node is reachable
+        self._enabled = False  # node is activated
+        self._files_hosted = set()
+        self._files_loading = set()
+        self._files_awaiting_download = DownloadScheduler()
+        self._log_connection_error = True
+        self._periodic_watcher = Periodic(self.fetch_dist_status)
+        self._periodic_watcher.task_name += f'-{base_url}'
+        if enable:
+            self.enable()
+
+    def __repr__(self) -> str:
+        return f"<Distributor {self.base_url}>"
 
     def __eq__(self, other: object) -> bool:
+        """Only `True`, if `other` is a `DistributorNode` with the same URL"""
         if not isinstance(other, DistributorNode):
             return NotImplemented
         return self.base_url == other.base_url
 
     def __lt__(self, other: DistributorNode) -> bool:
+        """`True`, if the `other` node has a higher `tx_load` than this one"""
         return self.tx_load < other.tx_load
 
     @property
     def status(self) -> DistributorStatus:
+        """
+        The `DistributorStatus` object representing the current node status.
+
+        Raises:
+            `DistStatusUnknown` if `fetch_dist_status` has never been called
+        """
         if self._status is None:
             raise DistStatusUnknown
         return self._status
 
     @property
     def is_enabled(self) -> bool:
+        """Whether or not the node is currently active."""
         return self._enabled
 
     @property
     def is_good(self) -> bool:
+        """Whether or not the node is currently reachable."""
         return self._good
 
     @property
     def tx_load(self) -> float:
+        """The ratio between the current and maximum TX rate of the node"""
         return self.status.tx_current_rate / self.status.tx_max_rate
 
     @property
-    def free_space(self) -> float:
-        return self.status.free_space
-
-    @free_space.setter
-    def free_space(self, megabytes: float) -> None:
-        self.status.free_space = megabytes
+    def free_space(self) -> int:
+        """The currently free space on the node in megabytes (rounded down)"""
+        return int(self.status.free_space)
 
     @property
     def total_space(self) -> float:
+        """The total space on the node in megabytes"""
         return self.status.free_space + self.status.files_total_size
 
     @property
     def free_space_ratio(self) -> float:
-        return self.status.free_space / self.total_space
+        """The ratio between free and total space on the node"""
+        return round(self.status.free_space / self.total_space, 3)
 
     @property
     def can_serve(self) -> bool:
+        """`True`, if the node is enabled, under 95 % load and reachable"""
         return self.is_enabled and self.tx_load < 0.95 and self.is_good
 
+    @property
+    def can_start_downloading(self) -> bool:
+        """
+        `True`, if the node can start another file download right now.
+
+        This is the case, if the number of current downloads is below the
+        configured `max_parallel_copying_tasks`.
+        It does _not_ take into account free space to actually host a
+        particular file (see `can_host_additional`).
+        """
+        return len(self._files_loading) < settings.distribution.max_parallel_copying_tasks
+
+    def is_loading(self, file: StoredVideoFile) -> bool:
+        """Returns `True`, if the node is currently downloading `file`."""
+        return file in self._files_loading
+
+    def is_scheduled_to_load(self, file: StoredVideoFile) -> bool:
+        """Returns `True`, if the node is scheduled to download `file`."""
+        return file in self._files_awaiting_download
+
     def can_host_additional(self, min_space_mb: float) -> bool:
+        """
+        Returns `True`, if the node can host an additional amount of data.
+
+        Returns `False`, if `can_serve` is `False`, the currently free space
+        on the node is less than `min_space_mb`, or the node status was never
+        fetched and is yet unknown.
+
+        Args:
+            min_space_mb: The amount of data to host additionally in megabytes
+        """
         try:
             return self.can_serve and self.free_space > min_space_mb
-        except DistStatusUnknown as e:
-            log.error(
-                "%s while checking viability of distributor %s",
-                e.__class__.__name__,
-                self.base_url,
-            )
+        except DistStatusUnknown:
+            log.error(f"Status unknown for {self}")
             return False
 
     def can_provide_copy(self, file: StoredVideoFile) -> bool:
-        return self.is_enabled and file not in self.loading and self.is_good
+        """
+        Returns `True`, if the node can serve a specific video file.
 
-    async def watcher(self) -> None:
-        url = self.base_url + '/api/distributor/status'
-        print_exception = True
-        code: int
-        ret: DistributorStatus
-        while True:
-            try:
-                code, ret = await self.http_client.request(
-                    "GET",
-                    url,
-                    self.http_client.get_jwt_node(),
-                    return_model=DistributorStatus,
-                    log_connection_error=print_exception,
-                )
-            except HTTPClientError:
-                print_exception = False
-                if self.is_good:
-                    log.error(f"<Distribution watcher {self.base_url}> http error")
-                    await self.set_node_state(False)
-            else:
-                print_exception = True
-                if code == 200:
-                    self._status = ret
-                    if not self.is_good:
-                        log.info(f"<Distribution watcher {self.base_url}> connected. "
-                                 f"Free space currently: {self.free_space} MB")
-                        await self.set_node_state(True)
-                elif self.is_good:
-                    log.error(f"<Distribution watcher {self.base_url}> http status {code}")
-                    await self.set_node_state(False)
-            await async_sleep(5)
+        Returns `False`, if `can_serve` is `False` or the `file` is currently
+        being downloaded by the node.
 
-    def start_watching(self) -> None:
-        self.watcher_task = TaskManager.fire_and_forget(
-            self.watcher(),
-            name="distributor_node_watcher",
-        )
+        Args:
+            file: The `StoredVideoFile` in question
+        """
+        return self.can_serve and file not in self._files_loading
 
-    def stop_watching(self) -> None:
-        if self.watcher_task is None:
-            raise NoRunningTask
-        self.watcher_task.cancel()
-        self.watcher_task = None
+    async def fetch_dist_status(self) -> None:
+        """
+        Makes a request to the distributor node API to get the current status.
+
+        If the request succeeds, the internal status is updated with the
+        response data; if the node state was bad (unreachable) before, it is
+        changed to good (reachable) after a successful request.
+
+        If the request fails due to some connection error, the node state is
+        set to bad, the error is logged and consecutive connection errors are
+        set to no longer be logged.
+
+        If the endpoint responds with anything other than status code 200,
+        the node state is set to bad and the response code is error-logged.
+        """
+        url = self.base_url + "/api/distributor/status"
+        try:
+            code, response_data = await self.http_client.request(
+                "GET",
+                url,
+                self.http_client.get_jwt_node(),
+                return_model=DistributorStatus,
+                log_connection_error=self._log_connection_error,
+            )
+        except HTTPClientError as e:
+            self._log_connection_error = False
+            if self.is_good:
+                log.error(f"{repr(e)} while fetching status of {self}")
+                await self.set_node_state(False)
+            return
+        self._log_connection_error = True
+        if code == 200:
+            self._status = response_data
+            if not self.is_good:
+                log.info(f"Connected to {self} ({self.free_space} MB free)")
+                await self.set_node_state(True)
+        elif self.is_good:
+            log.error(f"HTTP code {code} while fetching status of {self}")
+            await self.set_node_state(False)
 
     async def set_node_state(self, new_is_in_good_state: bool) -> None:
-        # File list is loaded before node status switches to good.
-        if self.is_good and not new_is_in_good_state:
-            await self.unlink_node(False)
-        elif not self.is_good and new_is_in_good_state:
-            await self._load_file_list()
-        self._good = new_is_in_good_state
+        """
+        Switches the node state between good and bad.
 
-    async def _load_file_list(self) -> None:
-        """Fetch a list of all files that the node currently has."""
+        If the state to set is good (`new_is_in_good_state` is `True`) and
+        the node state was previously bad, the file list is loaded first,
+        _before_ the state is actually set.
+
+        Upon switching from good to bad, `unlink_node` is awaited, but the
+        periodic status watcher is _not_ stopped.
+        """
+        if self.is_good and not new_is_in_good_state:
+            self._good = new_is_in_good_state
+            await self.unlink_node(stop_watching=False)
+        elif not self.is_good and new_is_in_good_state:
+            await self._fetch_files_list()
+            self._good = new_is_in_good_state
+
+    async def _fetch_files_list(self) -> None:
+        """
+        Makes a request to the node's API to get a list of all files it hosts.
+
+        Each file is checked against the storage node and any files that are
+        not present on it, are subsequently removed from the distributor;
+        each of those cases is logged as a warning.
+
+        A connection error or unexpected response code is logged accordingly.
+        """
         from videbo.storage.util import FileStorage
         storage = FileStorage.get_instance()
         remove_unknown_files: list[FileID] = []
-        url = self.base_url + '/api/distributor/files'
-        ret: DistributorFileList
+        url = self.base_url + "/api/distributor/files"
         try:
-            code, ret = await self.http_client.request(
+            code, response_data = await self.http_client.request(
                 "GET",
                 url,
                 self.http_client.get_jwt_node(),
                 return_model=DistributorFileList,
             )
-        except HTTPClientError:
-            log.exception(f"<Distribution watcher {self.base_url}> http error")
-        else:
-            if code != 200:
-                log.error(f"<Distribution watcher {self.base_url}> http status {code}")
-                return
-            for file_hash, file_ext in ret.files:
-                try:
-                    file = storage.get_file(file_hash, file_ext)
-                except FileNotFoundError:
-                    log.info(f"Remove `{file_hash}{file_ext}` on {self.base_url} since file does not exist on storage.")
-                    remove_unknown_files.append((file_hash, file_ext))
-                else:
-                    self.stored_videos.add(file)
-                    file.nodes.append(self)
-            log.info(f"Found {len(self.stored_videos)} files on {self.base_url}")
-            if remove_unknown_files:
-                await self._remove_files(remove_unknown_files)
-
-    def put_video(self, file: StoredVideoFile, from_node: Optional[DistributorNode] = None) -> None:
-        """Copy a video from one node to another. If `from_node` is None, copy from the storage node."""
-        if file in self.loading or file in self.awaiting_download:
+        except HTTPClientError as e:
+            log.error(f"{repr(e)} while fetching files list of {self}")
             return
-        from_url = from_node.base_url if from_node else settings.public_base_url
-        if len(self.loading) < settings.distribution.max_parallel_copying_tasks:
-            TaskManager.fire_and_forget(self._copy_file_task(file, from_url))
-        else:
-            self.awaiting_download.schedule(file, from_url)
+        if code != 200:
+            log.error(f"HTTP code {code} while fetching files list of {self}")
+            return
+        for file_hash, file_ext in response_data.files:
+            try:
+                file = storage.get_file(file_hash, file_ext)
+            except FileNotFoundError:
+                log.warning(
+                    f"Removing `{file_hash}{file_ext}` from {self} "
+                    f"since file does not exist on storage.")
+                remove_unknown_files.append((file_hash, file_ext))
+            else:
+                self._files_hosted.add(file)
+                file.nodes.append(self)
+        log.info(f"Found {len(self._files_hosted)} files on {self}")
+        if remove_unknown_files:
+            await self._delete(*remove_unknown_files)
 
-    async def _copy_file_task(self, file: StoredVideoFile, from_url: str) -> None:
+    def put_video(
+        self,
+        file: StoredVideoFile,
+        from_node: Optional[DistributorNode] = None,
+    ) -> None:
+        """
+        Copies a video file from another node to this one.
+
+        Args:
+            file:
+                The `StoredVideoFile` instance representing the file to upload
+            from_node (optional):
+                If passed a `DistributorNode` instance, the file is downloaded
+                from that distributor node; if omitted or `None` (default),
+                the storage node serves as the source for the file.
+        """
+        if self.is_loading(file) or self.is_scheduled_to_load(file):
+            return
+        src = from_node.base_url if from_node else settings.public_base_url
+        if self.can_start_downloading:
+            TaskManager.fire_and_forget(self._download(file, src))
+        else:
+            self._files_awaiting_download.schedule(file, src)
+
+    async def _download(self, file: StoredVideoFile, from_url: str) -> None:
+        """
+        Copies a video file from another node to this one.
+
+        The node is added to the file's `nodes` list immediately and its
+        `copying` flag is set to `True`. In addition, the file is added to
+        the `_files_loading` container for the duration of the request.
+
+        If the request fails or returns anything other than a 200 status code,
+        the node is removed from the file's `nodes` list.
+        Regardless of errors, after the request the file is removed from the
+        `_files_loading` container and its `copying` flag is set to `False.
+
+        If the node can download another file right away and there are
+        downloads scheduled, another download task is launched at the end.
+
+        Args:
+            file:
+                The `StoredVideoFile` instance representing the file to upload
+            from_url:
+                The URL of the node that should serve as a source for the file
+        """
         file.nodes.append(self)
         file.copying = True
-        self.loading.add(file)
-        url = f'{self.base_url}/api/distributor/copy/{file}'
-        data = DistributorCopyFile(from_base_url=from_url, file_size=file.size)
-        log.info(f"Asking distributor to copy `{file}` from {from_url} to {self.base_url}")
+        self._files_loading.add(file)
+        url = f"{self.base_url}/api/distributor/copy/{file}"
+        log.info(f"Requesting {self} to download `{file}` from `{from_url}`")
         try:
-            code, ret = await self.http_client.request(
+            code, _ = await self.http_client.request(
                 "POST",
                 url,
                 self.http_client.get_jwt_node(),
-                data=data,
+                data=DistributorCopyFile(
+                    from_base_url=from_url,
+                    file_size=file.size,
+                ),
                 timeout=30. * 60,
             )
-        except Exception as e:
-            file.nodes.remove(self)  # This node cannot serve the file
-            log.exception(f"Error when copying `{file}` from {from_url} to {self.base_url}")
-            raise e
+        except HTTPClientError as e:
+            file.nodes.remove(self)  # Node cannot serve the file
+            log.error(f"{repr(e)} while requesting file download to {self}")
         else:
             if code == 200:
-                self.stored_videos.add(file)  # Successfully copied; this node can now serve the file
-                log.info(f"Copied `{file}` from {from_url} to {self.base_url}")
+                self._files_hosted.add(file)  # Node can now serve the file
+                log.info(f"Downloaded `{file}` from `{from_url}` to {self}")
             else:
-                file.nodes.remove(self)  # This node cannot serve the file
-                log.error(f"Error copying `{file}` from {from_url} to {self.base_url}, http status {code}")
+                file.nodes.remove(self)  # Node cannot serve the file
+                log.error(
+                    f"HTTP code {code} while requesting download to {self}"
+                )
         finally:
-            # Regardless of copying success or failure, always remove the file from `.loading`
-            # and set the file's FileNodes `.copying` attribute to `False`.
-            self.loading.discard(file)
+            # Regardless of success or failure, always remove the file from
+            # `._files_loading` and set its `.copying` attribute to `False`:
+            self._files_loading.discard(file)
             file.copying = False
-            if len(self.loading) >= settings.distribution.max_parallel_copying_tasks:
+            if not self.can_start_downloading:
                 return
-            # Check if other files are scheduled for download and if they are, fire off the next copying task.
+            # Check if other files are scheduled for download and if they are,
+            # fire off the next download task (callback-style):
             try:
-                next_file, next_from_url = self.awaiting_download.next()
+                file, from_url = self._files_awaiting_download.next()
             except DownloadScheduler.NothingScheduled:
                 return
-            TaskManager.fire_and_forget(self._copy_file_task(next_file, next_from_url))
+            TaskManager.fire_and_forget(self._download(file, from_url))
 
-    async def _remove_files(self, rem_files: list[FileID], safe: bool = True) -> DistributorDeleteFilesResponse:
-        url = f'{self.base_url}/api/distributor/delete'
-        data = DistributorDeleteFiles(files=rem_files, safe=safe)
-        number = len(rem_files)
-        ret: DistributorDeleteFilesResponse
-        log.info(f"Asking distributor to remove {number} file(s) from {self.base_url}")
+    async def _delete(
+        self,
+        *rem_files: FileID,
+        safe: bool = True,
+    ) -> DistributorDeleteFilesResponse:
+        """
+        Makes a request to the node's API to get delete certain files.
+
+        An error during the request or any HTTP status code other than 200
+        are treated as failure to trigger deletion.
+
+        If successful, the internal `status.free_space` is updated based on
+        the response data and the actual number of deleted files is logged.
+        Note: The number of deleted files may be less than the number of
+        files passed in to be deleted (for various reasons).
+
+        Args:
+            *rem_files:
+                Files to remove
+            safe (optional):
+                Whether or not to honor the `last_request_safety_minutes`
+                setting, when deleting each individual file; `True` by default
+
+        Returns:
+            The `DistributorDeleteFilesResponse` instance received as a
+            response from the API endpoint
+
+        Raises:
+            `DistributionError` if the request fails or yields a non-OK status
+        """
+        url = f"{self.base_url}/api/distributor/delete"
+        count = len(rem_files)
+        log.info(f"Requesting {self} to delete {count} file(s)")
         try:
-            code, ret = await self.http_client.request(
+            code, response_data = await self.http_client.request(
                 "POST",
                 url,
                 self.http_client.get_jwt_node(),
-                data=data,
+                data=DistributorDeleteFiles(files=list(rem_files), safe=safe),
                 return_model=DistributorDeleteFilesResponse,
                 timeout=60.,
             )
-        except Exception as e:
-            log.exception(f"{e} removing {number} file(s) from {self.base_url}")
-            raise e
+        except HTTPClientError as e:
+            log.error(f"{repr(e)} while requesting file deletion from {self}")
+            raise DistributionError from e
         if code == 200:
-            log.info(f"Removed {number} file(s) from {self.base_url}")
-            self.free_space = ret.free_space
+            self.status.free_space = response_data.free_space
+            num_removed = count - len(response_data.files_skipped)
+            log.info(f"Removed {num_removed} file(s) from {self}")
         else:
-            log.error(f"Error removing {number} file(s) from {self.base_url}, http status {code}")
-        return ret
+            log.error(
+                f"HTTP code {code} while requesting file deletion from {self}"
+            )
+            raise DistributionError
+        return response_data
 
-    async def remove_videos(self, files: Iterable[StoredVideoFile], safe: bool = True) -> None:
+    async def remove(self, *files: StoredVideoFile, safe: bool = True) -> None:
+        """
+        Attempts to Delete the specified files from the distributor node.
+
+        If an error occurs during the API request, details will be logged.
+        Some files may be skipped (not deleted) for various reasons, in which
+        case their number and combined size will be warning-logged.
+
+        Args:
+            *files:
+                Files to remove
+            safe (optional):
+                Whether or not to honor the `last_request_safety_minutes`
+                setting, when deleting each individual file; `True` by default
+        """
         hashes_extensions, to_discard = [], {}
         for file in files:
             hashes_extensions.append((file.hash, file.ext))
             to_discard[f'{file.hash}{file.ext}'] = file
-        response_data = await self._remove_files(hashes_extensions, safe=safe)  # calls the distributor's API
+        try:
+            response_data = await self._delete(*hashes_extensions, safe=safe)
+        except DistributionError:
+            return  # detailed logging done inside `_delete`
         # Only discard files that were actually deleted:
         not_deleted_size = 0
         for file_hash, file_ext in response_data.files_skipped:
             file = to_discard.pop(f'{file_hash}{file_ext}')
             not_deleted_size += file.size
-        if not_deleted_size:
-            log.warning(f"{len(response_data.files_skipped)} file(s) taking up {not_deleted_size} MB "
-                        f"could not be deleted from {self.base_url}")
+        if not_deleted_size > 0:
+            log.warning(
+                f"{len(response_data.files_skipped)} file(s) taking up "
+                f"{not_deleted_size} MB were not deleted from {self}"
+            )
         for file in to_discard.values():
-            self.stored_videos.discard(file)
+            self._files_hosted.discard(file)
             file.nodes.remove(self)
-        log.info(f"Removed {len(to_discard)} file(s) (having now {response_data.free_space} MB free space) on {self.base_url}")
+        log.info(
+            f"Removed {len(to_discard)} file(s) from {self} "
+            f"(now {response_data.free_space} MB free space left)"
+        )
 
-    async def unlink_node(self, stop_watching: bool = True) -> None:
-        """Do not remove videos on this node, but remove all local references to this node."""
-        for file in self.stored_videos:
+    # TODO: See if we really need this separate method
+    async def unlink_node(self, *, stop_watching: bool = True) -> None:
+        """Doesn't remove videos, but removes references to the node"""
+        for file in self._files_hosted:
             file.nodes.remove(self)
-        self.stored_videos.clear()
+        self._files_hosted.clear()
         if stop_watching:
-            self.stop_watching()
+            await self._periodic_watcher.stop()
 
     async def free_up_space(self) -> None:
-        """Attempts to remove less popular videos to free-up disk space on the distributor node."""
-        if not self.stored_videos or not self._enabled:
+        """
+        Attempts to remove less popular videos to free-up disk space.
+
+        The amount of space to free-up is determined by the current free space
+        ratio and the `free_space_target_ratio` setting. If the current ratio
+        is not below that target, no files will be deleted.
+
+        The order, in which files are potentially removed is determined by the
+        number of unique views; the file with the least number of views
+        is removed first.
+        """
+        if not self._files_hosted or not self._enabled:
             return
         if not self.is_good:
-            log.info(f"Distributor {self.base_url} is not in a good state. Skip freeing space.")
+            log.info(f"{self} is not in a good state; skip freeing space.")
             return
-        assert 0 <= settings.distribution.free_space_target_ratio <= 1
-        if self.free_space_ratio >= settings.distribution.free_space_target_ratio:
-            log.debug(f"{int(self.free_space)} MB ({round(self.free_space_ratio * 100, 1)} %) "
-                      f"of free space available on {self.base_url}")
+        target_ratio = settings.distribution.free_space_target_ratio
+        if self.free_space_ratio >= target_ratio:
+            log.debug(
+                f"{self.free_space} MB ({self.free_space_ratio * 100} %) "
+                f"of free space available on {self}"
+            )
             return
-        target_gain = (settings.distribution.free_space_target_ratio * self.total_space - self.free_space) * MEGA
+        target = (target_ratio * self.total_space - self.free_space) * MEGA
         to_remove, space_gain = [], 0
-        sorted_videos = sorted(self.stored_videos, reverse=True)
-        while space_gain < target_gain:
+        sorted_videos = sorted(self._files_hosted, reverse=True)
+        while space_gain < target:
             video = sorted_videos.pop()
             to_remove.append(video)
             space_gain += video.size
-        log.info(f"Trying to purge {len(to_remove)} less popular video(s) "
-                 f"to free up {space_gain / MEGA} MB of space at {self.base_url}")
-        await self.remove_videos(to_remove)
+        log.info(
+            f"Trying to purge {len(to_remove)} less popular video(s) "
+            f"to free up {space_gain / MEGA} MB of space on {self}"
+        )
+        await self.remove(*to_remove)
 
-    def disable(self, stop_watching: bool = True) -> None:
+    async def disable(self, stop_watching: bool = True) -> None:
+        """
+        Disables the node, rendering it temporarily inactive.
+
+        If `stop_watching` is set, the periodic status fetch task is stopped.
+
+        Raises:
+            `DistNodeAlreadyDisabled` if the node already was disabled
+        """
         if not self._enabled:
-            log.warning(f"Already disabled distributor node `{self.base_url}`")
+            log.warning(f"Already disabled {self}")
             raise DistNodeAlreadyDisabled(self.base_url)
         self._enabled = False
         if stop_watching:
-            self.stop_watching()
+            await self._periodic_watcher.stop()
 
     def enable(self) -> None:
+        """
+        Enables the node, activating it, if it was disabled before.
+
+        If it is not running, the periodic status fetch task is launched.
+
+        Raises:
+            `DistNodeAlreadyEnabled` if the node already was enabled
+        """
         if self._enabled:
-            log.warning(f"Already enabled distributor node `{self.base_url}`")
+            log.warning(f"Already enabled {self}")
             raise DistNodeAlreadyEnabled(self.base_url)
         self._enabled = True
-        if self.watcher_task is None:
-            self.start_watching()
+        if not self._periodic_watcher.is_running:
+            self._periodic_watcher(5, call_immediately=True)

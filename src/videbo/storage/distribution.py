@@ -137,13 +137,13 @@ class DistributionController:
 
         No-op if a node with the provided `base_url` already exists.
         """
-        if self.find_node(base_url) is not None:
-            log.warning(f"Tried to add distributor node {base_url} again")
+        node = self.find_node(base_url)
+        if node is not None:
+            log.warning(f"Tried to add {node} again")
             return
-        new_node = DistributorNode(base_url)
-        self._dist_nodes.append(new_node)
-        new_node.start_watching()
-        log.info(f"Added distributor node {base_url}")
+        node = DistributorNode(base_url)
+        self._dist_nodes.append(node)
+        log.info(f"Added new {node}")
 
     async def remove_dist_node(self, base_url: str) -> None:
         """
@@ -154,13 +154,13 @@ class DistributionController:
         """
         found_node = self.find_node(base_url)
         if found_node is None:
-            log.warning(f"Cannot remove unknown distributor node `{base_url}`")
+            log.warning(f"Cannot remove unknown distributor at `{base_url}`")
             raise UnknownDistURL(base_url)
         self._dist_nodes.remove(found_node)
         await found_node.unlink_node()
-        log.info(f"Removed dist node `{base_url}`")
+        log.info(f"Removed {found_node} from distribution controller")
 
-    def _enable_or_disable_node(self, base_url: str, enable: bool) -> None:
+    async def _enable_or_disable_node(self, base_url: str, enable: bool) -> None:
         """
         Temporarily disables or enables a distributor node.
 
@@ -176,13 +176,13 @@ class DistributionController:
         found_node = self.find_node(base_url)
         verb = "enable" if enable else "disable"
         if found_node is None:
-            log.warning(f"Cannot {verb} unknown distributor node `{base_url}`")
+            log.warning(f"Cannot {verb} unknown distributor at `{base_url}`")
             raise UnknownDistURL(base_url)
         # Call `DistributorNode.enable` or `DistributorNode.disable`:
         getattr(found_node, verb)()
-        log.info(f"Successfully {verb}d dist node `{base_url}`")
+        log.info(f"Successfully {verb}d {found_node}")
 
-    def disable_dist_node(self, base_url: str) -> None:
+    async def disable_dist_node(self, base_url: str) -> None:
         """
         Temporarily disables an active distributor node.
 
@@ -190,9 +190,9 @@ class DistributionController:
             `UnknownDistURL` if no node with the specified `base_url` is found
             `DistNodeAlreadyDisabled` if the node is already disabled
         """
-        self._enable_or_disable_node(base_url, enable=False)
+        await self._enable_or_disable_node(base_url, enable=False)
 
-    def enable_dist_node(self, base_url: str) -> None:
+    async def enable_dist_node(self, base_url: str) -> None:
         """
         Enables a previously inactive distributor node.
 
@@ -200,7 +200,7 @@ class DistributionController:
             `UnknownDistURL` if no node with the specified `base_url` is found
             `DistNodeAlreadyEnabled` if the node is already enabled
         """
-        self._enable_or_disable_node(base_url, enable=True)
+        await self._enable_or_disable_node(base_url, enable=True)
 
     def get_nodes_status(
         self,

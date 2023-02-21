@@ -8,6 +8,7 @@ if TYPE_CHECKING:
     from videbo.distributor.node import DistributorNode
 
 
+# TODO: See if we can get rid of the `nodes` back-reference entirely
 class StoredVideoFile(HashedFile):
     __slots__ = (
         "size",
@@ -76,7 +77,7 @@ class StoredVideoFile(HashedFile):
         for node in sorted(self.nodes):
             if not node.can_serve:
                 continue
-            if self in node.loading and node_loads_file is None:
+            if node.is_loading(self) and node_loads_file is None:
                 # First node that is at least currently loading the file
                 node_loads_file = node
             else:
@@ -88,4 +89,4 @@ class StoredVideoFile(HashedFile):
 
     def remove_from_distributors(self) -> None:
         for node in self.nodes:
-            TaskManager.fire_and_forget(node.remove_videos([self], False))
+            TaskManager.fire_and_forget(node.remove(self, safe=False))

@@ -164,7 +164,6 @@ class DistributionControllerTestCase(IsolatedAsyncioTestCase):
         self.assertListEqual([mock_node], obj._dist_nodes)
         mock_find_node.assert_called_once_with(url)
         mock_dist_node_cls.assert_called_once_with(url)
-        mock_node.start_watching.assert_called_once_with()
 
     @patch.object(distribution.UnknownDistURL, "__init__", return_value=None)
     @patch.object(distribution.DistributionController, "find_node")
@@ -216,7 +215,7 @@ class DistributionControllerTestCase(IsolatedAsyncioTestCase):
         enable = False
         with self.assertLogs(distribution.log, logging.WARNING):
             with self.assertRaises(distribution.UnknownDistURL):
-                obj._enable_or_disable_node(url, enable=enable)
+                await obj._enable_or_disable_node(url, enable=enable)
         mock_node.disable.assert_not_called()
         mock_find_node.assert_called_once_with(url)
         mock_unknown_err_init.assert_called_once_with(url)
@@ -227,7 +226,7 @@ class DistributionControllerTestCase(IsolatedAsyncioTestCase):
         # Ensure node is disabled, if a node with the provided URL is found:
 
         mock_find_node.return_value = mock_node
-        obj._enable_or_disable_node(url, enable=enable)
+        await obj._enable_or_disable_node(url, enable=enable)
         mock_node.disable.assert_called_once_with()
         mock_node.enable.assert_not_called()
         mock_find_node.assert_called_once_with(url)
@@ -239,7 +238,7 @@ class DistributionControllerTestCase(IsolatedAsyncioTestCase):
         # Ensure node is enabled, if a node with the provided URL is found:
 
         enable = True
-        obj._enable_or_disable_node(url, enable=enable)
+        await obj._enable_or_disable_node(url, enable=enable)
         mock_node.enable.assert_called_once_with()
         mock_node.disable.assert_not_called()
         mock_find_node.assert_called_once_with(url)
@@ -249,27 +248,27 @@ class DistributionControllerTestCase(IsolatedAsyncioTestCase):
         distribution.DistributionController,
         "_enable_or_disable_node",
     )
-    def test_disable_dist_node(
+    async def test_disable_dist_node(
         self,
-        mock__enable_or_disable_node: MagicMock,
+        mock__enable_or_disable_node: AsyncMock,
     ) -> None:
         obj = distribution.DistributionController()
         url = "foo/bar"
-        obj.disable_dist_node(url)
-        mock__enable_or_disable_node.assert_called_once_with(url, enable=False)
+        await obj.disable_dist_node(url)
+        mock__enable_or_disable_node.assert_awaited_once_with(url, enable=False)
 
     @patch.object(
         distribution.DistributionController,
         "_enable_or_disable_node",
     )
-    def test_enable_dist_node(
+    async def test_enable_dist_node(
         self,
-        mock__enable_or_disable_node: MagicMock,
+        mock__enable_or_disable_node: AsyncMock,
     ) -> None:
         obj = distribution.DistributionController()
         url = "foo/bar"
-        obj.enable_dist_node(url)
-        mock__enable_or_disable_node.assert_called_once_with(url, enable=True)
+        await obj.enable_dist_node(url)
+        mock__enable_or_disable_node.assert_awaited_once_with(url, enable=True)
 
     def test_get_nodes_status(self) -> None:
         mock_url1, mock_status1 = "foo", object()

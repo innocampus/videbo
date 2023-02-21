@@ -78,12 +78,12 @@ class StoredVideoFileTestCase(TestCase):
     ) -> None:
         file = stored_file.StoredVideoFile(file_hash="foo", file_ext=".bar")
         mock_coro1, mock_coro2 = MagicMock(), MagicMock()
-        node1 = MagicMock(remove_videos=MagicMock(return_value=mock_coro1))
-        node2 = MagicMock(remove_videos=MagicMock(return_value=mock_coro2))
+        node1 = MagicMock(remove=MagicMock(return_value=mock_coro1))
+        node2 = MagicMock(remove=MagicMock(return_value=mock_coro2))
         file.nodes = [node1, node2]
         file.remove_from_distributors()
-        node1.remove_videos.assert_called_once_with([file], False)
-        node2.remove_videos.assert_called_once_with([file], False)
+        node1.remove.assert_called_once_with(file, safe=False)
+        node2.remove.assert_called_once_with(file, safe=False)
         self.assertListEqual(
             [call(mock_coro1), call(mock_coro2)],
             mock_fire_and_forget.call_args_list,
