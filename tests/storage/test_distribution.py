@@ -208,7 +208,7 @@ class DistributionControllerTestCase(IsolatedAsyncioTestCase):
         # Ensure error is raised, if no node with the provided URL is known:
 
         mock_find_node.return_value = None
-        mock_node = MagicMock()
+        mock_node = AsyncMock()
 
         obj = distribution.DistributionController()
         url = "foo/bar"
@@ -227,7 +227,7 @@ class DistributionControllerTestCase(IsolatedAsyncioTestCase):
 
         mock_find_node.return_value = mock_node
         await obj._enable_or_disable_node(url, enable=enable)
-        mock_node.disable.assert_called_once_with()
+        mock_node.disable.assert_awaited_once_with()
         mock_node.enable.assert_not_called()
         mock_find_node.assert_called_once_with(url)
         mock_unknown_err_init.assert_not_called()
@@ -239,7 +239,7 @@ class DistributionControllerTestCase(IsolatedAsyncioTestCase):
 
         enable = True
         await obj._enable_or_disable_node(url, enable=enable)
-        mock_node.enable.assert_called_once_with()
+        mock_node.enable.assert_awaited_once_with()
         mock_node.disable.assert_not_called()
         mock_find_node.assert_called_once_with(url)
         mock_unknown_err_init.assert_not_called()

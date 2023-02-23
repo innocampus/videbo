@@ -1,10 +1,10 @@
 from __future__ import annotations
 from asyncio.tasks import gather
-from collections.abc import Callable, Container, Iterable, Iterator
+from collections.abc import Awaitable, Callable, Container, Iterable, Iterator
 from functools import partial
 from logging import getLogger
 from timeit import default_timer as timer
-from typing import Optional, Union
+from typing import Optional, Union, cast
 
 from videbo import settings
 from videbo.client import Client
@@ -179,7 +179,8 @@ class DistributionController:
             log.warning(f"Cannot {verb} unknown distributor at `{base_url}`")
             raise UnknownDistURL(base_url)
         # Call `DistributorNode.enable` or `DistributorNode.disable`:
-        getattr(found_node, verb)()
+        call = cast(Callable[[], Awaitable[None]], getattr(found_node, verb))
+        await call()
         log.info(f"Successfully {verb}d {found_node}")
 
     async def disable_dist_node(self, base_url: str) -> None:
