@@ -8,6 +8,7 @@ from aiohttp.web_response import StreamResponse
 
 ExtendedHandler = Callable[..., Awaitable[StreamResponse]]
 
+# TODO: Use model instead
 FileID = tuple[str, str]  # (hash, file extension)
 
 CleanupContext = Callable[[Application], AsyncIterator[None]]

@@ -3,7 +3,6 @@ from logging import getLogger
 from typing import Optional
 
 from videbo import settings
-from videbo.client import Client
 from videbo.exceptions import HTTPClientError
 from videbo.misc import MEGA
 from videbo.misc.periodic import Periodic
@@ -16,12 +15,10 @@ from videbo.storage.exceptions import (
 )
 from videbo.storage.stored_file import StoredVideoFile
 from videbo.types import FileID
+from .api.client import DistributorClient as Client
 from .api.models import (
     DistributorStatus,
-    DistributorFileList,
-    DistributorCopyFile,
     DistributorDeleteFilesResponse,
-    DistributorDeleteFiles,
 )
 from .scheduler import DownloadScheduler
 
@@ -37,7 +34,6 @@ class DistributorNode:
     being downloaded and scheduled for download by that node.
     """
 
-    base_url: str
     http_client: Client
     _status: Optional[DistributorStatus]
     _good: bool
@@ -66,10 +62,11 @@ class DistributorNode:
                 otherwise the node remains disabled and status unknown,
                 until the `enable` method is called.
             http_client (optional):
-                If omitted, a new HTTP `Client` is initialized
+                If omitted, a new HTTP `DistributorClient` is initialized
         """
-        self.base_url = base_url
-        self.http_client = Client() if http_client is None else http_client
+        if http_client is None:
+            http_client = Client(base_url)
+        self.http_client = http_client
         self._status = None
         self._good = False  # node is reachable
         self._enabled = False  # node is activated
@@ -83,17 +80,25 @@ class DistributorNode:
             self.enable()
 
     def __repr__(self) -> str:
-        return f"<Distributor {self.base_url}>"
+        return f"<Distributor {self.http_client.base_url}>"
 
     def __eq__(self, other: object) -> bool:
         """Only `True`, if `other` is a `DistributorNode` with the same URL"""
         if not isinstance(other, DistributorNode):
             return NotImplemented
-        return self.base_url == other.base_url
+        return self.http_client.base_url == other.http_client.base_url
 
     def __lt__(self, other: DistributorNode) -> bool:
         """`True`, if the `other` node has a higher `tx_load` than this one"""
         return self.tx_load < other.tx_load
+
+    @property
+    def base_url(self) -> str:
+        return self.http_client.base_url
+
+    @base_url.setter
+    def base_url(self, value: str) -> None:
+        self.http_client.base_url = value
 
     @property
     def status(self) -> DistributorStatus:
@@ -206,14 +211,9 @@ class DistributorNode:
         If the endpoint responds with anything other than status code 200,
         the node state is set to bad and the response code is error-logged.
         """
-        url = self.base_url + "/api/distributor/status"
         try:
-            code, response_data = await self.http_client.request(
-                "GET",
-                url,
-                self.http_client.get_jwt_node(),
-                return_model=DistributorStatus,
-                log_connection_error=self._log_connection_error,
+            code, resp_data = await self.http_client.get_status(
+                log_connection_error=self._log_connection_error
             )
         except HTTPClientError as e:
             self._log_connection_error = False
@@ -223,7 +223,7 @@ class DistributorNode:
             return
         self._log_connection_error = True
         if code == 200:
-            self._status = response_data
+            self._status = resp_data
             if not self.is_good:
                 log.info(f"Connected to {self} ({self.free_space} MB free)")
                 await self.set_node_state(True)
@@ -261,35 +261,29 @@ class DistributorNode:
         """
         from videbo.storage.util import FileStorage
         storage = FileStorage.get_instance()
-        remove_unknown_files: list[FileID] = []
-        url = self.base_url + "/api/distributor/files"
+        unknown_files: list[FileID] = []
         try:
-            code, response_data = await self.http_client.request(
-                "GET",
-                url,
-                self.http_client.get_jwt_node(),
-                return_model=DistributorFileList,
-            )
+            code, resp_data = await self.http_client.get_files_list()
         except HTTPClientError as e:
             log.error(f"{repr(e)} while fetching files list of {self}")
             return
         if code != 200:
             log.error(f"HTTP code {code} while fetching files list of {self}")
             return
-        for file_hash, file_ext in response_data.files:
+        for file_hash, file_ext in resp_data.files:
             try:
                 file = storage.get_file(file_hash, file_ext)
             except FileNotFoundError:
                 log.warning(
                     f"Removing `{file_hash}{file_ext}` from {self} "
                     f"since file does not exist on storage.")
-                remove_unknown_files.append((file_hash, file_ext))
+                unknown_files.append((file_hash, file_ext))
             else:
                 self._files_hosted.add(file)
                 file.nodes.append(self)
         log.info(f"Found {len(self._files_hosted)} files on {self}")
-        if remove_unknown_files:
-            await self._delete(*remove_unknown_files)
+        if unknown_files:
+            await self._delete(*unknown_files)
 
     def put_video(
         self,
@@ -340,19 +334,9 @@ class DistributorNode:
         file.nodes.append(self)
         file.copying = True
         self._files_loading.add(file)
-        url = f"{self.base_url}/api/distributor/copy/{file}"
         log.info(f"Requesting {self} to download `{file}` from `{from_url}`")
         try:
-            code, _ = await self.http_client.request(
-                "POST",
-                url,
-                self.http_client.get_jwt_node(),
-                data=DistributorCopyFile(
-                    from_base_url=from_url,
-                    file_size=file.size,
-                ),
-                timeout=30. * 60,
-            )
+            code = await self.http_client.copy(file, from_url=from_url)
         except HTTPClientError as e:
             file.nodes.remove(self)  # Node cannot serve the file
             log.error(f"{repr(e)} while requesting file download to {self}")
@@ -382,7 +366,7 @@ class DistributorNode:
 
     async def _delete(
         self,
-        *rem_files: FileID,
+        *files: FileID,
         safe: bool = True,
     ) -> DistributorDeleteFilesResponse:
         """
@@ -397,7 +381,7 @@ class DistributorNode:
         files passed in to be deleted (for various reasons).
 
         Args:
-            *rem_files:
+            *files:
                 Files to remove
             safe (optional):
                 Whether or not to honor the `last_request_safety_minutes`
@@ -410,31 +394,23 @@ class DistributorNode:
         Raises:
             `DistributionError` if the request fails or yields a non-OK status
         """
-        url = f"{self.base_url}/api/distributor/delete"
-        count = len(rem_files)
+        count = len(files)
         log.info(f"Requesting {self} to delete {count} file(s)")
         try:
-            code, response_data = await self.http_client.request(
-                "POST",
-                url,
-                self.http_client.get_jwt_node(),
-                data=DistributorDeleteFiles(files=list(rem_files), safe=safe),
-                return_model=DistributorDeleteFilesResponse,
-                timeout=60.,
-            )
+            code, resp_data = await self.http_client.delete(*files, safe=safe)
         except HTTPClientError as e:
             log.error(f"{repr(e)} while requesting file deletion from {self}")
             raise DistributionError from e
         if code == 200:
-            self.status.free_space = response_data.free_space
-            num_removed = count - len(response_data.files_skipped)
+            self.status.free_space = resp_data.free_space
+            num_removed = count - len(resp_data.files_skipped)
             log.info(f"Removed {num_removed} file(s) from {self}")
         else:
             log.error(
                 f"HTTP code {code} while requesting file deletion from {self}"
             )
             raise DistributionError
-        return response_data
+        return resp_data
 
     async def remove(self, *files: StoredVideoFile, safe: bool = True) -> None:
         """
@@ -456,17 +432,17 @@ class DistributorNode:
             hashes_extensions.append((file.hash, file.ext))
             to_discard[f'{file.hash}{file.ext}'] = file
         try:
-            response_data = await self._delete(*hashes_extensions, safe=safe)
+            resp_data = await self._delete(*hashes_extensions, safe=safe)
         except DistributionError:
             return  # detailed logging done inside `_delete`
         # Only discard files that were actually deleted:
         not_deleted_size = 0
-        for file_hash, file_ext in response_data.files_skipped:
+        for file_hash, file_ext in resp_data.files_skipped:
             file = to_discard.pop(f'{file_hash}{file_ext}')
             not_deleted_size += file.size
         if not_deleted_size > 0:
             log.warning(
-                f"{len(response_data.files_skipped)} file(s) taking up "
+                f"{len(resp_data.files_skipped)} file(s) taking up "
                 f"{not_deleted_size} MB were not deleted from {self}"
             )
         for file in to_discard.values():
@@ -474,7 +450,7 @@ class DistributorNode:
             file.nodes.remove(self)
         log.info(
             f"Removed {len(to_discard)} file(s) from {self} "
-            f"(now {response_data.free_space} MB free space left)"
+            f"(now {resp_data.free_space} MB free space left)"
         )
 
     # TODO: See if we really need this separate method
@@ -534,7 +510,7 @@ class DistributorNode:
         """
         if not self._enabled:
             log.warning(f"Already disabled {self}")
-            raise DistNodeAlreadyDisabled(self.base_url)
+            raise DistNodeAlreadyDisabled(self.http_client.base_url)
         self._enabled = False
         if stop_watching:
             await self._periodic_watcher.stop()
@@ -550,7 +526,7 @@ class DistributorNode:
         """
         if self._enabled:
             log.warning(f"Already enabled {self}")
-            raise DistNodeAlreadyEnabled(self.base_url)
+            raise DistNodeAlreadyEnabled(self.http_client.base_url)
         self._enabled = True
         if not self._periodic_watcher.is_running:
             self._periodic_watcher(5, call_immediately=True)

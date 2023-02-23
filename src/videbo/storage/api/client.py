@@ -14,6 +14,12 @@ from .models import (
 
 
 class StorageClient(Client):
+    """
+    Specific `Client` subclass for interacting with the Storage API.
+
+    Provides convenience methods for performing common requests.
+    """
+
     async def get_status(self) -> tuple[int, StorageStatus]:
         """
         Request the current status from the storage node.
