@@ -3,6 +3,7 @@ from unittest import IsolatedAsyncioTestCase
 from unittest.mock import AsyncMock, MagicMock, PropertyMock, call, create_autospec, patch
 
 from videbo.distributor import node
+from ..sortable_mock import SortableMock
 
 
 _FOOBAR = "foo/bar"
@@ -29,7 +30,10 @@ class DistributorNodeTestCase(IsolatedAsyncioTestCase):
         self.mock_dl_scheduler_cls = self.dl_scheduler_init_patcher.start()
 
         self.periodic_task_name = "foo"
-        self.mock_periodic = MagicMock(task_name=self.periodic_task_name)
+        self.mock_periodic = MagicMock(
+            task_name=self.periodic_task_name,
+            stop=AsyncMock()
+        )
         self.periodic_patcher = patch.object(
             node,
             "Periodic",
@@ -789,3 +793,182 @@ class DistributorNodeTestCase(IsolatedAsyncioTestCase):
             safe=mock_safe,
         )
         self.assertEqual(space, mock_status.return_value.free_space)
+
+    @patch.object(node.DistributorNode, "_delete")
+    async def test_remove(self, mock__delete: AsyncMock) -> None:
+        mock__delete.side_effect = node.DistributionError
+        obj = node.DistributorNode(_FOOBAR)
+        file1 = MagicMock(size=10, nodes=[obj])
+        file2 = MagicMock(size=20, nodes=[obj])
+        file3 = MagicMock(size=30, nodes=[obj])
+        obj._files_hosted = {file1, file2, file3}
+        safe = MagicMock()
+
+        # Deletion error:
+
+        await obj.remove(file1, file2, file3, safe=safe)
+        self.assertSetEqual({file1, file2, file3}, obj._files_hosted)
+        self.assertIn(obj, file1.nodes)
+        self.assertIn(obj, file2.nodes)
+        self.assertIn(obj, file3.nodes)
+        mock__delete.assert_awaited_once_with(file1, file2, file3, safe=safe)
+
+        mock__delete.reset_mock()
+
+        mock__delete.side_effect = None
+        mock__delete.return_value = MagicMock(files_skipped=[file1, file2])
+
+        # Two files skipped:
+
+        with self.assertLogs(node.log, logging.WARNING):
+            await obj.remove(file1, file2, file3, safe=safe)
+        self.assertSetEqual({file1, file2}, obj._files_hosted)
+        self.assertIn(obj, file1.nodes)
+        self.assertIn(obj, file2.nodes)
+        self.assertNotIn(obj, file3.nodes)
+        mock__delete.assert_awaited_once_with(file1, file2, file3, safe=safe)
+
+        mock__delete.reset_mock()
+
+        mock__delete.return_value = MagicMock(files_skipped=[])
+
+        # No files skipped:
+
+        with self.assertLogs(node.log, logging.INFO):
+            await obj.remove(file1, file2, safe=safe)
+        self.assertSetEqual(set(), obj._files_hosted)
+        self.assertNotIn(obj, file1.nodes)
+        self.assertNotIn(obj, file2.nodes)
+        mock__delete.assert_awaited_once_with(file1, file2, safe=safe)
+
+    @patch.object(node, "settings")
+    @patch.object(node.DistributorNode, "remove")
+    @patch.object(node.DistributorNode, "total_space", new_callable=PropertyMock)
+    @patch.object(node.DistributorNode, "free_space", new_callable=PropertyMock)
+    @patch.object(node.DistributorNode, "free_space_ratio", new_callable=PropertyMock)
+    @patch.object(node.DistributorNode, "is_good", new_callable=PropertyMock)
+    async def test_free_up_space(
+        self,
+        mock_is_good: PropertyMock,
+        mock_free_space_ratio: PropertyMock,
+        mock_free_space: PropertyMock,
+        mock_total_space: PropertyMock,
+        mock_remove: AsyncMock,
+        mock_settings: MagicMock,
+    ) -> None:
+        obj = node.DistributorNode(_FOOBAR)
+        obj._files_hosted = {MagicMock()}
+        obj._enabled = False
+
+        # Disabled no-op:
+
+        await obj.free_up_space()
+        mock_is_good.assert_not_called()
+        mock_free_space_ratio.assert_not_called()
+        mock_free_space.assert_not_called()
+        mock_total_space.assert_not_called()
+        mock_remove.assert_not_called()
+
+        obj._enabled = True
+        mock_is_good.return_value = False
+
+        # Bad state no-op:
+
+        with self.assertLogs(node.log, logging.INFO):
+            await obj.free_up_space()
+        mock_is_good.assert_called_once_with()
+        mock_free_space_ratio.assert_not_called()
+        mock_free_space.assert_not_called()
+        mock_total_space.assert_not_called()
+        mock_remove.assert_not_called()
+
+        mock_is_good.reset_mock()
+
+        mock_is_good.return_value = True
+        mock_settings.distribution.free_space_target_ratio = free_ratio = 0.5
+        mock_free_space_ratio.return_value = free_ratio
+        mock_free_space.return_value = free_mb = 2
+
+        # Enough free space:
+
+        with self.assertLogs(node.log, logging.DEBUG) as ctx:
+            await obj.free_up_space()
+        self.assertIn(
+            f"{free_mb} MB ({free_ratio * 100} %)",
+            ctx.records[0].msg,
+        )
+        mock_is_good.assert_called_once_with()
+        mock_free_space_ratio.assert_called_with()
+        mock_free_space.assert_called_with()
+        mock_total_space.assert_not_called()
+        mock_remove.assert_not_called()
+
+        mock_is_good.reset_mock()
+        mock_free_space_ratio.reset_mock()
+        mock_free_space.reset_mock()
+
+        mock_free_space_ratio.return_value = 0.25
+        mock_free_space.return_value = 1
+        mock_total_space.return_value = 4
+
+        file1 = SortableMock("views", views=10, size=0.9 * node.MEGA)
+        file2 = SortableMock("views", views=20, size=0.5 * node.MEGA)
+        file3 = SortableMock("views", views=30, size=0.2 * node.MEGA)
+        obj._files_hosted = [file2, file1, file3]
+        # We expect `file1` to be marked for deletion first because it will
+        # end at the end of the sorted list, followed by `file2`, at which
+        # point the target gain of 1 MB would be exceeded, so `file3` would
+        # not be marked for deletion.
+
+        # Remove some files:
+
+        with self.assertLogs(node.log, logging.INFO):
+            await obj.free_up_space()
+        mock_is_good.assert_called_once_with()
+        mock_free_space_ratio.assert_called_once_with()
+        mock_free_space.assert_called_once_with()
+        mock_total_space.assert_called_once_with()
+        mock_remove.assert_awaited_once_with(file1, file2)
+
+    async def test_disable(self) -> None:
+        obj = node.DistributorNode(_FOOBAR)
+        obj._enabled = False
+        with self.assertRaises(node.DistNodeAlreadyDisabled) as err_ctx:
+            with self.assertLogs(node.log, logging.WARNING) as log_ctx:
+                await obj.disable()
+        self.assertIn(_FOOBAR, err_ctx.exception.text)
+        self.assertIn(_FOOBAR, log_ctx.records[0].msg)
+        self.mock_periodic.stop.assert_not_called()
+
+        obj._enabled = True
+        await obj.disable(stop_watching=False)
+        self.assertFalse(obj._enabled)
+        self.mock_periodic.stop.assert_not_called()
+
+        obj._enabled = True
+        await obj.disable(stop_watching=True)
+        self.assertFalse(obj._enabled)
+        self.mock_periodic.stop.assert_awaited_once_with()
+
+    def test_enable(self) -> None:
+        obj = node.DistributorNode(_FOOBAR)
+        obj._enabled = True
+        self.enable_patcher.stop()
+        with self.assertRaises(node.DistNodeAlreadyEnabled) as err_ctx:
+            with self.assertLogs(node.log, logging.WARNING) as log_ctx:
+                obj.enable()
+        self.assertIn(_FOOBAR, err_ctx.exception.text)
+        self.assertIn(_FOOBAR, log_ctx.records[0].msg)
+        self.mock_periodic.assert_not_called()
+
+        obj._enabled = False
+        self.mock_periodic.is_running = True
+        obj.enable()
+        self.assertTrue(obj._enabled)
+        self.mock_periodic.assert_not_called()
+
+        obj._enabled = False
+        self.mock_periodic.is_running = False
+        obj.enable()
+        self.assertTrue(obj._enabled)
+        self.mock_periodic.assert_called_once_with(5, call_immediately=True)
