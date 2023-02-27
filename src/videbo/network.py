@@ -285,10 +285,6 @@ class NetworkInterfaces:
             status_obj.current_connections = self._server_status.writing
         interface = self.get_first_interface()
         if interface is None:
-            status_obj.tx_current_rate = 0.
-            status_obj.rx_current_rate = 0.
-            status_obj.tx_total = 0.
-            status_obj.rx_total = 0.
             logger.error("No network interface found!")
         else:
             status_obj.tx_current_rate = round(interface.tx.throughput * 8 / 1_000_000, 2)

@@ -31,17 +31,20 @@ routes = RouteTableDef()
 @ensure_auth(Role.node)
 async def get_status(_request: Request, _jwt_data: RequestJWTData) -> Response:
     file_controller = DistributorFileController.get_instance()
-    status = DistributorStatus.construct()
-    # Same attributes for storage and distributor nodes:
-    status.files_total_size = int(file_controller.files_total_size / MEGA)
-    status.files_count = len(file_controller.files)
-    status.free_space = await file_controller.get_free_space()
-    status.tx_max_rate = settings.tx_max_rate_mbit
+    status = DistributorStatus(
+        tx_current_rate=0,
+        rx_current_rate=0,
+        tx_total=0,
+        rx_total=0,
+        tx_max_rate=settings.tx_max_rate_mbit,
+        files_total_size=file_controller.files_total_size / MEGA,
+        files_count=len(file_controller.files),
+        free_space=await file_controller.get_free_space(),
+        bound_to_storage_node_base_url=settings.public_base_url,
+        waiting_clients=file_controller.waiting,
+        copy_files_status=file_controller.get_copy_file_status(),
+    )
     NetworkInterfaces.get_instance().update_node_status(status, logger=log)
-    # Specific to distributor nodes:
-    status.copy_files_status = file_controller.get_copy_file_status()
-    status.waiting_clients = file_controller.waiting
-    status.bound_to_storage_node_base_url = settings.public_base_url
     return status.json_response()
 
 

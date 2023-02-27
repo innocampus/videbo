@@ -1,3 +1,4 @@
+import logging
 from asyncio import CancelledError, create_task, sleep
 from unittest import IsolatedAsyncioTestCase, TestCase
 from unittest.mock import AsyncMock, MagicMock, call, patch
@@ -307,11 +308,8 @@ class NetworkInterfacesTestCase(SilentLogMixin, IsolatedAsyncioTestCase):
         mock_get_first_interface.return_value = None
         self.ni._server_status = None
         mock_status_obj = MagicMock()
-        self.ni.update_node_status(mock_status_obj)
-        self.assertEqual(0., mock_status_obj.tx_current_rate)
-        self.assertEqual(0., mock_status_obj.rx_current_rate)
-        self.assertEqual(0., mock_status_obj.tx_total)
-        self.assertEqual(0., mock_status_obj.rx_total)
+        with self.assertLogs(network.log, logging.ERROR):
+            self.ni.update_node_status(mock_status_obj)
         mock_get_first_interface.assert_called_once_with()
         mock_get_first_interface.reset_mock()
 

@@ -402,18 +402,22 @@ class FileStorage:
         log.info(f"Cleaned up temp directory: Removed {count} old file(s).")
 
     async def get_status(self) -> StorageStatus:
-        status = StorageStatus.construct()
-        # Same attributes for storage and distributor nodes:
-        status.files_total_size = self.files_total_size_mb
-        status.files_count = self.files_count
-        status.free_space = await get_free_disk_space(str(settings.files_path))
-        status.tx_max_rate = settings.tx_max_rate_mbit
+        status = StorageStatus(
+            tx_current_rate=0,
+            rx_current_rate=0,
+            tx_total=0,
+            rx_total=0,
+            tx_max_rate=settings.tx_max_rate_mbit,
+            files_total_size=self.files_total_size_mb,
+            files_count=self.files_count,
+            free_space=await get_free_disk_space(str(settings.files_path)),
+            distributor_nodes=[
+                node.base_url
+                for node in self.distribution_controller.iter_nodes()
+            ],
+            num_current_uploads=self.num_current_uploads,
+        )
         NetworkInterfaces.get_instance().update_node_status(status, logger=log)
-        # Specific to storage node:
-        status.distributor_nodes = [
-            node.base_url for node in self.distribution_controller.iter_nodes()
-        ]
-        status.num_current_uploads = self.num_current_uploads
         return status
 
 
