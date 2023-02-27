@@ -92,6 +92,9 @@ class DistributorNode:
         """`True`, if the `other` node has a higher `tx_load` than this one"""
         return self.tx_load < other.tx_load
 
+    def __contains__(self, item: StoredVideoFile) -> bool:
+        return item in self._files_hosted
+
     @property
     def base_url(self) -> str:
         return self.http_client.base_url
@@ -163,7 +166,7 @@ class DistributorNode:
         """Returns `True`, if the node is currently downloading `file`."""
         return file in self._files_loading
 
-    def is_scheduled_to_load(self, file: StoredVideoFile) -> bool:
+    def scheduled_to_load(self, file: StoredVideoFile) -> bool:
         """Returns `True`, if the node is scheduled to download `file`."""
         return file in self._files_awaiting_download
 
@@ -288,10 +291,18 @@ class DistributorNode:
     def put_video(
         self,
         file: StoredVideoFile,
+        *,
         from_node: Optional[DistributorNode] = None,
     ) -> None:
         """
-        Copies a video file from another node to this one.
+        Starts a task o copy a video file from another node to this one.
+
+        If that particular file is already hosted by the node, is currently
+        being copied to the node, or is scheduled to be copied to the node,
+        this method does nothing.
+
+        If `can_start_downloading` is currently `False`, the file is scheduled
+        to be copied later, when the node is able to.
 
         Args:
             file:
@@ -301,15 +312,15 @@ class DistributorNode:
                 from that distributor node; if omitted or `None` (default),
                 the storage node serves as the source for the file.
         """
-        if self.is_loading(file) or self.is_scheduled_to_load(file):
+        if file in self or self.is_loading(file) or self.scheduled_to_load(file):
             return
         src = from_node.base_url if from_node else settings.public_base_url
         if self.can_start_downloading:
-            TaskManager.fire_and_forget(self._download(file, src))
+            TaskManager.fire_and_forget(self._copy(file, from_url=src))
         else:
             self._files_awaiting_download.schedule(file, src)
 
-    async def _download(self, file: StoredVideoFile, from_url: str) -> None:
+    async def _copy(self, file: StoredVideoFile, *, from_url: str) -> None:
         """
         Copies a video file from another node to this one.
 
@@ -331,10 +342,10 @@ class DistributorNode:
             from_url:
                 The URL of the node that should serve as a source for the file
         """
+        log.info(f"Requesting {self} to download `{file}` from `{from_url}`")
         file.nodes.append(self)
         file.copying = True
         self._files_loading.add(file)
-        log.info(f"Requesting {self} to download `{file}` from `{from_url}`")
         try:
             code = await self.http_client.copy(file, from_url=from_url)
         except HTTPClientError as e:
@@ -362,7 +373,7 @@ class DistributorNode:
                 file, from_url = self._files_awaiting_download.next()
             except DownloadScheduler.NothingScheduled:
                 return
-            TaskManager.fire_and_forget(self._download(file, from_url))
+            TaskManager.fire_and_forget(self._copy(file, from_url=from_url))
 
     async def _delete(
         self,
