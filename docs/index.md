@@ -14,7 +14,7 @@
 
 It exposes an intuitive API for uploading, downloading, and streaming videos, which can be accessed via Moodle <a href="https://github.com/innocampus/moodle-mod_videoservice" target="_blank" class="external-link">**`mod_videoservice`**</a> and similar plugins.
 
-**Videbo** is written in Python, and it is powered by <a href="https://docs.aiohttp.org/en/stable/index.html" target="_blank" class="external-link">`aiohttp`</a>, <a href="https://pydantic-docs.helpmanual.io" target="_blank" class="external-link">`Pydantic`</a>, and <a href="https://pyjwt.readthedocs.io/en/latest" target="_blank" class="external-link">`PyJWT`</a>.
+**Videbo** is written in Python, and it is powered by <a href="https://docs.aiohttp.org/en/stable/index.html" target="_blank" class="external-link">`aiohttp`</a>, <a href="https://docs.pydantic.dev" target="_blank" class="external-link">`Pydantic`</a>, and <a href="https://pyjwt.readthedocs.io/en/latest" target="_blank" class="external-link">`PyJWT`</a>.
 
 ## Key Features
 
