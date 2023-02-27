@@ -439,34 +439,34 @@ class DistributorNodeTestCase(IsolatedAsyncioTestCase):
 
         # Some unknown files:
 
-        file_info_known1 = "foo", ".bar"
-        file_info_known2 = "spam", ".eggs"
-        file_info_unknown = "a", ".b"
-        file1, file2 = MagicMock(nodes=[]), MagicMock(nodes=[])
+        file_known1 = MagicMock(hash="foo", ext=".bar")
+        file_known2 = MagicMock(hash="spam", ext=".eggs")
+        file_unknown = MagicMock(hash="a", ext=".b")
+        stored_file1, stored_file2 = MagicMock(nodes=[]), MagicMock(nodes=[])
         mock_storage.get_file.side_effect = (
-            file1,
+            stored_file1,
             FileNotFoundError,
-            file2
+            stored_file2
         )
         mock_data = MagicMock(
-            files=[file_info_known1, file_info_unknown, file_info_known2]
+            files=[file_known1, file_unknown, file_known2]
         )
         self.mock_client1.get_files_list.return_value = 200, mock_data
         with self.assertLogs(node.log, logging.WARNING):
             await obj._fetch_files_list()
-        self.assertSetEqual({file1, file2}, obj._files_hosted)
-        self.assertListEqual([obj], file1.nodes)
-        self.assertListEqual([obj], file2.nodes)
+        self.assertSetEqual({stored_file1, stored_file2}, obj._files_hosted)
+        self.assertListEqual([obj], stored_file1.nodes)
+        self.assertListEqual([obj], stored_file2.nodes)
         mock_get_storage_instance.assert_called_once_with()
         self.assertListEqual(
             [
-                call(*file_info_known1),
-                call(*file_info_unknown),
-                call(*file_info_known2),
+                call(file_known1.hash, file_known1.ext),
+                call(file_unknown.hash, file_unknown.ext),
+                call(file_known2.hash, file_known2.ext),
             ],
             mock_storage.get_file.call_args_list,
         )
-        mock__delete.assert_awaited_once_with(file_info_unknown)
+        mock__delete.assert_awaited_once_with(file_unknown)
 
         mock_get_storage_instance.reset_mock()
         mock__delete.reset_mock()
@@ -474,16 +474,16 @@ class DistributorNodeTestCase(IsolatedAsyncioTestCase):
 
         # No unknown files:
 
-        file1 = MagicMock(nodes=[])
-        mock_data = MagicMock(files=[file_info_known1])
+        stored_file1 = MagicMock(nodes=[])
+        mock_data = MagicMock(files=[file_known1])
         self.mock_client1.get_files_list.return_value = 200, mock_data
         mock_storage.get_file.side_effect = None
-        mock_storage.get_file.return_value = file1
+        mock_storage.get_file.return_value = stored_file1
         await obj._fetch_files_list()
-        self.assertSetEqual({file1}, obj._files_hosted)
-        self.assertListEqual([obj], file1.nodes)
+        self.assertSetEqual({stored_file1}, obj._files_hosted)
+        self.assertListEqual([obj], stored_file1.nodes)
         mock_get_storage_instance.assert_called_once_with()
-        mock_storage.get_file.assert_called_once_with(*file_info_known1)
+        mock_storage.get_file.assert_called_once_with(file_known1.hash, file_known1.ext)
         mock__delete.assert_not_called()
 
     @patch.object(node.TaskManager, "fire_and_forget")

@@ -235,17 +235,3 @@ class FileDoesNotExistTestCase(TestCase):
         obj = models.FileDoesNotExist(file_hash="foo")
         self.assertIsNone(obj._log_response(mock_logger))
         mock_logger.error.assert_called_once()
-
-
-class StorageFileInfoTestCase(TestCase):
-
-    def test___repr__(self) -> None:
-        file_hash, file_ext = 'spam', '.eggs'
-        obj = models.StorageFileInfo(hash=file_hash, file_ext=file_ext, file_size=12345)
-        self.assertEqual(file_hash + file_ext, repr(obj))
-
-    @patch.object(models.StorageFileInfo, '__repr__')
-    def test___str__(self, mock_repr: MagicMock) -> None:
-        mock_repr.return_value = string = 'foobar'
-        obj = models.StorageFileInfo(hash='something', file_ext='.else', file_size=12345)
-        self.assertEqual(string, str(obj))

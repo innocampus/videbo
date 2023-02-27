@@ -9,9 +9,9 @@ from pydantic.networks import AnyHttpUrl
 from videbo import settings
 from videbo.models import (
     BaseJWTData,
-    BaseModel,
     BaseRequestModel,
     BaseResponseModel,
+    HashedFileModel,
     NodeStatus,
     RequestJWTData,
     Role,
@@ -319,19 +319,8 @@ class StorageStatus(NodeStatus):
     num_current_uploads: int
 
 
-class StorageFileInfo(BaseModel):
-    hash: str
-    file_ext: str
-    file_size: int  # in MB
-
-    def __repr__(self) -> str:
-        return self.hash + self.file_ext
-
-    def __str__(self) -> str:
-        return repr(self)
-
-    class Config:
-        orm_mode = True
+class StorageFileInfo(HashedFileModel):
+    size: int  # in MB
 
 
 class StorageFilesList(BaseResponseModel):

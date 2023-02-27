@@ -1,5 +1,10 @@
-from videbo.models import BaseModel, BaseRequestModel, BaseResponseModel, NodeStatus
-from videbo.types import FileID
+from videbo.models import (
+    BaseRequestModel,
+    BaseResponseModel,
+    HashedFilesList,
+    NodeStatus,
+    VideboBaseModel,
+)
 
 
 __all__ = [
@@ -12,7 +17,7 @@ __all__ = [
 ]
 
 
-class DistributorCopyFileStatus(BaseModel):
+class DistributorCopyFileStatus(VideboBaseModel):
     hash: str
     file_ext: str
     loaded: int  # in bytes
@@ -32,14 +37,14 @@ class DistributorCopyFile(BaseRequestModel):
 
 
 class DistributorDeleteFiles(BaseRequestModel):
-    files: list[FileID]  # (hash, file extension)
+    files: HashedFilesList
     safe: bool  # if True, recently requested files will not be deleted
 
 
 class DistributorDeleteFilesResponse(BaseResponseModel):
-    files_skipped: list[FileID]  # (hash, file extension)
+    files_skipped: HashedFilesList
     free_space: float  # in MB
 
 
 class DistributorFileList(BaseResponseModel):
-    files: list[FileID]  # (hash, file extension)
+    files: HashedFilesList

@@ -61,8 +61,8 @@ class LMSTestCase(SilentLogMixin, IsolatedAsyncioTestCase):
         mock_get_standard_token.return_value = mock_token = "abc"
         mock_videos_missing_req_cls.return_value = mock_data = "xyz"
 
-        test_video1 = lms_api.VideoModel(hash="foo", ext=".mp4")
-        test_video2 = lms_api.VideoModel(hash="bar", ext=".mp4")
+        test_video1 = lms_api.HashedFileModel(hash="foo", ext=".mp4")
+        test_video2 = lms_api.HashedFileModel(hash="bar", ext=".mp4")
         mock_client = MagicMock(request=AsyncMock(side_effect=lms_api.HTTPClientError))
 
         with self.assertRaises(lms_api.LMSInterfaceError):
@@ -125,7 +125,7 @@ class LMSTestCase(SilentLogMixin, IsolatedAsyncioTestCase):
         )
 
     @patch.object(lms_api.LMS, "VIDEOS_CHECK_MAX_BATCH_SIZE", new=2)
-    @patch.object(lms_api, "VideoModel")
+    @patch.object(lms_api, "HashedFileModel")
     @patch.object(lms_api.LMS, "iter_all")
     async def test_filter_orphaned_videos(self, mock_iter_all: MagicMock, mock_video_model_cls: MagicMock) -> None:
         mock_video1 = MagicMock(hash="foo", file_ext=".mp4")

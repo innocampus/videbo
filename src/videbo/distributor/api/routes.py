@@ -13,7 +13,7 @@ from videbo import settings
 from videbo.auth import ensure_auth
 from videbo.misc import MEGA
 from videbo.misc.functions import rel_path
-from videbo.models import TokenIssuer, Role, RequestJWTData
+from videbo.models import HashedFilesList, Role, RequestJWTData, TokenIssuer
 from videbo.network import NetworkInterfaces
 from videbo.web import ensure_json_body, file_serve_headers, serve_file_via_x_accel
 from ...hashed_file import HashedFile
@@ -48,10 +48,9 @@ async def get_status(_request: Request, _jwt_data: RequestJWTData) -> Response:
 @routes.get(r'/api/distributor/files')
 @ensure_auth(Role.node)
 async def get_all_files(_request: Request, _jwt_data: RequestJWTData) -> Response:
-    all_files: list[tuple[str, str]] = []
-    for file in DistributorFileController.get_instance().files.values():
-        all_files.append((file.hash, file.ext))
-    return DistributorFileList(files=all_files).json_response()
+    return DistributorFileList.parse_obj({
+        "files": DistributorFileController.get_instance().files.values()
+    }).json_response()
 
 
 @routes.post(r'/api/distributor/copy/{hash:[0-9a-f]{64}}{file_ext:\.[0-9a-z]{1,10}}')
@@ -74,12 +73,12 @@ async def copy_file(request: Request, _jwt_data: RequestJWTData, data: Distribut
 @ensure_json_body
 async def delete_files(_request: Request, _jwt_data: RequestJWTData, data: DistributorDeleteFiles) -> Response:
     file_controller = DistributorFileController.get_instance()
-    files_skipped: list[tuple[str, str]] = []
-    for file_hash, file_ext in data.files:
+    files_skipped: HashedFilesList = []
+    for file in data.files:
         try:
-            await file_controller.delete_file(file_hash, safe=data.safe)
+            await file_controller.delete_file(file.hash, safe=data.safe)
         except (NoSuchFile, NotSafeToDelete):
-            files_skipped.append((file_hash, file_ext))
+            files_skipped.append(file)
     free_space = await file_controller.get_free_space()
     return DistributorDeleteFilesResponse(files_skipped=files_skipped, free_space=free_space).json_response()
 

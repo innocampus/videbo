@@ -128,7 +128,7 @@ class DistributionController:
         has_copy = partial(DistributorNode.can_provide_copy, file=file)
         from_node = self.find_node(has_copy, check_nodes=sorted(file.nodes))
         # If there is no `from_node`, storage will serve as source:
-        to_node.put_video(file, from_node)
+        to_node.put_video(file, from_node=from_node)
         return to_node
 
     def add_new_dist_node(self, base_url: str) -> None:

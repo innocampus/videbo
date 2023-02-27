@@ -13,7 +13,7 @@ from videbo import settings
 
 __all__ = [
     'DEFAULT_JWT_ALG',
-    'BaseModel',
+    'VideboBaseModel',
     'BaseRequestModel',
     'BaseResponseModel',
     'TokenIssuer',
@@ -21,7 +21,8 @@ __all__ = [
     'BaseJWTData',
     'RequestJWTData',
     'LMSRequestJWTData',
-    'VideoModel',
+    'HashedFileModel',
+    'HashedFilesList',
     'VideosMissingRequest',
     'VideosMissingResponse',
     'NodeStatus',
@@ -34,15 +35,16 @@ DEFAULT_JWT_ALG = 'HS256'
 _log = getLogger(__name__)
 
 
-class BaseModel(PydanticBaseModel):
+class VideboBaseModel(PydanticBaseModel):
+    class Config:
+        orm_mode = True
+
+
+class BaseRequestModel(VideboBaseModel):
     pass
 
 
-class BaseRequestModel(BaseModel):
-    pass
-
-
-class BaseResponseModel(BaseModel):
+class BaseResponseModel(VideboBaseModel):
     _status_code: int = 200
 
     def _log_response(self, log: Logger) -> None:
@@ -70,7 +72,7 @@ class TokenIssuer(str, Enum):
     external = 'ext'
 
 
-class BaseJWTData(BaseModel):
+class BaseJWTData(VideboBaseModel):
     """
     Base data fields that have to be stored in the JWT.
 
@@ -272,26 +274,32 @@ class LMSRequestJWTData(RequestJWTData):
         return cls._current_token[0]
 
 
-class VideoModel(BaseModel):
+class HashedFileModel(VideboBaseModel):
     hash: str
     ext: str
 
-    class Config:
-        orm_mode = True
+    def __repr__(self) -> str:
+        return self.hash + self.ext
+
+    def __str__(self) -> str:
+        return repr(self)
+
+
+HashedFilesList = list[HashedFileModel]
 
 
 class VideosMissingRequest(BaseRequestModel):
-    videos: list[VideoModel]
+    videos: HashedFilesList
 
     @validator("videos")
-    def at_least_one_video(cls, v: list[VideoModel]) -> list[VideoModel]:
+    def at_least_one_video(cls, v: HashedFilesList) -> HashedFilesList:
         if len(v) == 0:
             raise ValueError("Videos list must contain at least one video")
         return v
 
 
 class VideosMissingResponse(BaseResponseModel):
-    videos: list[VideoModel]  # i.e. not known/managed by the LMS
+    videos: HashedFilesList  # i.e. not known/managed by the LMS
 
 
 class NodeStatus(BaseResponseModel):

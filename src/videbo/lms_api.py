@@ -11,7 +11,7 @@ from videbo.client import Client
 from videbo.exceptions import HTTPClientError, LMSInterfaceError
 from videbo.models import (
     LMSRequestJWTData,
-    VideoModel,
+    HashedFileModel,
     VideosMissingRequest,
     VideosMissingResponse,
 )
@@ -56,7 +56,11 @@ class LMS:
         query = urlencode({self.FUNCTION_QUERY_PARAMETER: function})
         return f"{self.api_url}?{query}"
 
-    async def videos_missing(self, *videos: VideoModel, client: Client) -> VideosMissingResponse:
+    async def videos_missing(
+        self,
+        *videos: HashedFileModel,
+        client: Client,
+    ) -> VideosMissingResponse:
         """Checks if the provided videos are known to the LMS."""
         request_data = VideosMissingRequest(videos=list(videos))
         try:
@@ -86,7 +90,7 @@ class LMS:
         *files: StoredFile,
         client: Client,
         origin: Optional[str] = None,
-    ) -> list[VideoModel]:
+    ) -> list[HashedFileModel]:
         """
         Checks LMS sites for their knowledge of the provided `*files`.
 
@@ -100,18 +104,18 @@ class LMS:
                 If passed a string, any LMS with a matching URL is _not_ checked.
 
         Returns:
-            List of `VideoModel` instances representing the files that are regarded as _orphaned_.
+            List of `HashedFileModel` instances representing the files that are regarded as _orphaned_.
             If an `origin` was provided and that is the _only_ LMS that knows a file,
             that file will still be considered _orphaned_.
 
         Raises:
             `LMSInterfaceError` after logging it
         """
-        video_batches: list[list[VideoModel]] = []
+        video_batches: list[list[HashedFileModel]] = []
         for i in range(0, len(files), cls.VIDEOS_CHECK_MAX_BATCH_SIZE):
             indices = slice(i, i + cls.VIDEOS_CHECK_MAX_BATCH_SIZE)
             video_batches.append(
-                [VideoModel.from_orm(file) for file in files[indices]]
+                [HashedFileModel.from_orm(file) for file in files[indices]]
             )
         for batch_idx, videos in enumerate(video_batches):
             for site in cls.iter_all():

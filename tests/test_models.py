@@ -206,9 +206,27 @@ class LMSRequestJWTDataTestCase(TestCase):
         models.LMSRequestJWTData._current_token = (token_before, exp_before)
 
 
+class HashedFileModelTestCase(TestCase):
+    def test___repr__(self) -> None:
+        file_hash, file_ext = 'spam', '.eggs'
+        obj = models.HashedFileModel.parse_obj({
+            "hash": file_hash,
+            "ext": file_ext,
+            "foo": "bar",
+        })
+        self.assertEqual(file_hash + file_ext, repr(obj))
+
+    @patch.object(models.HashedFileModel, '__repr__')
+    def test___str__(self, mock_repr: MagicMock) -> None:
+        mock_repr.return_value = string = 'foobar'
+        obj = models.HashedFileModel(hash='something', ext='.else')
+        self.assertEqual(string, str(obj))
+        mock_repr.assert_called_once_with()
+
+
 class VideosMissingRequestTestCase(TestCase):
     def test_at_least_one_video(self) -> None:
-        obj = models.VideosMissingRequest(videos=[models.VideoModel(hash="foo", ext="bar")])
+        obj = models.VideosMissingRequest(videos=[models.HashedFileModel(hash="foo", ext="bar")])
         self.assertDictEqual(
             {"videos": [{"hash": "foo", "ext": "bar"}]},
             obj.dict()

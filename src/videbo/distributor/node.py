@@ -7,6 +7,7 @@ from videbo.exceptions import HTTPClientError
 from videbo.misc import MEGA
 from videbo.misc.periodic import Periodic
 from videbo.misc.task_manager import TaskManager
+from videbo.models import HashedFileModel
 from videbo.storage.exceptions import (
     DistributionError,
     DistNodeAlreadyDisabled,
@@ -14,7 +15,7 @@ from videbo.storage.exceptions import (
     DistStatusUnknown,
 )
 from videbo.storage.stored_file import StoredVideoFile
-from videbo.types import FileID
+from videbo.types import HashedFileProtocol
 from .api.client import DistributorClient as Client
 from .api.models import (
     DistributorStatus,
@@ -264,7 +265,7 @@ class DistributorNode:
         """
         from videbo.storage.util import FileStorage
         storage = FileStorage.get_instance()
-        unknown_files: list[FileID] = []
+        unknown_files: list[HashedFileModel] = []
         try:
             code, resp_data = await self.http_client.get_files_list()
         except HTTPClientError as e:
@@ -273,17 +274,18 @@ class DistributorNode:
         if code != 200:
             log.error(f"HTTP code {code} while fetching files list of {self}")
             return
-        for file_hash, file_ext in resp_data.files:
+        for file in resp_data.files:
             try:
-                file = storage.get_file(file_hash, file_ext)
+                stored_file = storage.get_file(file.hash, file.ext)
             except FileNotFoundError:
                 log.warning(
-                    f"Removing `{file_hash}{file_ext}` from {self} "
-                    f"since file does not exist on storage.")
-                unknown_files.append((file_hash, file_ext))
+                    f"Removing `{file}` from {self} "
+                    f"since file does not exist on storage."
+                )
+                unknown_files.append(file)
             else:
-                self._files_hosted.add(file)
-                file.nodes.append(self)
+                self._files_hosted.add(stored_file)
+                stored_file.nodes.append(self)
         log.info(f"Found {len(self._files_hosted)} files on {self}")
         if unknown_files:
             await self._delete(*unknown_files)
@@ -377,7 +379,7 @@ class DistributorNode:
 
     async def _delete(
         self,
-        *files: FileID,
+        *files: HashedFileProtocol,
         safe: bool = True,
     ) -> DistributorDeleteFilesResponse:
         """
@@ -393,7 +395,8 @@ class DistributorNode:
 
         Args:
             *files:
-                Files to remove
+                Files to remove; each object must have both the `hash` and
+                the `ext` attribute (both strings)
             safe (optional):
                 Whether or not to honor the `last_request_safety_minutes`
                 setting, when deleting each individual file; `True` by default
@@ -438,19 +441,16 @@ class DistributorNode:
                 Whether or not to honor the `last_request_safety_minutes`
                 setting, when deleting each individual file; `True` by default
         """
-        hashes_extensions, to_discard = [], {}
-        for file in files:
-            hashes_extensions.append((file.hash, file.ext))
-            to_discard[f'{file.hash}{file.ext}'] = file
+        to_discard = {str(file): file for file in files}
         try:
-            resp_data = await self._delete(*hashes_extensions, safe=safe)
+            resp_data = await self._delete(*files, safe=safe)
         except DistributionError:
             return  # detailed logging done inside `_delete`
         # Only discard files that were actually deleted:
-        not_deleted_size = 0
-        for file_hash, file_ext in resp_data.files_skipped:
-            file = to_discard.pop(f'{file_hash}{file_ext}')
-            not_deleted_size += file.size
+        not_deleted_size = sum(
+            to_discard.pop(str(skipped_file)).size
+            for skipped_file in resp_data.files_skipped
+        )
         if not_deleted_size > 0:
             log.warning(
                 f"{len(resp_data.files_skipped)} file(s) taking up "

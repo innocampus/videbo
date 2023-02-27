@@ -90,9 +90,9 @@ class DistributorClientTestCase(IsolatedAsyncioTestCase):
             file_size=size,
         )
 
-    @patch.object(client, "DistributorDeleteFiles")
-    async def test_delete(self, mock_dist_delete_file_cls: MagicMock) -> None:
-        mock_dist_delete_file_cls.return_value = mock_data = object()
+    @patch.object(client.DistributorDeleteFiles, "parse_obj")
+    async def test_delete(self, mock_dist_del_parse_obj: MagicMock) -> None:
+        mock_dist_del_parse_obj.return_value = mock_data = object()
         url = "foo/bar"
         obj = client.DistributorClient(url)
         mock_files = (MagicMock(), MagicMock())
@@ -108,7 +108,7 @@ class DistributorClientTestCase(IsolatedAsyncioTestCase):
             return_model=client.DistributorDeleteFilesResponse,
             timeout=60.,
         )
-        mock_dist_delete_file_cls.assert_called_once_with(
-            files=list(mock_files),
-            safe=safe,
-        )
+        mock_dist_del_parse_obj.assert_called_once_with({
+            "files": mock_files,
+            "safe": safe,
+        })

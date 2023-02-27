@@ -76,7 +76,7 @@ async def find_orphaned_files(
     if num_files == 0:
         print("No orphaned files found.")
         return
-    total_size = round(sum(file.file_size for file in data.files) / MEGA, 1)
+    total_size = round(sum(file.size for file in data.files) / MEGA, 1)
     print(
         f"Found {num_files} orphaned files "
         f"with a total size of {total_size} MB."
@@ -131,7 +131,7 @@ def list_files(*files: StorageFileInfo) -> None:
     print(f"| {h_name:{name_length}} | {h_size:>{size_length}} |")
     print(horizontal_sep)
     for file in files:
-        size_str = f"{round(file.file_size / MEGA, 1)} MB"
+        size_str = f"{round(file.size / MEGA, 1)} MB"
         print(f"| {str(file):{name_length}} | {size_str:>{size_length}} |")
     print(horizontal_sep)
 

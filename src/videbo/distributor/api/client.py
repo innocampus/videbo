@@ -2,7 +2,7 @@ from typing import Any
 
 from videbo.client import Client
 from videbo.storage.stored_file import StoredVideoFile
-from videbo.types import FileID
+from videbo.types import HashedFileProtocol
 from .models import (
     DistributorCopyFile,
     DistributorDeleteFiles,
@@ -85,7 +85,7 @@ class DistributorClient(Client):
 
     async def delete(
         self,
-        *files: FileID,
+        *files: HashedFileProtocol,
         safe: bool = True,
     ) -> tuple[int, DistributorDeleteFilesResponse]:
         """
@@ -100,7 +100,10 @@ class DistributorClient(Client):
             "POST",
             self.base_url + "/api/distributor/delete",
             self.get_jwt_node(),
-            data=DistributorDeleteFiles(files=list(files), safe=safe),
+            data=DistributorDeleteFiles.parse_obj({
+                "files": files,
+                "safe": safe,
+            }),
             return_model=DistributorDeleteFilesResponse,
             timeout=60.,
         )
