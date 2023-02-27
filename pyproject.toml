@@ -1,3 +1,6 @@
+##############################
+# Python packaging settings: #
+
 [build-system]
 requires = ["setuptools", "setuptools-scm"]
 build-backend = "setuptools.build_meta"
@@ -69,3 +72,46 @@ documentation = "https://innocampus.github.io/videbo"
 readme = { file = ["README.md"] }
 dependencies = { file = "requirements/common.txt" }
 version = {attr = "videbo.__version__"}
+
+##############################################
+# Mypy configuration: (replacing `mypy.ini`) #
+
+[tool.mypy]
+files = "src/"
+warn_unused_configs = true
+strict = true
+show_error_codes = true
+plugins = [
+    "pydantic.mypy",
+]
+
+[tool.pydantic-mypy]
+init_forbid_extra = true
+init_typed = true
+warn_required_dynamic_aliases = true
+warn_untyped_fields = true
+
+#####################################################
+# Coverage configuration: (replacing `.coveragerc`) #
+
+[tool.coverage.run]
+source = [
+    "src/",
+]
+branch = true
+command_line = "-m tests"
+omit = [
+    ".venv/*",
+]
+
+[tool.coverage.report]
+show_missing = true
+skip_covered = false
+exclude_lines = [
+    "if TYPE_CHECKING:",
+    '''if __name__ == ['"]__main__['"]:''',
+    "@overload",
+]
+omit = [
+    "tests/*",
+]
