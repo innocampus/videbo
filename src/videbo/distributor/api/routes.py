@@ -52,7 +52,7 @@ async def get_status(_request: Request, _jwt_data: RequestJWTData) -> Response:
 @ensure_auth(Role.node)
 async def get_all_files(_request: Request, _jwt_data: RequestJWTData) -> Response:
     return DistributorFileList.parse_obj({
-        "files": DistributorFileController.get_instance().files.values()
+        "files": list(DistributorFileController.get_instance().files.values())
     }).json_response()
 
 
