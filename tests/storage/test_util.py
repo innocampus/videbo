@@ -325,7 +325,7 @@ class FileStorageTestCase(SilentLogMixin, IsolatedAsyncioTestCase):
 
         file1, file2 = MockFile(hash=FOO), MockFile(hash=BAR)
         self.storage._cached_files = {FOO: file1, BAR: file2}
-        mock_filter_orphaned_videos.return_value = [file2, MagicMock(hash="causes warning")]
+        mock_filter_orphaned_videos.return_value = [BAR, "causes warning"]
 
         orphaned = True
         expected_output = {file2}
@@ -334,7 +334,7 @@ class FileStorageTestCase(SilentLogMixin, IsolatedAsyncioTestCase):
         mock_filter_orphaned_videos.assert_awaited_once_with(file1, file2, client=self.storage.http_client)
 
         mock_filter_orphaned_videos.reset_mock()
-        mock_filter_orphaned_videos.return_value = [file2]
+        mock_filter_orphaned_videos.return_value = [BAR]
         orphaned = False
         expected_output = {file1}
         output = await self.storage._filter_by_orphan_status((file1, file2), orphaned=orphaned)
@@ -541,7 +541,7 @@ class FileStorageTestCase(SilentLogMixin, IsolatedAsyncioTestCase):
         test_origin = "abcde"
         mock_file_foo, mock_file_bar = object(), object()
         self.storage._cached_files = {FOO: mock_file_foo, BAR: mock_file_bar}
-        mock_filter_orphaned_videos.return_value = [MagicMock(hash=FOO)]
+        mock_filter_orphaned_videos.return_value = [FOO]
 
         output = await self.storage.remove_files(*test_hashes, origin=test_origin)
         self.assertSetEqual({BAR, BAZ}, output)

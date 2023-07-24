@@ -11,7 +11,6 @@ from videbo.client import Client
 from videbo.exceptions import HTTPClientError, LMSInterfaceError
 from videbo.models import (
     LMSRequestJWTData,
-    HashedFileModel,
     VideosMissingRequest,
     VideosMissingResponse,
 )
@@ -58,11 +57,11 @@ class LMS:
 
     async def videos_missing(
         self,
-        *videos: HashedFileModel,
+        *hashes: str,
         client: Client,
     ) -> VideosMissingResponse:
         """Checks if the provided videos are known to the LMS."""
-        request_data = VideosMissingRequest(videos=list(videos))
+        request_data = VideosMissingRequest(hashes=list(hashes))
         try:
             http_code, response_data = await client.request(
                 "POST",
@@ -90,7 +89,7 @@ class LMS:
         *files: StoredFile,
         client: Client,
         origin: Optional[str] = None,
-    ) -> list[HashedFileModel]:
+    ) -> list[str]:
         """
         Checks LMS sites for their knowledge of the provided `*files`.
 
@@ -111,23 +110,21 @@ class LMS:
         Raises:
             `LMSInterfaceError` after logging it
         """
-        video_batches: list[list[HashedFileModel]] = []
+        batches: list[list[str]] = []
         for i in range(0, len(files), cls.VIDEOS_CHECK_MAX_BATCH_SIZE):
             indices = slice(i, i + cls.VIDEOS_CHECK_MAX_BATCH_SIZE)
-            video_batches.append(
-                [HashedFileModel.from_orm(file) for file in files[indices]]
-            )
-        for batch_idx, videos in enumerate(video_batches):
+            batches.append([file.hash for file in files[indices]])
+        for batch_idx, hashes in enumerate(batches):
             for site in cls.iter_all():
                 if origin and site.api_url.startswith(origin):
                     continue
-                log.debug(f"Checking LMS {site.api_url} for {len(videos)} files.")
+                log.debug(f"Checking LMS {site.api_url} for {len(hashes)} files.")
                 try:
-                    response = await site.videos_missing(*videos, client=client)
+                    response = await site.videos_missing(*hashes, client=client)
                 except LMSInterfaceError as e:
                     log.warning(f"{e} occurred on {site.api_url}.")
                     raise
                 # Continue only with videos unknown to previously checked LMS:
-                videos = response.videos
-            video_batches[batch_idx] = videos
-        return [video for videos in video_batches for video in videos]
+                hashes = response.hashes
+            batches[batch_idx] = hashes
+        return [video for videos in batches for video in videos]

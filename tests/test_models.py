@@ -226,10 +226,7 @@ class HashedFileModelTestCase(TestCase):
 
 class VideosMissingRequestTestCase(TestCase):
     def test_at_least_one_video(self) -> None:
-        obj = models.VideosMissingRequest(videos=[models.HashedFileModel(hash="foo", ext="bar")])
-        self.assertDictEqual(
-            {"videos": [{"hash": "foo", "ext": "bar"}]},
-            obj.dict()
-        )
+        obj = models.VideosMissingRequest(hashes=["foo"])
+        self.assertDictEqual({"hashes": ["foo"]}, obj.dict())
         with self.assertRaises(ValidationError):
-            models.VideosMissingRequest(videos=[])
+            models.VideosMissingRequest(hashes=[])

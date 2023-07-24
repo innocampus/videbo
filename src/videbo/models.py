@@ -289,17 +289,17 @@ HashedFilesList = list[HashedFileModel]
 
 
 class VideosMissingRequest(BaseRequestModel):
-    videos: HashedFilesList
+    hashes: list[str]
 
-    @validator("videos")
+    @validator("hashes")
     def at_least_one_video(cls, v: HashedFilesList) -> HashedFilesList:
         if len(v) == 0:
-            raise ValueError("Videos list must contain at least one video")
+            raise ValueError("Hashes list must contain at least one video")
         return v
 
 
 class VideosMissingResponse(BaseResponseModel):
-    videos: HashedFilesList  # i.e. not known/managed by the LMS
+    hashes: list[str]  # i.e. not known/managed by the LMS
 
 
 class NodeStatus(BaseResponseModel):

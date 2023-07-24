@@ -61,15 +61,17 @@ class LMSTestCase(SilentLogMixin, IsolatedAsyncioTestCase):
         mock_get_standard_token.return_value = mock_token = "abc"
         mock_videos_missing_req_cls.return_value = mock_data = "xyz"
 
-        test_video1 = lms_api.HashedFileModel(hash="foo", ext=".mp4")
-        test_video2 = lms_api.HashedFileModel(hash="bar", ext=".mp4")
+        test_hash1 = "foo"
+        test_hash2 = "bar"
+
+        # Test with `HTTPClientError`:
         mock_client = MagicMock(request=AsyncMock(side_effect=lms_api.HTTPClientError))
 
         with self.assertRaises(lms_api.LMSInterfaceError):
-            await lms_api.LMS("abc").videos_missing(test_video1, test_video2, client=mock_client)
+            await lms_api.LMS("abc").videos_missing(test_hash1, test_hash2, client=mock_client)
         mock__get_function_url.assert_called_once_with("videos_missing")
         mock_get_standard_token.assert_called_once_with()
-        mock_videos_missing_req_cls.assert_called_once_with(videos=[test_video1, test_video2])
+        mock_videos_missing_req_cls.assert_called_once_with(hashes=[test_hash1, test_hash2])
         mock_client.request.assert_awaited_once_with(
             "POST",
             mock_url,
@@ -80,6 +82,7 @@ class LMSTestCase(SilentLogMixin, IsolatedAsyncioTestCase):
             external=True,
         )
 
+        # Test with non-200 HTTP status code:
         mock_client.request.reset_mock()
         mock_client.request.side_effect = None
         mock_client.request.return_value = 400, None
@@ -88,10 +91,10 @@ class LMSTestCase(SilentLogMixin, IsolatedAsyncioTestCase):
         mock_videos_missing_req_cls.reset_mock()
 
         with self.assertRaises(lms_api.LMSInterfaceError):
-            await lms_api.LMS("abc").videos_missing(test_video1, test_video2, client=mock_client)
+            await lms_api.LMS("abc").videos_missing(test_hash1, test_hash2, client=mock_client)
         mock__get_function_url.assert_called_once_with("videos_missing")
         mock_get_standard_token.assert_called_once_with()
-        mock_videos_missing_req_cls.assert_called_once_with(videos=[test_video1, test_video2])
+        mock_videos_missing_req_cls.assert_called_once_with(hashes=[test_hash1, test_hash2])
         mock_client.request.assert_awaited_once_with(
             "POST",
             mock_url,
@@ -102,6 +105,7 @@ class LMSTestCase(SilentLogMixin, IsolatedAsyncioTestCase):
             external=True,
         )
 
+        # Test with OK response:
         mock_client.request.reset_mock()
         mock_response = MagicMock()
         mock_client.request.return_value = 200, mock_response
@@ -109,11 +113,11 @@ class LMSTestCase(SilentLogMixin, IsolatedAsyncioTestCase):
         mock_get_standard_token.reset_mock()
         mock_videos_missing_req_cls.reset_mock()
 
-        output = await lms_api.LMS("abc").videos_missing(test_video1, test_video2, client=mock_client)
+        output = await lms_api.LMS("abc").videos_missing(test_hash1, test_hash2, client=mock_client)
         self.assertIs(mock_response, output)
         mock__get_function_url.assert_called_once_with("videos_missing")
         mock_get_standard_token.assert_called_once_with()
-        mock_videos_missing_req_cls.assert_called_once_with(videos=[test_video1, test_video2])
+        mock_videos_missing_req_cls.assert_called_once_with(hashes=[test_hash1, test_hash2])
         mock_client.request.assert_awaited_once_with(
             "POST",
             mock_url,
@@ -125,9 +129,8 @@ class LMSTestCase(SilentLogMixin, IsolatedAsyncioTestCase):
         )
 
     @patch.object(lms_api.LMS, "VIDEOS_CHECK_MAX_BATCH_SIZE", new=2)
-    @patch.object(lms_api, "HashedFileModel")
     @patch.object(lms_api.LMS, "iter_all")
-    async def test_filter_orphaned_videos(self, mock_iter_all: MagicMock, mock_video_model_cls: MagicMock) -> None:
+    async def test_filter_orphaned_videos(self, mock_iter_all: MagicMock) -> None:
         mock_video1 = MagicMock(hash="foo", file_ext=".mp4")
         mock_video2 = MagicMock(hash="bar", file_ext=".mp4")
         mock_video3 = MagicMock(hash="baz", file_ext=".mp4")
@@ -137,8 +140,9 @@ class LMSTestCase(SilentLogMixin, IsolatedAsyncioTestCase):
         lms2 = MagicMock(api_url="example.com/other", videos_missing=AsyncMock())
 
         mock_iter_all.return_value = [lms1, lms2]
-        mock_video_model_cls.from_orm = lambda x: x
 
+        # Test that LMS1 is never checked
+        # and LMS2 is checked in 2 separate requests/batches:
         output = await lms_api.LMS.filter_orphaned_videos(
             mock_video1, mock_video2, mock_video3, client=mock_client, origin=test_origin
         )
@@ -147,10 +151,12 @@ class LMSTestCase(SilentLogMixin, IsolatedAsyncioTestCase):
         mock_iter_all.assert_has_calls([call(), call()])
         lms1.videos_missing.assert_not_called()
         lms2.videos_missing.assert_has_awaits([
-            call(mock_video1, mock_video2, client=mock_client),
-            call(mock_video3, client=mock_client),
+            call(mock_video1.hash, mock_video2.hash, client=mock_client),
+            call(mock_video3.hash, client=mock_client),
         ])
 
+        # Test that `LMSInterfaceError` is re-raised after the first request
+        # and the second batch is never attempted:
         mock_iter_all.reset_mock()
         lms2.videos_missing.reset_mock()
         lms2.videos_missing.side_effect = lms_api.LMSInterfaceError
@@ -162,4 +168,4 @@ class LMSTestCase(SilentLogMixin, IsolatedAsyncioTestCase):
 
         mock_iter_all.assert_called_once_with()
         lms1.videos_missing.assert_not_called()
-        lms2.videos_missing.assert_awaited_once_with(mock_video1, mock_video2, client=mock_client)
+        lms2.videos_missing.assert_awaited_once_with(mock_video1.hash, mock_video2.hash, client=mock_client)

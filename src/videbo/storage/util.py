@@ -196,13 +196,13 @@ class FileStorage:
         Returns:
             Subset of the provided `files` that are managed by the `FileStorage` and match the desired `orphan` status.
         """
-        videos = await LMS.filter_orphaned_videos(*files, client=self.http_client)
+        hashes = await LMS.filter_orphaned_videos(*files, client=self.http_client)
         orphaned_files = set()
-        for video in videos:
+        for file_hash in hashes:
             try:
-                orphaned_files.add(self._cached_files[video.hash])
+                orphaned_files.add(self._cached_files[file_hash])
             except KeyError:
-                log.warning(f"File not managed by this storage node: {video.hash}")
+                log.warning(f"File not managed by this storage node: {file_hash}")
         if orphaned:
             return orphaned_files
         return set(files).difference(orphaned_files)
@@ -380,12 +380,12 @@ class FileStorage:
             return set()
         hashes_set = set(hashes)
         log.info(f"{len(orphaned)} files are being deleted.")
-        for video in orphaned:
-            file = self._cached_files[video.hash]
-            await self.remove_thumbnails(video.hash)
+        for file_hash in orphaned:
+            file = self._cached_files[file_hash]
+            await self.remove_thumbnails(file_hash)
             await self.remove_video(file)
-            log.info(f"Deleted video {video.hash} permanently")
-            hashes_set.discard(video.hash)
+            log.info(f"Deleted video {file_hash} permanently")
+            hashes_set.discard(file_hash)
         return hashes_set
 
     def _remove_old_temp_files(self) -> int:
