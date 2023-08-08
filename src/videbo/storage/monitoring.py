@@ -50,8 +50,14 @@ class Monitoring:
         #       fix the following typing issue
         self.metrics: dict[str, tuple[Gauge, Optional[Callable]]] = {}  # type: ignore
         self.dist_urls: set[str] = set()
-        self._add_metrics_from_model(StorageStatus, exclude={'distributor_nodes'})
-        self._add_metrics_from_model(DistributorStatus, exclude={'bound_to_storage_node_base_url', 'copy_files_status'})
+        self._add_metrics_from_model(
+            StorageStatus,
+            exclude={'version', 'distributor_nodes'},
+        )
+        self._add_metrics_from_model(
+            DistributorStatus,
+            exclude={'version', 'bound_to_storage_node_base_url', 'copy_files_status'},
+        )
         self._init_calc_metrics()
 
         self.process_collector = ProcessCollector(registry=self.registry)

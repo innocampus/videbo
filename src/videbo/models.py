@@ -8,7 +8,7 @@ import jwt
 from aiohttp.web import Response
 from pydantic import BaseModel as PydanticBaseModel, validator
 
-from videbo import settings
+from videbo import __version__, settings
 
 
 __all__ = [
@@ -303,6 +303,7 @@ class VideosMissingResponse(BaseResponseModel):
 
 
 class NodeStatus(BaseResponseModel):
+    version: str = __version__
     tx_current_rate: float  # in Mbit/s
     rx_current_rate: float  # in Mbit/s
     tx_total: float  # in MB
