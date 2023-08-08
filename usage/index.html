@@ -564,7 +564,7 @@ INFO:videbo.storage.util:Found 0 videos in storage
 <p class="admonition-title">Note</p>
 <p>Command line parameters will always take precedence over the configuration file.</p>
 </div>
-<p>All available configuration options are explained <a class="internal-link" href="#">here</a>.</p>
+<p>All available configuration options are explained <a class="external-link" href="https://github.com/innocampus/videbo/blob/master/example.config.toml" target="_blank">here</a>.</p>
 <p>Technically, this setup is all you need for <strong>Videbo</strong>.</p>
 <h3 id="connect-a-moodle-instance">Connect a Moodle instance</h3>
 <p>To try it out with a local Moodle instance, you can install the <a class="external-link" href="https://github.com/innocampus/moodle-mod_videoservice" target="_blank"><strong><code>mod_videoservice</code></strong></a> there, then navigate to <code>Plugins</code> &rarr; <code>Activity modules</code> &rarr; <code>Video service</code> and adjust the video server URL in the settings:
@@ -633,10 +633,12 @@ The <code>static_node_base_urls</code> parameter accepts either an array or a co
 </code></pre></div>
 <p>The Storage Node will immediately begin its periodical checks of the status of the enabled Distributor Nodes. In the log output of the Storage Node, you should see a message like this:
 <div class="highlight"><pre><span></span><code>...
-======== Running on http://127.0.0.1:8080 ========
+INFO:videbo.storage.distribution:Added new &lt;Distributor http://localhost:8081&gt;
 ...
-INFO:videbo.storage.distribution:&lt;Distribution watcher http://localhost:8081&gt; connected. Free space currently: ... MB
-INFO:videbo.storage.distribution:Found 0 files on http://localhost:8081
+======== Running on http://127.0.0.1:8080 ========
+(Press CTRL+C to quit)
+INFO:videbo.distributor.node:Connected to &lt;Distributor http://localhost:8081&gt; ...
+INFO:videbo.distributor.node:Found 0 files on &lt;Distributor http://localhost:8081&gt;
 </code></pre></div></p>
 <p>Whereas the Distributor will output messages about incoming status requests every few seconds. These are made by the Storage Node.</p>
 <p>...</p>
@@ -661,7 +663,7 @@ INFO:videbo.storage.distribution:Found 0 files on http://localhost:8081
       <div class="md-copyright">
   
     <div class="md-copyright__highlight">
-      © 2022 innoCampus, Technische Universität Berlin
+      © 2023 innoCampus, Technische Universität Berlin
     </div>
   
   
