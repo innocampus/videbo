@@ -1,4 +1,4 @@
-__copyright__ = "© 2022 innoCampus, Technische Universität Berlin"
+__copyright__ = "© 2023 innoCampus, Technische Universität Berlin"
 __license__ = """GNU GPLv3+
 
 This file is part of videbo.
@@ -14,7 +14,7 @@ See the GNU General Public License for more details.
 You should have received a copy of the GNU General Public License along with videbo.
 If not, see <https://www.gnu.org/licenses/>."""
 
-__version__ = "0.4.0"
+__version__ = "0.5.0"
 
 __doc__ = """
 Top-level global settings object for convenient import.
