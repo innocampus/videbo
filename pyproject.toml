@@ -56,8 +56,8 @@ full = ["prometheus-client==0.17.1"]
 dev = [
     "build==0.10.0",
     "coverage==7.2.7",
-    "flake8==6.0.0",
-    "mkdocs-material==9.1.19",
+    "flake8==6.1.0",
+    "mkdocs-material==9.1.21",
     "mkdocstrings[python]==0.22.0",
     "mypy==1.4.1",
     "prometheus-client==0.17.1",
@@ -71,7 +71,7 @@ documentation = "https://innocampus.github.io/videbo"
 [tool.setuptools.dynamic]
 readme = { file = ["README.md"] }
 dependencies = { file = "requirements/common.txt" }
-version = {attr = "videbo.__version__"}
+version = { attr = "videbo.__version__" }
 
 ##############################################
 # Mypy configuration: (replacing `mypy.ini`) #
