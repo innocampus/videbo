@@ -66,7 +66,7 @@ listen_port = 8080
 !!! note
     Command line parameters will always take precedence over the configuration file.
 
-All available configuration options are explained [here](#){.internal-link}.
+All available configuration options are explained [here](https://github.com/innocampus/videbo/blob/master/example.config.toml){.external-link target=_blank}.
 
 Technically, this setup is all you need for **Videbo**.
 
@@ -167,10 +167,12 @@ python -m videbo -c ./config_storage.toml storage
 The Storage Node will immediately begin its periodical checks of the status of the enabled Distributor Nodes. In the log output of the Storage Node, you should see a message like this:
 ```
 ...
-======== Running on http://127.0.0.1:8080 ========
+INFO:videbo.storage.distribution:Added new <Distributor http://localhost:8081>
 ...
-INFO:videbo.storage.distribution:<Distribution watcher http://localhost:8081> connected. Free space currently: ... MB
-INFO:videbo.storage.distribution:Found 0 files on http://localhost:8081
+======== Running on http://127.0.0.1:8080 ========
+(Press CTRL+C to quit)
+INFO:videbo.distributor.node:Connected to <Distributor http://localhost:8081> ...
+INFO:videbo.distributor.node:Found 0 files on <Distributor http://localhost:8081>
 ```
 
 Whereas the Distributor will output messages about incoming status requests every few seconds. These are made by the Storage Node.
