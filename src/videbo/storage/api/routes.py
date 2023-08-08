@@ -27,7 +27,7 @@ from videbo.storage.http_util import (
     handle_thumbnail_request,
     save_temp_and_get_response,
     verify_file_exists,
-    video_check_redirect,
+    handle_video_request,
 )
 from videbo.storage.util import FileStorage, schedule_video_delete
 from videbo.storage.exceptions import (
@@ -189,7 +189,7 @@ async def request_file(request: Request, jwt_data: RequestFileJWTData) -> Union[
     Serves a video or a thumbnail (both from temporary or permanent storage).
 
     If the JWT issuer is external, the request may be redirected to a
-    distributor node; if the `video_check_redirect` coroutine decides that it
+    distributor node; if the `handle_video_request` coroutine decides that it
     should in fact redirect, it raises a 302 status.
 
     If a thumbnail is requested, further handling is passed on to the
@@ -220,6 +220,7 @@ async def request_file(request: Request, jwt_data: RequestFileJWTData) -> Union[
     internal = jwt_data.iss == TokenIssuer.internal
     file_storage = FileStorage.get_instance()
     if type_ == FileType.VIDEO:
+        # TODO: Simplify `get_file`/`get_path`
         try:
             path = file_storage.get_perm_video_path(hash_, ext)
         except FileNotFoundError:
@@ -229,7 +230,7 @@ async def request_file(request: Request, jwt_data: RequestFileJWTData) -> Union[
             stored_file = file_storage.get_file(hash_, ext)
             stored_file.register_view_by(jwt_data.rid)
             # May raise 302 redirect:
-            await video_check_redirect(request, stored_file, log=log)
+            await handle_video_request(request, stored_file, log=log)
         log.debug(f"Serve video {hash_}")
     elif type_ == FileType.VIDEO_TEMP:
         path = file_storage.get_temp_video_path(hash_, ext)

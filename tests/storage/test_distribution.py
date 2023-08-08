@@ -1,4 +1,5 @@
 import logging
+from time import time
 from unittest import IsolatedAsyncioTestCase
 from unittest.mock import AsyncMock, MagicMock, call, patch
 
@@ -29,23 +30,26 @@ class DistributionControllerTestCase(IsolatedAsyncioTestCase):
     def test___init__(self) -> None:
         urls = ["foo", "bar"]
         obj = distribution.DistributionController(urls)
-        self.assertListEqual([], obj._dist_nodes)
+        self.assertDictEqual({}, obj._dist_nodes)
         self.assertListEqual(
             [call("foo"), call("bar")],
             self.mock_add_new_dist_node.call_args_list,
         )
+        self.assertEqual(5., obj._sort_cache_sec)
+        self.assertEqual(0., obj._last_sort_time)
         self.assertIs(self.mock_client_cls.return_value, obj.http_client)
         self.mock_periodic_cls.assert_called_once_with(obj.free_up_dist_nodes)
         self.mock_periodic_cls.return_value.assert_called_once_with(
             distribution.settings.dist_cleanup_freq
         )
 
-    async def test_free_up_dist_nodes(self) -> None:
+    @patch.object(distribution.DistributionController, "iter_nodes")
+    async def test_free_up_dist_nodes(self, mock_iter_nodes: MagicMock) -> None:
         free_up1, free_up2 = AsyncMock(), AsyncMock()
         node1 = MagicMock(free_up_space=free_up1)
         node2 = MagicMock(free_up_space=free_up2)
+        mock_iter_nodes.return_value = [node1, node2]
         obj = distribution.DistributionController()
-        obj._dist_nodes = [node1, node2]
         with self.assertLogs(distribution.log, logging.INFO):
             await obj.free_up_dist_nodes()
         free_up1.assert_awaited_once_with()
@@ -53,51 +57,190 @@ class DistributionControllerTestCase(IsolatedAsyncioTestCase):
 
     def test_iter_nodes(self) -> None:
         obj = distribution.DistributionController()
-        obj._dist_nodes = mock_nodes = [object(), object()]
-        self.assertListEqual(mock_nodes, list(obj.iter_nodes()))
+        obj._dist_nodes = mock_nodes = {"a": object(), "b": object()}
+        self.assertListEqual(list(mock_nodes.values()), list(obj.iter_nodes()))
 
-    def test_find_node(self) -> None:
-        node_foo = MagicMock(base_url="foo")
-        node_bar = MagicMock(base_url="bar")
-        node_baz = MagicMock(base_url="baz")
+    @patch.object(distribution.DistributionController, "iter_nodes")
+    def test_sort_nodes(self, mock_iter_nodes: MagicMock) -> None:
+        url1, url2 = "foo", "bar"
+        node1 = MagicMock(base_url=url1, __lt__=lambda _self, _other: True)
+        node2 = MagicMock(base_url=url2, __lt__=lambda _self, _other: False)
+        mock_iter_nodes.return_value = [node1, node2]
         obj = distribution.DistributionController()
-        obj._dist_nodes = [node_foo, node_bar, node_baz]
 
-        output = obj.find_node("foo")
-        self.assertIs(node_foo, output)
-        output = obj.find_node("foo", check_nodes=[node_bar, node_baz])
+        # Should be no-op:
+        obj._last_sort_time = last_sort_time = time()
+        obj._sort_cache_sec = 100.
+        obj.sort_nodes()
+        self.assertEqual(last_sort_time, obj._last_sort_time)
+        self.assertDictEqual({}, obj._dist_nodes)
+        mock_iter_nodes.assert_not_called()
+
+        # Force
+        obj.sort_nodes(force=True)
+        self.assertLess(last_sort_time, obj._last_sort_time)
+        self.assertDictEqual({url1: node1, url2: node2}, obj._dist_nodes)
+        # Verify order:
+        self.assertListEqual([url1, url2], list(obj._dist_nodes.keys()))
+        mock_iter_nodes.assert_called_once_with()
+
+        mock_iter_nodes.reset_mock()
+
+        # Reverse order
+        node1 = MagicMock(base_url=url1, __lt__=lambda _self, _other: False)
+        node2 = MagicMock(base_url=url2, __lt__=lambda _self, _other: True)
+        mock_iter_nodes.return_value = [node1, node2]
+        # Last sorted long time ago:
+        obj._last_sort_time = last_sort_time = time() - 1000.
+        obj._sort_cache_sec = 1.
+        obj.sort_nodes()
+        self.assertLess(last_sort_time, obj._last_sort_time)
+        self.assertDictEqual({url2: node2, url1: node1}, obj._dist_nodes)
+        # Verify order:
+        self.assertListEqual([url2, url1], list(obj._dist_nodes.keys()))
+
+    @patch.object(distribution.DistributionController, "iter_nodes")
+    def test_filter_nodes(self, mock_iter_nodes: MagicMock) -> None:
+        node1, node2, node3 = MagicMock(), MagicMock(), MagicMock()
+        mock_iter_nodes.return_value = [node1, node2, node3]
+        obj = distribution.DistributionController()
+
+        it = obj.filter_nodes(
+            lambda n: True if n is node1 or n is node2 else False,
+            exclude_nodes={node1},
+        )
+        self.assertIs(node2, next(it))
+        with self.assertRaises(StopIteration):
+            next(it)
+
+        it = obj.filter_nodes(
+            lambda n: True if n is node1 or n is node2 else False,
+            check_nodes=[node1, node3],
+        )
+        self.assertIs(node1, next(it))
+        with self.assertRaises(StopIteration):
+            next(it)
+
+    @patch.object(distribution.DistributionController, "filter_nodes")
+    def test_get_node(self, mock_filter_nodes: MagicMock) -> None:
+        node1, node2 = MagicMock(), MagicMock()
+        obj = distribution.DistributionController()
+        obj._dist_nodes = {"foo": node1, "bar": node2}
+        output = obj.get_node("bar")
+        self.assertIs(node2, output)
+        mock_filter_nodes.assert_not_called()
+
+        def fake_match_func(_node: distribution.DistributorNode) -> bool:
+            return True
+
+        mock_filter_nodes.return_value = iter([node1, node2])
+        output = obj.get_node(fake_match_func)
+        self.assertIs(node1, output)
+        mock_filter_nodes.assert_called_once_with(fake_match_func)
+
+        mock_filter_nodes.reset_mock()
+        mock_filter_nodes.return_value = iter([])
+        output = obj.get_node(fake_match_func)
         self.assertIsNone(output)
-        output = obj.find_node("foo", exclude_nodes=[node_foo])
-        self.assertIsNone(output)
+        mock_filter_nodes.assert_called_once_with(fake_match_func)
 
-        node1, node2 = MagicMock(foo=1), MagicMock(foo=2)
-        node3, node4 = MagicMock(foo=3), MagicMock(foo=4)
-        obj._dist_nodes = [node1, node2, node3, node4]
-
-        output = obj.find_node(lambda n: n.foo > 1, exclude_nodes=[node2])
-        self.assertIs(node3, output)
-
-    @patch.object(distribution.DistributionController, "find_node")
+    @patch.object(distribution.DistributionController, "filter_nodes")
     @patch.object(distribution, "partial")
-    def test_copy_file(
+    @patch.object(distribution.DistributionController, "sort_nodes")
+    def test_get_node_to_serve(
         self,
+        mock_sort_nodes: MagicMock,
         mock_partial: MagicMock,
-        mock_find_node: MagicMock,
+        mock_filter_nodes: MagicMock,
     ) -> None:
-        mock_partial.side_effect = can_host, has_copy = object(), object()
-        mock_find_node.side_effect = dst, src = MagicMock(), object()
+        mock_file = MagicMock()
+
+        # None found:
+        mock_filter_nodes.return_value = []
+        obj = distribution.DistributionController()
+        node, complete = obj.get_node_to_serve(mock_file)
+        self.assertIsNone(node)
+        self.assertFalse(complete)
+        mock_sort_nodes.assert_called_once_with()
+        mock_partial.assert_called_once_with(
+            distribution.DistributorNode.can_serve,
+            file=mock_file,
+        )
+        mock_filter_nodes.assert_called_once_with(mock_partial.return_value)
+
+        mock_sort_nodes.reset_mock()
+        mock_partial.reset_mock()
+        mock_filter_nodes.reset_mock()
+
+        # First one is still loading; should return the second one:
+        node_loading = MagicMock(is_loading=lambda _: True)
+        node_complete = MagicMock(is_loading=lambda _: False)
+        mock_filter_nodes.return_value = [node_loading, node_complete]
+        node, complete = obj.get_node_to_serve(mock_file)
+        self.assertIs(node_complete, node)
+        self.assertTrue(complete)
+        mock_sort_nodes.assert_called_once_with()
+        mock_partial.assert_called_once_with(
+            distribution.DistributorNode.can_serve,
+            file=mock_file,
+        )
+        mock_filter_nodes.assert_called_once_with(mock_partial.return_value)
+
+        mock_sort_nodes.reset_mock()
+        mock_partial.reset_mock()
+        mock_filter_nodes.reset_mock()
+
+        # Only nodes that are loading; should return the first one:
+        node_loading2 = MagicMock(is_loading=lambda _: True)
+        mock_filter_nodes.return_value = [node_loading, node_loading2]
+        node, complete = obj.get_node_to_serve(mock_file)
+        self.assertIs(node_loading, node)
+        self.assertFalse(complete)
+        mock_sort_nodes.assert_called_once_with()
+        mock_partial.assert_called_once_with(
+            distribution.DistributorNode.can_serve,
+            file=mock_file,
+        )
+        mock_filter_nodes.assert_called_once_with(mock_partial.return_value)
+
+    @patch.object(distribution.DistributionController, "get_node")
+    @patch.object(distribution, "partial")
+    @patch.object(distribution.DistributionController, "sort_nodes")
+    def test_handle_distribution(
+        self,
+        mock_sort_nodes: MagicMock,
+        mock_partial: MagicMock,
+        mock_get_node: MagicMock,
+    ) -> None:
+        can_receive, can_provide = object(), object()
+        mock_partial.side_effect = can_receive, can_provide
+        mock_put_video = MagicMock()
+        dst, src = MagicMock(put_video=mock_put_video), object()
+        mock_get_node.side_effect = dst, src
 
         obj = distribution.DistributionController()
-        obj._dist_nodes = [2, 3, 1]  # just to check sorting
 
-        mock_file = MagicMock(nodes=["c", "b", "a"])
-        output = obj.copy_file(mock_file)
+        # Threshold not reached:
+        num_views = distribution.settings.distribution.copy_views_threshold - 1
+        mock_file = MagicMock(num_views=num_views)
+        tx_load = 0
+        output = obj.handle_distribution(mock_file, tx_load)
+        self.assertIsNone(output)
+
+        mock_sort_nodes.assert_not_called()
+        mock_partial.assert_not_called()
+        mock_get_node.assert_not_called()
+
+        # Distribution should be successfully started:
+        mock_file = MagicMock(num_views=num_views + 1000)
+        output = obj.handle_distribution(mock_file, tx_load)
         self.assertIs(dst, output)
+        mock_sort_nodes.assert_called_once_with()
         self.assertListEqual(
             [
                 call(
-                    distribution.DistributorNode.can_host_additional,
-                    min_space_mb=mock_file.size / distribution.MEGA,
+                    distribution.DistributorNode.can_receive_copy,
+                    file=mock_file,
                 ),
                 call(
                     distribution.DistributorNode.can_provide_copy,
@@ -107,107 +250,126 @@ class DistributionControllerTestCase(IsolatedAsyncioTestCase):
             mock_partial.call_args_list,
         )
         self.assertListEqual(
-            [
-                call(can_host, exclude_nodes=mock_file.nodes),
-                call(has_copy, check_nodes=sorted(mock_file.nodes))
-            ],
-            mock_find_node.call_args_list,
+            [call(can_receive), call(can_provide)],
+            mock_get_node.call_args_list,
         )
 
-        mock_find_node.reset_mock()
+        mock_sort_nodes.reset_mock()
+        mock_get_node.reset_mock()
         mock_partial.reset_mock()
 
-        mock_partial.side_effect = None
-        mock_partial.return_value = can_host
-        mock_find_node.return_value = mock_find_node.side_effect = None
-
-        output = obj.copy_file(mock_file)
+        # No source available; storage too busy:
+        mock_get_node.side_effect = dst, None
+        mock_partial.side_effect = can_receive, can_provide
+        tx_load = 0.991
+        with self.assertLogs(distribution.log, logging.WARNING):
+            output = obj.handle_distribution(mock_file, tx_load)
         self.assertIsNone(output)
+        mock_sort_nodes.assert_called_once_with()
+        self.assertListEqual(
+            [
+                call(
+                    distribution.DistributorNode.can_receive_copy,
+                    file=mock_file,
+                ),
+                call(
+                    distribution.DistributorNode.can_provide_copy,
+                    file=mock_file,
+                ),
+            ],
+            mock_partial.call_args_list,
+        )
+        self.assertListEqual(
+            [call(can_receive), call(can_provide)],
+            mock_get_node.call_args_list,
+        )
+
+        mock_sort_nodes.reset_mock()
+        mock_get_node.reset_mock()
+        mock_partial.reset_mock()
+
+        # No destination found:
+        mock_partial.side_effect = None
+        mock_partial.return_value = can_receive
+        mock_get_node.return_value = mock_get_node.side_effect = None
+        output = obj.handle_distribution(mock_file, tx_load)
+        self.assertIsNone(output)
+        mock_sort_nodes.assert_called_once_with()
         mock_partial.assert_called_once_with(
-            distribution.DistributorNode.can_host_additional,
-            min_space_mb=mock_file.size / distribution.MEGA,
+            distribution.DistributorNode.can_receive_copy,
+            file=mock_file,
         )
-        mock_find_node.assert_called_once_with(
-            can_host,
-            exclude_nodes=mock_file.nodes,
-        )
+        mock_get_node.assert_called_once_with(can_receive)
 
     @patch.object(distribution, "DistributorNode")
-    @patch.object(distribution.DistributionController, "find_node")
+    @patch.object(distribution.DistributionController, "get_node")
     def test_add_new_dist_node(
         self,
-        mock_find_node: MagicMock,
+        mock_get_node: MagicMock,
         mock_dist_node_cls: MagicMock,
     ) -> None:
         # Ensure no-op, if a node with the provided URL is already there:
 
         self.add_new_dist_node_patcher.stop()
-        mock_find_node.return_value = object()
+        mock_get_node.return_value = object()
         mock_dist_node_cls.return_value = mock_node = MagicMock()
 
         obj = distribution.DistributionController()
-        obj._dist_nodes = []
+        obj._dist_nodes = {}
         url = "foo/bar"
         with self.assertLogs(distribution.log, logging.WARNING):
             obj.add_new_dist_node(url)
-        self.assertListEqual([], obj._dist_nodes)
-        mock_find_node.assert_called_once_with(url)
+        self.assertDictEqual({}, obj._dist_nodes)
+        mock_get_node.assert_called_once_with(url)
         mock_dist_node_cls.assert_not_called()
 
-        mock_find_node.reset_mock()
-        mock_find_node.return_value = None
+        mock_get_node.reset_mock()
+        mock_get_node.return_value = None
 
         # Ensure a node is added, if none with the provided URL is found:
 
         with self.assertLogs(distribution.log, logging.INFO):
             obj.add_new_dist_node(url)
-        self.assertListEqual([mock_node], obj._dist_nodes)
-        mock_find_node.assert_called_once_with(url)
+        self.assertDictEqual({url: mock_node}, obj._dist_nodes)
+        mock_get_node.assert_called_once_with(url)
         mock_dist_node_cls.assert_called_once_with(url)
 
     @patch.object(distribution.UnknownDistURL, "__init__", return_value=None)
-    @patch.object(distribution.DistributionController, "find_node")
     async def test_remove_dist_node(
-            self,
-            mock_find_node: MagicMock,
-            mock_unknown_err_init: MagicMock,
+        self,
+        mock_unknown_err_init: MagicMock,
     ) -> None:
         # Ensure error is raised, if no node with the provided URL is known:
 
-        mock_find_node.return_value = None
         mock_node = MagicMock(unlink_node=AsyncMock())
 
         obj = distribution.DistributionController()
-        obj._dist_nodes = [mock_node]
         url = "foo/bar"
         with self.assertLogs(distribution.log, logging.WARNING):
             with self.assertRaises(distribution.UnknownDistURL):
                 await obj.remove_dist_node(url)
-        self.assertListEqual([mock_node], obj._dist_nodes)
-        mock_find_node.assert_called_once_with(url)
+        self.assertDictEqual({}, obj._dist_nodes)
         mock_unknown_err_init.assert_called_once_with(url)
 
-        mock_find_node.reset_mock()
         mock_unknown_err_init.reset_mock()
 
         # Ensure node is removed, if a node with the provided URL is found:
 
-        mock_find_node.return_value = mock_node
+        obj._dist_nodes = {url: mock_node}
         await obj.remove_dist_node(url)
-        self.assertListEqual([], obj._dist_nodes)
-        mock_find_node.assert_called_once_with(url)
+        self.assertDictEqual({}, obj._dist_nodes)
         mock_unknown_err_init.assert_not_called()
 
     @patch.object(distribution.UnknownDistURL, "__init__", return_value=None)
-    @patch.object(distribution.DistributionController, "find_node")
+    @patch.object(distribution.DistributionController, "get_node")
     async def test__enable_or_disable_node(
             self,
-            mock_find_node: MagicMock,
+            mock_get_node: MagicMock,
             mock_unknown_err_init: MagicMock,
     ) -> None:
         # Ensure error is raised, if no node with the provided URL is known:
 
-        mock_find_node.return_value = None
+        mock_get_node.return_value = None
         mock_node = AsyncMock()
 
         obj = distribution.DistributionController()
@@ -217,23 +379,23 @@ class DistributionControllerTestCase(IsolatedAsyncioTestCase):
             with self.assertRaises(distribution.UnknownDistURL):
                 await obj._enable_or_disable_node(url, enable=enable)
         mock_node.disable.assert_not_called()
-        mock_find_node.assert_called_once_with(url)
+        mock_get_node.assert_called_once_with(url)
         mock_unknown_err_init.assert_called_once_with(url)
 
-        mock_find_node.reset_mock()
+        mock_get_node.reset_mock()
         mock_unknown_err_init.reset_mock()
 
         # Ensure node is disabled, if a node with the provided URL is found:
 
-        mock_find_node.return_value = mock_node
+        mock_get_node.return_value = mock_node
         await obj._enable_or_disable_node(url, enable=enable)
         mock_node.disable.assert_awaited_once_with()
         mock_node.enable.assert_not_called()
-        mock_find_node.assert_called_once_with(url)
+        mock_get_node.assert_called_once_with(url)
         mock_unknown_err_init.assert_not_called()
 
         mock_node.disable.reset_mock()
-        mock_find_node.reset_mock()
+        mock_get_node.reset_mock()
 
         # Ensure node is enabled, if a node with the provided URL is found:
 
@@ -241,7 +403,7 @@ class DistributionControllerTestCase(IsolatedAsyncioTestCase):
         await obj._enable_or_disable_node(url, enable=enable)
         mock_node.enable.assert_awaited_once_with()
         mock_node.disable.assert_not_called()
-        mock_find_node.assert_called_once_with(url)
+        mock_get_node.assert_called_once_with(url)
         mock_unknown_err_init.assert_not_called()
 
     @patch.object(
@@ -270,7 +432,8 @@ class DistributionControllerTestCase(IsolatedAsyncioTestCase):
         await obj.enable_dist_node(url)
         mock__enable_or_disable_node.assert_awaited_once_with(url, enable=True)
 
-    def test_get_nodes_status(self) -> None:
+    @patch.object(distribution.DistributionController, "iter_nodes")
+    def test_get_nodes_status(self, mock_iter_nodes: MagicMock) -> None:
         mock_url1, mock_status1 = "foo", object()
         mock_node1 = MagicMock(
             is_good=True,
@@ -292,8 +455,8 @@ class DistributionControllerTestCase(IsolatedAsyncioTestCase):
             base_url=mock_url3,
             status=mock_status3,
         )
+        mock_iter_nodes.return_value = [mock_node1, mock_node2, mock_node3]
         obj = distribution.DistributionController()
-        obj._dist_nodes = [mock_node1, mock_node2, mock_node3]
 
         only_good = only_enabled = False
         expected_output = {
@@ -306,6 +469,9 @@ class DistributionControllerTestCase(IsolatedAsyncioTestCase):
             only_enabled=only_enabled,
         )
         self.assertDictEqual(expected_output, output)
+        mock_iter_nodes.assert_called_once_with()
+
+        mock_iter_nodes.reset_mock()
 
         only_good = True
         only_enabled = False
@@ -318,6 +484,9 @@ class DistributionControllerTestCase(IsolatedAsyncioTestCase):
             only_enabled=only_enabled,
         )
         self.assertDictEqual(expected_output, output)
+        mock_iter_nodes.assert_called_once_with()
+
+        mock_iter_nodes.reset_mock()
 
         only_good = False
         only_enabled = True
@@ -330,6 +499,9 @@ class DistributionControllerTestCase(IsolatedAsyncioTestCase):
             only_enabled=only_enabled,
         )
         self.assertDictEqual(expected_output, output)
+        mock_iter_nodes.assert_called_once_with()
+
+        mock_iter_nodes.reset_mock()
 
         only_good = True
         only_enabled = True
@@ -341,3 +513,4 @@ class DistributionControllerTestCase(IsolatedAsyncioTestCase):
             only_enabled=only_enabled,
         )
         self.assertDictEqual(expected_output, output)
+        mock_iter_nodes.assert_called_once_with()

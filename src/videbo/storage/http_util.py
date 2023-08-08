@@ -38,7 +38,7 @@ __all__ = [
     "CHUNK_SIZE_DEFAULT",
     "get_video_payload",
     "save_temp_and_get_response",
-    "video_check_redirect",
+    "handle_video_request",
     "verify_file_exists",
     "handle_thumbnail_request",
 ]
@@ -184,22 +184,42 @@ async def save_temp_and_get_response(
     return data.json_response()
 
 
-async def video_check_redirect(
+def ensure_acceptable_load(
+    tx_load: float,
+    tx_load_threshold: float,
+    log: Logger = _log,
+) -> None:
+    """Raises `HTTPServiceUnavailable` (503) if load exceeds threshold."""
+    if tx_load > tx_load_threshold:
+        log.warning(
+            "Cannot serve video; "
+            f"TX load {tx_load:.1%} above threshold {tx_load_threshold:.1%}"
+        )
+        raise HTTPServiceUnavailable()
+
+
+async def handle_video_request(
     request: Request,
     file: StoredVideoFile,
     log: Logger = _log,
 ) -> None:
     """
+    Handles possible `file` distribution and `request` redirection.
+
     Tries to find a distributor that can serve the file and redirects to it.
 
-    If no redirect should happen (i.e. the storage node should serve the
-    file), this function simply returns `None`.
+    If no redirect can happen and the storage node should serve the file,
+    this function simply returns `None`.
 
-    Otherwise either an error is raised, if all nodes are too busy,
-    or a redirect 302 to a distributor is issued by `RedirectToDistributor`.
+    Otherwise either an error is raised, if all nodes (including the storage
+    node) are too busy, or a redirect 302 to a distributor is issued via
+    `RedirectToDistributor`.
 
     Distribution (i.e. copying the file to another node) may be initialized,
-    if no available node is found and the file is not being copied already.
+    regardless of whether an available distributor node is found.
+
+    If the HTTP `Range` header is present and the start value is not zero,
+    a redirect will never occur.
 
     Args:
         request:
@@ -215,56 +235,30 @@ async def video_check_redirect(
         `HTTPServiceUnavailable` (503)
             if all distributors and the storage node are too busy
     """
-    if request.http_range.start is not None and request.http_range.start > 0:
-        return  # Do not redirect if the range header is present and the start is not zero
     own_tx_load = NetworkInterfaces.get_instance().get_tx_load() or 0.
-    node, has_complete_file = file.find_good_node()
+    dist_controller = FileStorage.get_instance().distribution_controller
+    dist_controller.handle_distribution(file, own_tx_load)
+    if request.http_range.start is not None and request.http_range.start > 0:
+        # Never redirect requests for later parts of the video
+        ensure_acceptable_load(own_tx_load, 0.95, log=log)
+        return  # Serve file
+    node, has_complete_file = dist_controller.get_node_to_serve(file)
     if node is None:
-        # There is no distribution node.
-        if file.num_views >= settings.distribution.copy_views_threshold:
-            if file.copying:
-                # When we are here this means that there is no non-busy distribution node. Even the dist node that
-                # is currently loading the file is too busy.
-                log.info(f"Cannot serve video, node too busy (tx load {own_tx_load:.2f} "
-                         f"and waiting for copying to complete")
-                raise HTTPServiceUnavailable()
-            else:
-                to_node = FileStorage.get_instance().distribution_controller.copy_file(file)
-                if to_node is None:
-                    if own_tx_load > 0.9:
-                        # There is no dist node to copy the file to and this storage node is too busy.
-                        log.warning(f"Cannot serve video, node too busy (tx load {own_tx_load:.2f}")
-                        raise HTTPServiceUnavailable()
-                    else:
-                        return  # Serve file
-                else:
-                    if own_tx_load > 0.5:
-                        # Redirect to node where the client needs to wait until the node downloaded the file.
-                        # Wait a moment to give distributor node time getting notified to copy the file.
-                        await async_sleep(1)
-                        raise RedirectToDistributor(request, to_node, file, log)
-                    else:
-                        return  # Serve file
-        else:
-            if own_tx_load > 0.9:
-                # The file is not requested that often and this storage node is too busy.
-                log.warning(f"Cannot serve video, node too busy (tx load {own_tx_load:.2f}")
-                raise HTTPServiceUnavailable()
-            else:
-                # This storage node is not too busy and can serve the file by itself.
-                return
-    elif has_complete_file:
-        # One distribution node that can serve the file.
+        # Found no distribution node that has the file and can serve it now
+        ensure_acceptable_load(own_tx_load, 0.9, log=log)
+        return  # Serve file
+    if has_complete_file:
+        # Found distribution node that can serve the file immediately
         raise RedirectToDistributor(request, node, file, log)
-    else:
-        # There is only a distribution node that is downloading the file however.
-        if own_tx_load > 0.5:
-            # Redirect to node where the client needs to wait until the node downloaded the file.
-            # Wait a moment to give distributor node time getting notified to copy the file.
-            await async_sleep(1)
-            raise RedirectToDistributor(request, node, file, log)
-        else:
-            return  # Serve file
+    # Only found a distribution that is currently downloading the file
+    if own_tx_load <= 0.5:
+        return  # Serve file
+    # Storage is fairly busy; we wait a moment to give the distributor
+    # enough time to process the request to copy the file to it;
+    # then we redirect to that node, knowing that the client will have
+    # to wait until the file was fully copied to the node
+    await async_sleep(1)
+    raise RedirectToDistributor(request, node, file, log)
 
 
 async def verify_file_exists(path: Path, log: Logger = _log) -> None:

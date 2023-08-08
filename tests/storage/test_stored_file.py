@@ -51,26 +51,6 @@ class StoredVideoFileTestCase(TestCase):
         file.discard_views_older_than(200)
         self.assertDictEqual({}, file.unique_views)
 
-    @patch.object(stored_file, "sorted")
-    def test_find_good_node(self, mock_sorted: MagicMock) -> None:
-        file = stored_file.StoredVideoFile(file_hash="foo", file_ext=".bar")
-        bad_node = MagicMock(can_serve=False)
-        good_node = MagicMock(can_serve=True, loading=[])
-        loading_node = MagicMock(can_serve=True, loading=[file])
-        file.nodes = mock_sorted.return_value = [bad_node, loading_node, good_node]
-        expected_output = good_node, True
-        output = file.find_good_node()
-        self.assertTupleEqual(expected_output, output)
-        mock_sorted.assert_called_once_with(file.nodes)
-
-        mock_sorted.reset_mock()
-
-        file.nodes = mock_sorted.return_value = [bad_node, loading_node]
-        expected_output = loading_node, False
-        output = file.find_good_node()
-        self.assertTupleEqual(expected_output, output)
-        mock_sorted.assert_called_once_with(file.nodes)
-
     @patch.object(stored_file.TaskManager, "fire_and_forget")
     def test_remove_from_distributors(
         self,

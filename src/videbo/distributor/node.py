@@ -147,11 +147,6 @@ class DistributorNode:
         return round(self.status.free_space / self.total_space, 3)
 
     @property
-    def can_serve(self) -> bool:
-        """`True`, if the node is enabled, under 95 % load and reachable"""
-        return self.is_enabled and self.tx_load < 0.95 and self.is_good
-
-    @property
     def can_start_downloading(self) -> bool:
         """
         `True`, if the node can start another file download right now.
@@ -171,34 +166,57 @@ class DistributorNode:
         """Returns `True`, if the node is scheduled to download `file`."""
         return file in self._files_awaiting_download
 
-    def can_host_additional(self, min_space_mb: float) -> bool:
+    def is_distributor_for(self, file: StoredVideoFile) -> bool:
         """
-        Returns `True`, if the node can host an additional amount of data.
+        Returns whether the node is a distributor of the specified `file`.
 
-        Returns `False`, if `can_serve` is `False`, the currently free space
-        on the node is less than `min_space_mb`, or the node status was never
-        fetched and is yet unknown.
-
-        Args:
-            min_space_mb: The amount of data to host additionally in megabytes
+        A node is considered a distributor, if the node either hosts the
+        `file` already, is currently downloading it from another node, or
+        has scheduled to download it soon.
         """
+        if file in self:
+            return True
+        return self.is_loading(file) or self.scheduled_to_load(file)
+
+    def can_receive_copy(self, file: StoredVideoFile) -> bool:
+        """
+        Returns `True`, if the node can become a distributor of `file`.
+
+        Returns `False`, if either of these conditions are present:
+            - The node is already a distributor for the specified `file`.
+            - The node is disabled or in a bad state.
+            - The node has less space available than the `file` requires
+            - The status of the node was never fetched.
+        """
+        if self.is_distributor_for(file):
+            log.debug(f"{self} is already a distributor of {file}")
+            return False
+        if not (self._enabled and self._good):
+            log.debug(f"{self} is not available")
+            return False
         try:
-            return self.can_serve and self.free_space > min_space_mb
+            enough_space = self.free_space > file.size / MEGA
         except DistStatusUnknown:
             log.error(f"Status unknown for {self}")
             return False
+        if not enough_space:
+            log.debug(f"{self} does not have enough space")
+        return enough_space
 
     def can_provide_copy(self, file: StoredVideoFile) -> bool:
         """
-        Returns `True`, if the node can serve a specific video file.
+        Returns `True`, if the node can provide a copy of the specified `file`.
 
-        Returns `False`, if `can_serve` is `False` or the `file` is currently
-        being downloaded by the node.
-
-        Args:
-            file: The `StoredVideoFile` in question
+        Returns `False`, if the node does not have a (full) copy of the `file`
+        or if it is disabled or in a bad state.
         """
-        return self.can_serve and file not in self._files_loading
+        return file in self and self._enabled and self._good
+
+    def can_serve(self, file: StoredVideoFile) -> bool:
+        """`True`, if the node is enabled, under 95 % load and reachable"""
+        if not (self._enabled and self._good and self.tx_load < 0.95):
+            return False
+        return file in self._files_hosted or file in self._files_loading
 
     async def fetch_dist_status(self) -> None:
         """
@@ -235,23 +253,23 @@ class DistributorNode:
             log.error(f"HTTP code {code} while fetching status of {self}")
             await self.set_node_state(False)
 
-    async def set_node_state(self, new_is_in_good_state: bool) -> None:
+    async def set_node_state(self, to_good: bool) -> None:
         """
         Switches the node state between good and bad.
 
-        If the state to set is good (`new_is_in_good_state` is `True`) and
+        If the state to set is good (`to_good` is `True`) and
         the node state was previously bad, the file list is loaded first,
         _before_ the state is actually set.
 
         Upon switching from good to bad, `unlink_node` is awaited, but the
         periodic status watcher is _not_ stopped.
         """
-        if self.is_good and not new_is_in_good_state:
-            self._good = new_is_in_good_state
+        if self.is_good and not to_good:
+            self._good = False
             await self.unlink_node(stop_watching=False)
-        elif not self.is_good and new_is_in_good_state:
+        elif not self.is_good and to_good:
             await self._fetch_files_list()
-            self._good = new_is_in_good_state
+            self._good = True
 
     async def _fetch_files_list(self) -> None:
         """
@@ -314,7 +332,7 @@ class DistributorNode:
                 from that distributor node; if omitted or `None` (default),
                 the storage node serves as the source for the file.
         """
-        if file in self or self.is_loading(file) or self.scheduled_to_load(file):
+        if self.is_distributor_for(file):
             return
         src = from_node.base_url if from_node else settings.public_base_url
         if self.can_start_downloading:

@@ -41,7 +41,7 @@ class UnknownDistURL(HTTPNotFound, DistributionError):
 
 class DistNodeAlreadySet(HTTPConflict, DistributionError):
     def __init__(self, url: str, enabled: bool, **kwargs: Any) -> None:
-        prefix = "En" if enabled else "Dis"
+        prefix = "en" if enabled else "dis"
         kwargs.setdefault("text", f"Already {prefix}abled `{url}`")
         HTTPConflict.__init__(self, **kwargs)
 

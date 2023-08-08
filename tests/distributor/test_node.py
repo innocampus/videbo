@@ -192,32 +192,6 @@ class DistributorNodeTestCase(IsolatedAsyncioTestCase):
         mock_total_space.return_value = total
         self.assertEqual(round(free / total, 3), obj.free_space_ratio)
 
-    @patch.object(node.DistributorNode, "is_good", new_callable=PropertyMock)
-    @patch.object(node.DistributorNode, "tx_load", new_callable=PropertyMock)
-    @patch.object(node.DistributorNode, "is_enabled", new_callable=PropertyMock)
-    def test_can_serve(
-        self,
-        mock_is_enabled: PropertyMock,
-        mock_tx_load: PropertyMock,
-        mock_is_good: PropertyMock,
-    ) -> None:
-        obj = node.DistributorNode(_FOOBAR)
-        mock_is_enabled.return_value = True
-        mock_tx_load.return_value = 0.5
-        mock_is_good.return_value = True
-        self.assertTrue(obj.can_serve)
-
-        mock_is_enabled.return_value = False
-        self.assertFalse(obj.can_serve)
-
-        mock_is_enabled.return_value = True
-        mock_tx_load.return_value = 0.95
-        self.assertFalse(obj.can_serve)
-
-        mock_tx_load.return_value = 0.1
-        mock_is_good.return_value = False
-        self.assertFalse(obj.can_serve)
-
     @patch.object(node, "settings")
     def test_can_start_downloading(self, mock_settings: MagicMock) -> None:
         mock_settings.distribution.max_parallel_copying_tasks = 5
@@ -243,44 +217,135 @@ class DistributorNodeTestCase(IsolatedAsyncioTestCase):
         obj._files_awaiting_download = {mock_file}
         self.assertTrue(obj.scheduled_to_load(mock_file))
 
-    @patch.object(node.DistributorNode, "free_space", new_callable=PropertyMock)
-    @patch.object(node.DistributorNode, "can_serve", new_callable=PropertyMock)
-    def test_can_host_additional(
+    @patch.object(node.DistributorNode, "scheduled_to_load")
+    @patch.object(node.DistributorNode, "is_loading")
+    @patch.object(node.DistributorNode, "__contains__")
+    def test_is_distributor_for(
         self,
-        mock_can_serve: PropertyMock,
+        mock___contains__: MagicMock,
+        mock_is_loading: MagicMock,
+        mock_scheduled_to_load: MagicMock,
+    ) -> None:
+        obj = node.DistributorNode(_FOOBAR)
+        mock_file = MagicMock()
+        mock___contains__.return_value = True
+        self.assertTrue(obj.is_distributor_for(mock_file))
+        mock___contains__.assert_called_once_with(mock_file)
+        mock_is_loading.assert_not_called()
+        mock_scheduled_to_load.assert_not_called()
+
+        mock___contains__.reset_mock()
+
+        mock___contains__.return_value = False
+        mock_is_loading.return_value = True
+        self.assertTrue(obj.is_distributor_for(mock_file))
+        mock___contains__.assert_called_once_with(mock_file)
+        mock_is_loading.assert_called_once_with(mock_file)
+        mock_scheduled_to_load.assert_not_called()
+
+        mock___contains__.reset_mock()
+        mock_is_loading.reset_mock()
+
+        mock_is_loading.return_value = False
+        mock_scheduled_to_load.return_value = False
+        self.assertFalse(obj.is_distributor_for(mock_file))
+        mock___contains__.assert_called_once_with(mock_file)
+        mock_is_loading.assert_called_once_with(mock_file)
+        mock_scheduled_to_load.assert_called_once_with(mock_file)
+
+    @patch.object(node.DistributorNode, "free_space", new_callable=PropertyMock)
+    @patch.object(node.DistributorNode, "is_distributor_for")
+    def test_can_receive_copy(
+        self,
+        mock_is_distributor_for: MagicMock,
         mock_free_space: PropertyMock,
     ) -> None:
-        mock_can_serve.return_value = True
-        mock_free_space.return_value = 15
-        space_needed = 14
+        # Already distributor:
+        mock_is_distributor_for.return_value = True
+        mock_free_space.return_value = 1
+        mock_file = MagicMock(size=15 * node.MEGA)
         obj = node.DistributorNode(_FOOBAR)
-        self.assertTrue(obj.can_host_additional(space_needed))
+        obj._enabled = True
+        obj._good = False
+        self.assertFalse(obj.can_receive_copy(mock_file))
+        mock_is_distributor_for.assert_called_once_with(mock_file)
+        mock_free_space.assert_not_called()
 
-        mock_can_serve.return_value = False
-        self.assertFalse(obj.can_host_additional(space_needed))
+        mock_is_distributor_for.reset_mock()
 
-        mock_can_serve.return_value = True
-        space_needed = 16
-        self.assertFalse(obj.can_host_additional(space_needed))
+        # Bad state (see above):
+        mock_is_distributor_for.return_value = False
+        self.assertFalse(obj.can_receive_copy(mock_file))
+        mock_is_distributor_for.assert_called_once_with(mock_file)
+        mock_free_space.assert_not_called()
 
-        space_needed = 1
-        mock_can_serve.side_effect = node.DistStatusUnknown
-        with self.assertLogs(node.log, level=logging.ERROR):
-            self.assertFalse(obj.can_host_additional(space_needed))
+        mock_is_distributor_for.reset_mock()
 
-    @patch.object(node.DistributorNode, "can_serve", new_callable=PropertyMock)
-    def test_can_provide_copy(self, mock_can_serve: PropertyMock) -> None:
-        mock_can_serve.return_value = True
+        # Not enough space (see above):
+        obj._good = True
+        self.assertFalse(obj.can_receive_copy(mock_file))
+        mock_is_distributor_for.assert_called_once_with(mock_file)
+        mock_free_space.assert_called_once_with()
+
+        mock_is_distributor_for.reset_mock()
+        mock_free_space.reset_mock()
+
+        # Enough space:
+        mock_free_space.return_value = 1000
+        self.assertTrue(obj.can_receive_copy(mock_file))
+        mock_is_distributor_for.assert_called_once_with(mock_file)
+        mock_free_space.assert_called_once_with()
+
+        mock_is_distributor_for.reset_mock()
+        mock_free_space.reset_mock()
+
+        # Unknown status:
+        mock_free_space.side_effect = node.DistStatusUnknown
+        with self.assertLogs(node.log, logging.ERROR):
+            self.assertFalse(obj.can_receive_copy(mock_file))
+        mock_is_distributor_for.assert_called_once_with(mock_file)
+        mock_free_space.assert_called_once_with()
+
+    @patch.object(node.DistributorNode, "__contains__")
+    def test_can_provide_copy(self, mock___contains__: MagicMock) -> None:
+        mock___contains__.return_value = True
         mock_file = MagicMock()
         obj = node.DistributorNode(_FOOBAR)
+        obj._enabled = True
+        obj._good = True
         self.assertTrue(obj.can_provide_copy(mock_file))
 
-        mock_can_serve.return_value = False
+        mock___contains__.return_value = False
         self.assertFalse(obj.can_provide_copy(mock_file))
 
-        mock_can_serve.return_value = True
-        obj._files_loading = {mock_file}
+        mock___contains__.return_value = True
+        obj._good = False
         self.assertFalse(obj.can_provide_copy(mock_file))
+
+    @patch.object(node.DistributorNode, "tx_load", new_callable=PropertyMock)
+    def test_can_serve(self, mock_tx_load: PropertyMock) -> None:
+        mock_file = MagicMock()
+        obj = node.DistributorNode(_FOOBAR)
+        obj._enabled = True
+        obj._good = True
+        mock_tx_load.return_value = 0.5
+        obj._files_hosted = {mock_file}
+        self.assertTrue(obj.can_serve(mock_file))
+
+        obj._files_hosted = {}
+        obj._files_loading = {mock_file}
+        self.assertTrue(obj.can_serve(mock_file))
+
+        obj._good = False
+        self.assertFalse(obj.can_serve(mock_file))
+
+        obj._enabled = False
+        obj._good = True
+        self.assertFalse(obj.can_serve(mock_file))
+
+        obj._enabled = True
+        mock_tx_load.return_value = 0.951
+        self.assertFalse(obj.can_serve(mock_file))
 
     @patch.object(node.DistributorNode, "set_node_state")
     @patch.object(node.DistributorNode, "free_space", new_callable=PropertyMock)
@@ -404,6 +469,59 @@ class DistributorNodeTestCase(IsolatedAsyncioTestCase):
         mock_free_space.assert_not_called()
         mock_set_node_state.assert_not_called()
 
+    @patch.object(node.DistributorNode, "_fetch_files_list")
+    @patch.object(node.DistributorNode, "unlink_node")
+    @patch.object(node.DistributorNode, "is_good", new_callable=PropertyMock)
+    async def test_set_node_state(
+        self,
+        mock_is_good: PropertyMock,
+        mock_unlink_node: AsyncMock,
+        mock__fetch_files_list: AsyncMock,
+    ) -> None:
+        obj = node.DistributorNode(_FOOBAR)
+        obj._good = initial_state = MagicMock()
+        # No-op:
+        mock_is_good.return_value = True
+        to_good = True
+        await obj.set_node_state(to_good)
+        self.assertIs(initial_state, obj._good)
+        mock_is_good.assert_called_with()
+        mock_unlink_node.assert_not_called()
+        mock__fetch_files_list.assert_not_called()
+
+        mock_is_good.reset_mock()
+
+        # No-op:
+        mock_is_good.return_value = False
+        to_good = False
+        await obj.set_node_state(to_good)
+        self.assertIs(initial_state, obj._good)
+        mock_is_good.assert_called_with()
+        mock_unlink_node.assert_not_called()
+        mock__fetch_files_list.assert_not_called()
+
+        mock_is_good.reset_mock()
+
+        # Set to bad:
+        mock_is_good.return_value = True
+        await obj.set_node_state(to_good)
+        self.assertFalse(obj._good)
+        mock_is_good.assert_called_once_with()
+        mock_unlink_node.assert_awaited_once_with(stop_watching=False)
+        mock__fetch_files_list.assert_not_called()
+
+        mock_is_good.reset_mock()
+        mock_unlink_node.reset_mock()
+
+        # Set to good:
+        mock_is_good.return_value = False
+        to_good = True
+        await obj.set_node_state(to_good)
+        self.assertTrue(obj._good)
+        mock_is_good.assert_called_with()
+        mock_unlink_node.assert_not_called()
+        mock__fetch_files_list.assert_awaited_once_with()
+
     @patch.object(node.DistributorNode, "_delete")
     @patch("videbo.storage.util.FileStorage.get_instance")
     async def test__fetch_files_list(
@@ -493,14 +611,10 @@ class DistributorNodeTestCase(IsolatedAsyncioTestCase):
     @patch.object(node.TaskManager, "fire_and_forget")
     @patch.object(node.DistributorNode, "_copy", new_callable=MagicMock)
     @patch.object(node.DistributorNode, "can_start_downloading", new_callable=PropertyMock)
-    @patch.object(node.DistributorNode, "scheduled_to_load")
-    @patch.object(node.DistributorNode, "is_loading")
-    @patch.object(node.DistributorNode, "__contains__")
+    @patch.object(node.DistributorNode, "is_distributor_for")
     async def test_put_video(
         self,
-        mock___contains__: MagicMock,
-        mock_is_loading: MagicMock,
-        mock_scheduled_to_load: MagicMock,
+        mock_is_distributor_for: MagicMock,
         mock_can_start_downloading: MagicMock,
         mock__copy: MagicMock,
         mock_fire_and_forget: MagicMock,
@@ -511,77 +625,32 @@ class DistributorNodeTestCase(IsolatedAsyncioTestCase):
         src_url = "bla/bla"
         mock_file, from_node = MagicMock(), MagicMock(base_url=src_url)
 
-        # Already hosts the file:
+        # Already is distributor:
 
-        mock___contains__.return_value = True
-        mock_is_loading.return_value = False
-        mock_scheduled_to_load.return_value = False
+        mock_is_distributor_for.return_value = True
 
         obj.put_video(mock_file, from_node=from_node)
 
-        mock___contains__.assert_called_once_with(mock_file)
-        mock_is_loading.assert_not_called()
-        mock_scheduled_to_load.assert_not_called()
+        mock_is_distributor_for.assert_called_once_with(mock_file)
         mock_can_start_downloading.assert_not_called()
         mock__copy.assert_not_called()
         mock_fire_and_forget.assert_not_called()
 
-        mock___contains__.reset_mock()
-
-        # Already loads the file:
-
-        mock___contains__.return_value = False
-        mock_is_loading.return_value = True
-        mock_scheduled_to_load.return_value = False
-
-        obj.put_video(mock_file, from_node=from_node)
-
-        mock___contains__.assert_called_once_with(mock_file)
-        mock_is_loading.assert_called_once_with(mock_file)
-        mock_scheduled_to_load.assert_not_called()
-        mock_can_start_downloading.assert_not_called()
-        mock__copy.assert_not_called()
-        mock_fire_and_forget.assert_not_called()
-
-        mock___contains__.reset_mock()
-        mock_is_loading.reset_mock()
-
-        # Already wants to load the file:
-
-        mock___contains__.return_value = False
-        mock_is_loading.return_value = False
-        mock_scheduled_to_load.return_value = True
-
-        obj.put_video(mock_file, from_node=from_node)
-
-        mock___contains__.assert_called_once_with(mock_file)
-        mock_is_loading.assert_called_once_with(mock_file)
-        mock_scheduled_to_load.assert_called_once_with(mock_file)
-        mock_can_start_downloading.assert_not_called()
-        mock__copy.assert_not_called()
-        mock_fire_and_forget.assert_not_called()
-
-        mock___contains__.reset_mock()
-        mock_is_loading.reset_mock()
-        mock_scheduled_to_load.reset_mock()
+        mock_is_distributor_for.reset_mock()
 
         # Can start copying it right away:
 
-        mock_scheduled_to_load.return_value = False
+        mock_is_distributor_for.return_value = False
         mock_can_start_downloading.return_value = True
 
         obj.put_video(mock_file, from_node=from_node)
 
-        mock___contains__.assert_called_once_with(mock_file)
-        mock_is_loading.assert_called_once_with(mock_file)
-        mock_scheduled_to_load.assert_called_once_with(mock_file)
+        mock_is_distributor_for.assert_called_once_with(mock_file)
         mock_can_start_downloading.assert_called_once_with()
         mock__copy.assert_called_once_with(mock_file, from_url=src_url)
         mock_fire_and_forget.assert_called_once_with(copy_coroutine)
 
-        mock___contains__.reset_mock()
-        mock_is_loading.reset_mock()
-        mock_scheduled_to_load.reset_mock()
+        mock_is_distributor_for.reset_mock()
         mock_can_start_downloading.reset_mock()
         mock__copy.reset_mock()
         mock_fire_and_forget.reset_mock()
@@ -594,9 +663,7 @@ class DistributorNodeTestCase(IsolatedAsyncioTestCase):
 
         obj.put_video(mock_file)  # omit `from_node` to use storage as source
 
-        mock___contains__.assert_called_once_with(mock_file)
-        mock_is_loading.assert_called_once_with(mock_file)
-        mock_scheduled_to_load.assert_called_once_with(mock_file)
+        mock_is_distributor_for.assert_called_once_with(mock_file)
         mock_can_start_downloading.assert_called_once_with()
         mock__copy.assert_not_called()
         mock_fire_and_forget.assert_not_called()

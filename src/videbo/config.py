@@ -93,6 +93,7 @@ class BaseSettings(PydanticBaseSettings, SettingsBaseModel):
 
     class Config:
         env_prefix = 'videbo_'
+        env_nested_delimiter = '__'
         underscore_attrs_are_private = True
         validate_assignment = True
 
