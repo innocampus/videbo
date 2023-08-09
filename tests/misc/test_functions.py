@@ -186,3 +186,10 @@ class FunctionsTestCase(IsolatedAsyncioTestCase):
             stdout=DEVNULL,
             stderr=DEVNULL,
         )
+
+    def test_is_subclass(self) -> None:
+        self.assertTrue(functions.is_subclass(bool, int))
+        self.assertFalse(functions.is_subclass(str, int))
+        self.assertFalse(functions.is_subclass(Union[int, float], int))
+        self.assertFalse(functions.is_subclass(123, int))
+        self.assertFalse(functions.is_subclass(object(), int))

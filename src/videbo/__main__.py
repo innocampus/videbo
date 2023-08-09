@@ -80,6 +80,7 @@ def prepare_settings(cli_kwargs: dict[str, Any]) -> Path:
         if value is not None:
             settings_init_kwargs[key] = value
     mode = cli_kwargs.pop(MODE)
+    # TODO: Handle validation errors more gracefully
     settings.__init__(**settings_init_kwargs)  # type: ignore[misc]
     settings_path = Path(".", f".videbo_{mode}_settings.json")
     if not settings.dev_mode:

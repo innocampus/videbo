@@ -8,7 +8,8 @@ from inspect import Parameter, isclass, signature
 from pathlib import Path
 from shutil import copyfile as _shutil_copyfile
 from subprocess import DEVNULL
-from typing import Any, Optional, TypeVar
+from typing import Any, Optional, TypeVar, Union
+from typing_extensions import TypeGuard
 
 from videbo.exceptions import InvalidRouteSignature
 from videbo.types import ExtendedHandler, PathT
@@ -216,3 +217,13 @@ async def create_user_subprocess(
     kwargs.setdefault("stdout", DEVNULL)
     kwargs.setdefault("stderr", DEVNULL)
     return await _create_subproc(program, *args, **kwargs)
+
+
+def is_subclass(
+    __cls: object,
+    __class_or_tuple: Union[type[T], tuple[type[T], ...]],
+) -> TypeGuard[type[T]]:
+    """More lenient version of the built-in `issubclass` function."""
+    if not isinstance(__cls, type):
+        return False
+    return issubclass(__cls, __class_or_tuple)

@@ -120,14 +120,15 @@ class WebserverSettingsTestCase(TestCase):
 
 class DistributionSettingsTestCase(TestCase):
     def test_slash_removal(self) -> None:
-        data = {"static_node_base_urls": ["foo/", "bar"]}
+        url1, url2 = "http://foo.bar", "http://spam.eggs"
+        data = {"static_node_base_urls": [url1 + "/", url2]}
         obj = config.DistributionSettings.parse_obj(data)
-        self.assertListEqual(["foo", "bar"], obj.static_node_base_urls)
+        self.assertListEqual([url1, url2], obj.static_node_base_urls)
 
 
 class SettingsTestCase(TestCase):
     def test_make_url(self) -> None:
-        addr, port = "foo", 123
+        addr, port = "12.34.56.78", 123
         path, scheme = "bar", "ftp"
         expected_output = f"{scheme}://{addr}:{port}/{path}"
 

@@ -11,12 +11,14 @@ from pydantic import BaseSettings as PydanticBaseSettings
 from pydantic.class_validators import validator
 from pydantic.config import Extra
 from pydantic.env_settings import SettingsSourceCallable
-from pydantic.fields import ModelField, SHAPE_LIST, SHAPE_SET
+from pydantic.fields import Field, ModelField, SHAPE_LIST, SHAPE_SET
+from pydantic.networks import AnyHttpUrl, IPvAnyAddress
+from pydantic.types import ConstrainedStr
 
 from videbo.misc import MEGA
+from videbo.misc.functions import is_subclass
 from videbo.types import PathT
 
-# TODO: Use Pydantic's constrained types for basic sanity validation
 
 __all__ = [
     'PROJECT_DIR',
@@ -51,7 +53,7 @@ CONFIG_FILE_PATHS_PARAM = '_config_file_paths'
 class SettingsBaseModel(PydanticBaseModel):
     @validator('*', pre=True)
     def split_str(cls, v: str, field: ModelField) -> Union[str, list[str], set[str]]:
-        if field.type_ is str and isinstance(v, str):
+        if is_subclass(field.type_, str) and isinstance(v, str):
             if field.shape == SHAPE_LIST:
                 return [part.strip() for part in v.split(',')]
             if field.shape == SHAPE_SET:
@@ -60,7 +62,7 @@ class SettingsBaseModel(PydanticBaseModel):
 
     @validator('*')
     def discard_empty_str_elements(cls, v: str, field: ModelField) -> Union[str, list[str], set[str]]:
-        if field.type_ is str:
+        if is_subclass(field.type_, str):
             if isinstance(v, list):
                 return [element for element in v if element != '']
             if isinstance(v, set):
@@ -69,6 +71,8 @@ class SettingsBaseModel(PydanticBaseModel):
 
     class Config:
         extra = Extra.forbid
+        allow_inf_nan = False
+        anystr_strip_whitespace = True
 
 
 class BaseSettings(PydanticBaseSettings, SettingsBaseModel):
@@ -87,7 +91,7 @@ class BaseSettings(PydanticBaseSettings, SettingsBaseModel):
     @validator("*", pre=True)
     def none_to_model_defaults(cls, v: Any, field: ModelField) -> Any:
         """Replaces `None` on `SettingsBaseModel` fields with model default"""
-        if issubclass(field.type_, SettingsBaseModel) and v is None:
+        if is_subclass(field.type_, SettingsBaseModel) and v is None:
             v = field.default
         return v
 
@@ -123,9 +127,9 @@ def no_slash_at_the_end(string: str) -> str:
 
 
 class WebserverSettings(SettingsBaseModel):
-    status_page: Optional[str] = None
+    status_page: Optional[AnyHttpUrl] = None
     x_accel_location: Optional[str] = None
-    x_accel_limit_rate_mbit: float = 0.0
+    x_accel_limit_rate_mbit: float = Field(0., ge=0)
 
     _norm_x_accel_location = validator(
         "x_accel_location",
@@ -144,7 +148,7 @@ class WebserverSettings(SettingsBaseModel):
 
 
 class LMSSettings(SettingsBaseModel):
-    api_urls: list[str] = []
+    api_urls: list[AnyHttpUrl] = []
 
     _norm_lms_api_urls = validator(
         "api_urls",
@@ -154,18 +158,22 @@ class LMSSettings(SettingsBaseModel):
 
 
 class ThumbnailSettings(SettingsBaseModel):
-    suggestion_count: int = 3
-    height: int = 90
-    cache_max_mb: float = 30.0
+    suggestion_count: int = Field(3, gt=0)
+    height: int = Field(90, gt=0)
+    cache_max_mb: float = Field(30.0, ge=0)
+
+
+class VideoMimeType(ConstrainedStr):
+    regex = r"video/[-+.\w]+"
 
 
 class VideoSettings(SettingsBaseModel):
-    max_file_size_mb: float = 200.0
+    max_file_size_mb: float = Field(200.0, gt=0)
     binary_file: str = 'file'
     binary_ffmpeg: str = 'ffmpeg'
     binary_ffprobe: str = 'ffprobe'
     check_user: Optional[str] = None
-    mime_types_allowed: set[str] = {'video/mp4', 'video/webm'}
+    mime_types_allowed: set[VideoMimeType] = {'video/mp4', 'video/webm'}  # type: ignore[arg-type]
     container_formats_allowed: set[str] = {'mp4', 'webm'}
     video_codecs_allowed: set[str] = {'h264', 'vp8'}
     audio_codecs_allowed: set[str] = {'aac', 'vorbis'}
@@ -176,15 +184,15 @@ class VideoSettings(SettingsBaseModel):
 
 
 class DistributionSettings(SettingsBaseModel):
-    static_node_base_urls: list[str] = []
-    copy_views_threshold: int = 3
-    views_retention_minutes: float = 4. * 60
-    views_update_freq_minutes: float = 30.
-    node_cleanup_freq_minutes: float = 4. * 60
-    free_space_target_ratio: float = 0.1
-    max_parallel_copying_tasks: int = 20
-    leave_free_space_mb: float = 4000.0
-    last_request_safety_minutes: float = 4. * 60
+    static_node_base_urls: list[AnyHttpUrl] = []
+    copy_views_threshold: int = Field(3, ge=0)
+    views_retention_minutes: float = Field(240., gt=0)
+    views_update_freq_minutes: float = Field(30., gt=0)
+    node_cleanup_freq_minutes: float = Field(240., gt=0)
+    free_space_target_ratio: float = Field(0.1, ge=0)
+    max_parallel_copying_tasks: int = Field(20, ge=1)
+    leave_free_space_mb: float = Field(4000.0, ge=0)
+    last_request_safety_minutes: float = Field(240., ge=0)
 
     _norm_node_urls = validator(
         "static_node_base_urls",
@@ -195,22 +203,22 @@ class DistributionSettings(SettingsBaseModel):
 
 class MonitoringSettings(SettingsBaseModel):
     prom_text_file: Optional[Path] = None
-    update_freq_sec: float = 15.0
+    update_freq_sec: float = Field(15.0, gt=0)
 
 
 class Settings(BaseSettings):
-    listen_address: str = '127.0.0.1'
-    listen_port: int = 9020
+    listen_address: IPvAnyAddress = '127.0.0.1'  # type: ignore[assignment]
+    listen_port: int = Field(9020, ge=0, lt=2**16)
     files_path: Path = Path('/tmp/videbo')
     internal_api_secret: str = ''
     external_api_secret: str = ''
-    public_base_url: str = 'http://localhost:9020'
+    public_base_url: AnyHttpUrl = 'http://localhost:9020'  # type: ignore[assignment]
     forbid_admin_via_proxy: bool = True
     dev_mode: bool = False
-    max_temp_storage_hours: float = 12.
-    temp_file_cleanup_freq_hours: float = 1.
-    tx_max_rate_mbit: float = 20.0
-    network_info_fetch_interval: float = 10.0
+    max_temp_storage_hours: float = Field(12., gt=0)
+    temp_file_cleanup_freq_hours: float = Field(1., gt=0)
+    tx_max_rate_mbit: float = Field(20.0, gt=0)
+    network_info_fetch_interval: float = Field(10.0, gt=0)
     webserver: WebserverSettings = WebserverSettings()
     lms: LMSSettings = LMSSettings()
     thumbnails: ThumbnailSettings = ThumbnailSettings()

@@ -9,10 +9,10 @@
 # General settings #
 
 listen_address = "127.0.0.1"
-# The address the node should bind to
+# The address the node should bind to; must be a valid IPv4/IPv6 address.
 
 listen_port = 9020
-# The port the node should bind to
+# The port the node should bind to; must be in the valid port range of 0-65535.
 
 files_path = "/tmp/videbo"
 # Path to a directory in which the files will saved
@@ -24,8 +24,8 @@ external_api_secret = ""
 # Secret used in JWT required for external requests (e.g. LMS to storage)
 
 public_base_url = "http://localhost:9020"
-# The storage node's public facing address;
-# must match between storage and distributor nodes!
+# The storage node's public facing address; must be a valid HTTP(S) URL.
+# IMPORTANT: This setting must match between storage and distributor nodes!
 
 forbid_admin_via_proxy = true
 # If `true`, access to the administrative routes coming via a reverse proxy webserver will be forbidden.
@@ -41,16 +41,18 @@ max_temp_storage_hours = 12.0
 # The maximum guaranteed retention time (in hours) for uploaded files in temporary storage,
 # i.e. files that have uploaded but not saved to permanent storage (yet). Files older than that
 # will be removed by the cleanup task (see `temp_file_cleanup_freq_hours` below).
+# Must be greater than 0.
 
 temp_file_cleanup_freq_hours = 1.0
 # The fequency with which the temporary storage cleanup task is executed;
 # temporary files older than `max_temp_storage_hours` (see above) are deleted.
+# Must be greater than 0.
 
 tx_max_rate_mbit = 20.0
-# Maximum data transmission rate in Mbit per second
+# Maximum data transmission rate in Mbit per second; must be greater than 0.
 
 network_info_fetch_interval = 10.0
-# Number of seconds between attempts to fetch network information
+# Number of seconds between attempts to fetch network information; must be greater than 0.
 
 test_video_file_path = "./tests/test_video.mp4"
 # Path to test video file for integration tests of storage routes;
@@ -64,7 +66,8 @@ test_video_file_path = "./tests/test_video.mp4"
 #status_page =
 # URL to be checked for the webserver status (e.g. NGINX or Apache);
 # used for retrieving the number of current connections to a node;
-# can be omitted, if not relevant for monitoring purposes
+# can be omitted, if not relevant for monitoring purposes.
+# Must be a valid HTTP(S) URL.
 
 #x_accel_location =
 # If NGINX is used to serve the video files (recommended),
@@ -75,6 +78,7 @@ test_video_file_path = "./tests/test_video.mp4"
 x_accel_limit_rate_mbit = 0.0
 # Corresponds to the NGINX `X-Accel-Limit-Rate` header parameter;
 # value in megabits (2^20 bits) per second;
+# must be greater than or equal to 0;
 # a value of 0 disables the feature.
 
 
@@ -85,27 +89,32 @@ api_urls = []
 # The API endpoints of the LMS (e.g. Moodle) using the server as a list of URLs;
 # these will be used for checking whether particular videos are still in use
 # or if they can be deleted from storage.
+# Each entry must be a valid HTTP(S) URL.
 
 
 [thumbnails]
 # Settings block related to video thumbnails
 
 suggestion_count = 3
-# The number of thumbnails (automatically generated upon video upload)
+# The number of thumbnails (automatically generated upon video upload);
+# must be greater than 0.
 
 height = 90
-# The height of thumbnails (automatically generated upon video upload) in pixels
+# The height of thumbnails (automatically generated upon video upload) in pixels;
+# must be greater than 0.
 
 cache_max_mb = 30.0
 # Thumbnails are kept in RAM after being requested;
 # this defines the size of this cache in megabytes;
-# a value of 0 disables this feature
+# must be greater than or equal to 0;
+# a value of 0 disables this feature.
 
 [video]
 # Settings block related to video files (e.g. encoding)
 
 max_file_size_mb = 200.0
-# The maximum size an uploaded file may have
+# The maximum size an uploaded file may have;
+# must be greater than 0.
 
 binary_file = "file"
 # The path to the `file` command binary (can also be an alias or anything that can be found in $PATH)
@@ -126,7 +135,9 @@ mime_types_allowed = [
 ]
 # List of MIME types that are allowed to be uploaded to this storage node;
 # any request with a different MIME type will be rejected.
-# CAUTION: Add to this list at your own risk; some browsers/OSs do not support certain types.
+# Each entry must be a valid IANA video MIME type
+# (see https://www.iana.org/assignments/media-types/media-types.xhtml#video).
+# CAUTION: Modify this list at your own risk; some browsers/OSs do not support certain types.
 
 container_formats_allowed = [
   "mp4",
@@ -134,7 +145,7 @@ container_formats_allowed = [
 ]
 # List of formats that the video container may have;
 # any video file with a different format will be rejected during the upload attempt.
-# CAUTION: Add to this list at your own risk; some browsers/OSs do not support certain formats.
+# CAUTION: Modify this list at your own risk; some browsers/OSs do not support certain formats.
 
 video_codecs_allowed = [
   "h264",
@@ -142,7 +153,7 @@ video_codecs_allowed = [
 ]
 # List of video codecs that the video file may use;
 # any video file with a different codec will be rejected during the upload attempt.
-# CAUTION: Add to this list at your own risk; some browsers/OSs do not support certain codecs.
+# CAUTION: Modify this list at your own risk; some browsers/OSs do not support certain codecs.
 
 audio_codecs_allowed = [
   "aac",
@@ -150,45 +161,54 @@ audio_codecs_allowed = [
 ]
 # List of audio codecs that the video file may use;
 # any video file with a different codec will be rejected during the upload attempt.
-# CAUTION: Add to this list at your own risk; some browsers/OSs do not support certain codecs.
+# CAUTION: Modify this list at your own risk; some browsers/OSs do not support certain codecs.
 
 [distribution]
 # Settings block related to the distribution of files by the storage node
 
 static_node_base_urls = []
-# List of base URLs of distributor nodes that the storage node should connect with
+# List of base URLs of distributor nodes that the storage node should connect with.
+# Each entry must be a valid HTTP(S) URL.
 
 copy_views_threshold = 3
 # A video is copied to a distributor node, when it has this many unique views
 # within the `views_retention_minutes` (see below) time span.
+# Must be greater than or equal to 0.
 
 views_retention_minutes = 240.0
 # If a video reaches the `copy_views_threshold` (see above) within this timespan,
-# it is copied to a distributor node.
+# an attempt will be made to copy it to a distributor node that does not yet host it.
+# Must be greater than 0.
 
 views_update_freq_minutes = 30.0
 # Views that were registered more than `views_retention_minutes` ago (see above)
 # are periodically forgotten for all stored videos;
 # this parameter determines how often that periodic tasks checks all files
 # and discards all older views.
+# Must be greater than 0.
 
 node_cleanup_freq_minutes = 240.0
 # Distributor nodes are periodically cleaned of less requested videos
 # to ensure the `free_space_target_ratio` (see below) is maintained.
+# Must be greater than 0.
 
 free_space_target_ratio = 0.1
-# Ratio of free space to total space on any distributor node that it should never fall below of
+# Ratio of free space to total space on any distributor node that it should never fall below of.
+# Must be greater than or equal to 0.
 
 max_parallel_copying_tasks = 20
 # Any time a video is copied to a distributor node, this a separate task is launched for it by the storage node;
 # this value sets the maximum number of such tasks that can run in parallel.
+# Must be greater than or equal to 1.
 
 leave_free_space_mb = 4000.0
-# The amount of free space (in megabytes) to reserve on the distributor node
+# The amount of free space (in megabytes) to reserve on the distributor node.
+# Must be greater than or equal to 0.
 
 last_request_safety_minutes = 240.0
 # The minimum number of minutes to wait after the last request for a specific video file on the distributor node
-# before it should be considered safe do delete that file
+# before it should be considered safe do delete that file.
+# Must be greater than or equal to 0.
 
 [monitoring]
 # Settings block related to monitoring (using Prometheus);
@@ -200,4 +220,5 @@ last_request_safety_minutes = 240.0
 # if left blank, no monitoring will be launched.
 
 update_freq_sec = 15.0
-# The period (in seconds) between consecutive writes to the prometheus text file
+# The period (in seconds) between consecutive writes to the prometheus text file.
+# Must be greater than 0.
