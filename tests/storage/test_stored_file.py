@@ -1,5 +1,5 @@
 from unittest import TestCase
-from unittest.mock import MagicMock, PropertyMock, call, patch
+from unittest.mock import MagicMock, PropertyMock, patch
 
 from videbo.storage import stored_file
 
@@ -19,8 +19,6 @@ class StoredVideoFileTestCase(TestCase):
         self.mock_hashed_file___init__.assert_called_once_with("foo", ".bar")
         self.assertEqual(-1, file.size)
         self.assertDictEqual({}, file.unique_views)
-        self.assertListEqual([], file.nodes)
-        self.assertFalse(file.copying)
 
     @patch.object(stored_file.StoredVideoFile, "num_views", new_callable=PropertyMock)
     def test___lt__(self, mock_num_views: PropertyMock) -> None:
@@ -50,21 +48,3 @@ class StoredVideoFileTestCase(TestCase):
         file.unique_views = {}
         file.discard_views_older_than(200)
         self.assertDictEqual({}, file.unique_views)
-
-    @patch.object(stored_file.TaskManager, "fire_and_forget")
-    def test_remove_from_distributors(
-        self,
-        mock_fire_and_forget: MagicMock,
-    ) -> None:
-        file = stored_file.StoredVideoFile(file_hash="foo", file_ext=".bar")
-        mock_coro1, mock_coro2 = MagicMock(), MagicMock()
-        node1 = MagicMock(remove=MagicMock(return_value=mock_coro1))
-        node2 = MagicMock(remove=MagicMock(return_value=mock_coro2))
-        file.nodes = [node1, node2]
-        file.remove_from_distributors()
-        node1.remove.assert_called_once_with(file, safe=False)
-        node2.remove.assert_called_once_with(file, safe=False)
-        self.assertListEqual(
-            [call(mock_coro1), call(mock_coro2)],
-            mock_fire_and_forget.call_args_list,
-        )

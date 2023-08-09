@@ -470,23 +470,22 @@ class DistributorNodeTestCase(IsolatedAsyncioTestCase):
         mock_set_node_state.assert_not_called()
 
     @patch.object(node.DistributorNode, "_fetch_files_list")
-    @patch.object(node.DistributorNode, "unlink_node")
     @patch.object(node.DistributorNode, "is_good", new_callable=PropertyMock)
     async def test_set_node_state(
         self,
         mock_is_good: PropertyMock,
-        mock_unlink_node: AsyncMock,
         mock__fetch_files_list: AsyncMock,
     ) -> None:
         obj = node.DistributorNode(_FOOBAR)
         obj._good = initial_state = MagicMock()
+        obj._files_hosted = mock_files = {"a": MagicMock(), "b": MagicMock()}
         # No-op:
         mock_is_good.return_value = True
         to_good = True
         await obj.set_node_state(to_good)
         self.assertIs(initial_state, obj._good)
         mock_is_good.assert_called_with()
-        mock_unlink_node.assert_not_called()
+        self.assertDictEqual(mock_files, obj._files_hosted)
         mock__fetch_files_list.assert_not_called()
 
         mock_is_good.reset_mock()
@@ -497,7 +496,7 @@ class DistributorNodeTestCase(IsolatedAsyncioTestCase):
         await obj.set_node_state(to_good)
         self.assertIs(initial_state, obj._good)
         mock_is_good.assert_called_with()
-        mock_unlink_node.assert_not_called()
+        self.assertDictEqual(mock_files, obj._files_hosted)
         mock__fetch_files_list.assert_not_called()
 
         mock_is_good.reset_mock()
@@ -507,11 +506,10 @@ class DistributorNodeTestCase(IsolatedAsyncioTestCase):
         await obj.set_node_state(to_good)
         self.assertFalse(obj._good)
         mock_is_good.assert_called_once_with()
-        mock_unlink_node.assert_awaited_once_with(stop_watching=False)
+        self.assertDictEqual({}, obj._files_hosted)
         mock__fetch_files_list.assert_not_called()
 
         mock_is_good.reset_mock()
-        mock_unlink_node.reset_mock()
 
         # Set to good:
         mock_is_good.return_value = False
@@ -519,7 +517,6 @@ class DistributorNodeTestCase(IsolatedAsyncioTestCase):
         await obj.set_node_state(to_good)
         self.assertTrue(obj._good)
         mock_is_good.assert_called_with()
-        mock_unlink_node.assert_not_called()
         mock__fetch_files_list.assert_awaited_once_with()
 
     @patch.object(node.DistributorNode, "_delete")
@@ -564,7 +561,7 @@ class DistributorNodeTestCase(IsolatedAsyncioTestCase):
         file_known1 = MagicMock(hash="foo", ext=".bar")
         file_known2 = MagicMock(hash="spam", ext=".eggs")
         file_unknown = MagicMock(hash="a", ext=".b")
-        stored_file1, stored_file2 = MagicMock(nodes=[]), MagicMock(nodes=[])
+        stored_file1, stored_file2 = MagicMock(), MagicMock()
         mock_storage.get_file.side_effect = (
             stored_file1,
             FileNotFoundError,
@@ -577,8 +574,6 @@ class DistributorNodeTestCase(IsolatedAsyncioTestCase):
         with self.assertLogs(node.log, logging.WARNING):
             await obj._fetch_files_list()
         self.assertSetEqual({stored_file1, stored_file2}, obj._files_hosted)
-        self.assertListEqual([obj], stored_file1.nodes)
-        self.assertListEqual([obj], stored_file2.nodes)
         mock_get_storage_instance.assert_called_once_with()
         self.assertListEqual(
             [
@@ -603,7 +598,6 @@ class DistributorNodeTestCase(IsolatedAsyncioTestCase):
         mock_storage.get_file.return_value = stored_file1
         await obj._fetch_files_list()
         self.assertSetEqual({stored_file1}, obj._files_hosted)
-        self.assertListEqual([obj], stored_file1.nodes)
         mock_get_storage_instance.assert_called_once_with()
         mock_storage.get_file.assert_called_once_with(file_known1.hash, file_known1.ext)
         mock__delete.assert_not_called()
@@ -682,12 +676,6 @@ class DistributorNodeTestCase(IsolatedAsyncioTestCase):
         mock_can_start_downloading.return_value = True
 
         mock_file = MagicMock()
-        # We want to track the setting of the `copying` attribute,
-        # so we add a property mock to our pseudo-file object:
-        type(mock_file).copying = mock_copying = PropertyMock()
-        # We also want to track appending and removing to the file's
-        # `nodes` list, so we add a mock list to it:
-        mock_file.nodes = create_autospec(list, instance=True)
 
         obj = node.DistributorNode(_FOOBAR)
         # We want to track adding and discarding to the `_files_loading` set:
@@ -713,12 +701,6 @@ class DistributorNodeTestCase(IsolatedAsyncioTestCase):
             mock_file,
             from_url=url,
         )
-        mock_file.nodes.append.assert_called_once_with(obj)
-        mock_file.nodes.remove.assert_called_once_with(obj)
-        self.assertListEqual(
-            [call(True), call(False)],
-            mock_copying.call_args_list,
-        )
         mock_loading.add.assert_called_once_with(mock_file)
         mock_loading.discard.assert_called_once_with(mock_file)
         mock_can_start_downloading.assert_called_once_with()
@@ -727,7 +709,6 @@ class DistributorNodeTestCase(IsolatedAsyncioTestCase):
         mock_fire_and_forget.assert_not_called()
 
         mock_file.reset_mock()
-        mock_copying.reset_mock()
         mock_loading.reset_mock()
         mock_can_start_downloading.reset_mock()
         mock_next_scheduled.reset_mock()
@@ -746,12 +727,6 @@ class DistributorNodeTestCase(IsolatedAsyncioTestCase):
             mock_file,
             from_url=url,
         )
-        mock_file.nodes.append.assert_called_once_with(obj)
-        mock_file.nodes.remove.assert_not_called()
-        self.assertListEqual(
-            [call(True), call(False)],
-            mock_copying.call_args_list,
-        )
         mock_loading.add.assert_called_once_with(mock_file)
         mock_loading.discard.assert_called_once_with(mock_file)
         mock_can_start_downloading.assert_called_once_with()
@@ -760,7 +735,6 @@ class DistributorNodeTestCase(IsolatedAsyncioTestCase):
         mock_fire_and_forget.assert_not_called()
 
         mock_file.reset_mock()
-        mock_copying.reset_mock()
         mock_loading.reset_mock()
         mock_can_start_downloading.reset_mock()
         self.mock_client1.copy.reset_mock()
@@ -786,12 +760,6 @@ class DistributorNodeTestCase(IsolatedAsyncioTestCase):
         self.mock_client1.copy.assert_awaited_once_with(
             mock_file,
             from_url=url,
-        )
-        mock_file.nodes.append.assert_called_once_with(obj)
-        mock_file.nodes.remove.assert_called_once_with(obj)
-        self.assertListEqual(
-            [call(True), call(False)],
-            mock_copying.call_args_list,
         )
         mock_loading.add.assert_called_once_with(mock_file)
         mock_loading.discard.assert_called_once_with(mock_file)
@@ -865,9 +833,9 @@ class DistributorNodeTestCase(IsolatedAsyncioTestCase):
     async def test_remove(self, mock__delete: AsyncMock) -> None:
         mock__delete.side_effect = node.DistributionError
         obj = node.DistributorNode(_FOOBAR)
-        file1 = MagicMock(size=10, nodes=[obj])
-        file2 = MagicMock(size=20, nodes=[obj])
-        file3 = MagicMock(size=30, nodes=[obj])
+        file1 = MagicMock(size=10)
+        file2 = MagicMock(size=20)
+        file3 = MagicMock(size=30)
         obj._files_hosted = {file1, file2, file3}
         safe = MagicMock()
 
@@ -875,9 +843,6 @@ class DistributorNodeTestCase(IsolatedAsyncioTestCase):
 
         await obj.remove(file1, file2, file3, safe=safe)
         self.assertSetEqual({file1, file2, file3}, obj._files_hosted)
-        self.assertIn(obj, file1.nodes)
-        self.assertIn(obj, file2.nodes)
-        self.assertIn(obj, file3.nodes)
         mock__delete.assert_awaited_once_with(file1, file2, file3, safe=safe)
 
         mock__delete.reset_mock()
@@ -890,9 +855,6 @@ class DistributorNodeTestCase(IsolatedAsyncioTestCase):
         with self.assertLogs(node.log, logging.WARNING):
             await obj.remove(file1, file2, file3, safe=safe)
         self.assertSetEqual({file1, file2}, obj._files_hosted)
-        self.assertIn(obj, file1.nodes)
-        self.assertIn(obj, file2.nodes)
-        self.assertNotIn(obj, file3.nodes)
         mock__delete.assert_awaited_once_with(file1, file2, file3, safe=safe)
 
         mock__delete.reset_mock()
@@ -904,8 +866,6 @@ class DistributorNodeTestCase(IsolatedAsyncioTestCase):
         with self.assertLogs(node.log, logging.INFO):
             await obj.remove(file1, file2, safe=safe)
         self.assertSetEqual(set(), obj._files_hosted)
-        self.assertNotIn(obj, file1.nodes)
-        self.assertNotIn(obj, file2.nodes)
         mock__delete.assert_awaited_once_with(file1, file2, safe=safe)
 
     @patch.object(node, "settings")

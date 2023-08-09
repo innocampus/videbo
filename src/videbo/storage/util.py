@@ -323,7 +323,7 @@ class FileStorage:
         await run_in_default_executor(file_path.unlink)
         self._cached_files.pop(file.hash)
         self._cached_files_total_size -= file.size
-        file.remove_from_distributors()
+        self.distribution_controller.remove_from_nodes(file)
         log.info(f"Video removed from storage: {file.hash}")
 
     async def remove_thumbnails(

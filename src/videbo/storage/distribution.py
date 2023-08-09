@@ -12,7 +12,8 @@ from videbo.client import Client
 from videbo.distributor.api.models import DistributorStatus
 from videbo.distributor.node import DistributorNode
 from videbo.misc.periodic import Periodic
-from .exceptions import UnknownDistURL
+from videbo.misc.task_manager import TaskManager
+from .exceptions import DistNodeAlreadyDisabled, UnknownDistURL
 from .stored_file import StoredVideoFile
 
 
@@ -141,12 +142,17 @@ class DistributionController:
         except StopIteration:
             return None
 
+    def remove_from_nodes(self, file: StoredVideoFile) -> None:
+        """Schedules tasks to remove `file` from every distributor node."""
+        for node in self._dist_nodes.values():
+            TaskManager.fire_and_forget(node.remove(file, safe=False))
+
     def get_node_to_serve(
         self,
         file: StoredVideoFile,
     ) -> tuple[Optional[DistributorNode], bool]:
         """
-        Find a node that can serve the specified `file`.
+        Finds a node that can serve the specified `file`.
 
         If all other nodes are busy, it may also return a node that is
         currently loading the file.
@@ -238,6 +244,9 @@ class DistributionController:
         """
         Removes an existing distributor node from the controller.
 
+        If the node is still enabled, it will be disabled.
+        It will be set to a bad state and its file list cleared.
+
         Raises:
             `UnknownDistURL` if no node with the specified `base_url` is found
         """
@@ -245,7 +254,11 @@ class DistributionController:
         if node is None:
             log.warning(f"Cannot remove unknown distributor at `{base_url}`")
             raise UnknownDistURL(base_url)
-        await node.unlink_node()
+        try:
+            await node.disable()
+        except DistNodeAlreadyDisabled:
+            pass
+        await node.set_node_state(False)
         log.info(f"Removed {node} from distribution controller")
 
     async def _enable_or_disable_node(self, base_url: str, enable: bool) -> None:

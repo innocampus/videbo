@@ -261,12 +261,12 @@ class DistributorNode:
         the node state was previously bad, the file list is loaded first,
         _before_ the state is actually set.
 
-        Upon switching from good to bad, `unlink_node` is awaited, but the
+        Upon switching from good to bad, the file list is cleared, but the
         periodic status watcher is _not_ stopped.
         """
         if self.is_good and not to_good:
             self._good = False
-            await self.unlink_node(stop_watching=False)
+            self._files_hosted.clear()
         elif not self.is_good and to_good:
             await self._fetch_files_list()
             self._good = True
@@ -303,7 +303,6 @@ class DistributorNode:
                 unknown_files.append(file)
             else:
                 self._files_hosted.add(stored_file)
-                stored_file.nodes.append(self)
         log.info(f"Found {len(self._files_hosted)} files on {self}")
         if unknown_files:
             await self._delete(*unknown_files)
@@ -344,14 +343,11 @@ class DistributorNode:
         """
         Copies a video file from another node to this one.
 
-        The node is added to the file's `nodes` list immediately and its
-        `copying` flag is set to `True`. In addition, the file is added to
-        the `_files_loading` container for the duration of the request.
+        The file is added to the `_files_loading` container immediately and
+        it remains there for the duration of the request.
 
-        If the request fails or returns anything other than a 200 status code,
-        the node is removed from the file's `nodes` list.
         Regardless of errors, after the request the file is removed from the
-        `_files_loading` container and its `copying` flag is set to `False.
+        `_files_loading` container.
 
         If the node can download another file right away and there are
         downloads scheduled, another download task is launched at the end.
@@ -363,20 +359,16 @@ class DistributorNode:
                 The URL of the node that should serve as a source for the file
         """
         log.info(f"Requesting {self} to download `{file}` from `{from_url}`")
-        file.nodes.append(self)
-        file.copying = True
         self._files_loading.add(file)
         try:
             code = await self.http_client.copy(file, from_url=from_url)
         except HTTPClientError as e:
-            file.nodes.remove(self)  # Node cannot serve the file
             log.error(f"{repr(e)} while requesting file download to {self}")
         else:
             if code == 200:
                 self._files_hosted.add(file)  # Node can now serve the file
                 log.info(f"Downloaded `{file}` from `{from_url}` to {self}")
             else:
-                file.nodes.remove(self)  # Node cannot serve the file
                 log.error(
                     f"HTTP code {code} while requesting download to {self}"
                 )
@@ -384,7 +376,6 @@ class DistributorNode:
             # Regardless of success or failure, always remove the file from
             # `._files_loading` and set its `.copying` attribute to `False`:
             self._files_loading.discard(file)
-            file.copying = False
             if not self.can_start_downloading:
                 return
             # Check if other files are scheduled for download and if they are,
@@ -446,7 +437,7 @@ class DistributorNode:
 
     async def remove(self, *files: StoredVideoFile, safe: bool = True) -> None:
         """
-        Attempts to Delete the specified files from the distributor node.
+        Attempts to delete the specified files from the distributor node.
 
         If an error occurs during the API request, details will be logged.
         Some files may be skipped (not deleted) for various reasons, in which
@@ -476,20 +467,10 @@ class DistributorNode:
             )
         for file in to_discard.values():
             self._files_hosted.discard(file)
-            file.nodes.remove(self)
         log.info(
             f"Removed {len(to_discard)} file(s) from {self} "
             f"(now {resp_data.free_space} MB free space left)"
         )
-
-    # TODO: See if we really need this separate method
-    async def unlink_node(self, *, stop_watching: bool = True) -> None:
-        """Doesn't remove videos, but removes references to the node"""
-        for file in self._files_hosted:
-            file.nodes.remove(self)
-        self._files_hosted.clear()
-        if stop_watching:
-            await self._periodic_watcher.stop()
 
     async def free_up_space(self) -> None:
         """

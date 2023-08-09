@@ -43,7 +43,12 @@ class FileStorageTestCase(SilentLogMixin, IsolatedAsyncioTestCase):
         self.client_patcher = patch.object(util, "Client")
         self.mock_client_cls = self.client_patcher.start()
 
-        self.dist_controller_patcher = patch.object(util, "DistributionController")
+        self.mock_dist_controller = MagicMock()
+        self.dist_controller_patcher = patch.object(
+            util,
+            "DistributionController",
+            return_value=self.mock_dist_controller,
+        )
         self.mock_dist_controller_cls = self.dist_controller_patcher.start()
 
         self._load_file_list_patcher = patch.object(util.FileStorage, "_load_file_list")
@@ -492,7 +497,9 @@ class FileStorageTestCase(SilentLogMixin, IsolatedAsyncioTestCase):
         mock_run_in_default_executor.assert_awaited_once_with(
             mock_path.unlink
         )
-        mock_file.remove_from_distributors.assert_called_once_with()
+        self.mock_dist_controller.remove_from_nodes.assert_called_once_with(
+            mock_file
+        )
 
     @patch.object(util, "run_in_default_executor")
     @patch.object(util.FileStorage, "get_path")

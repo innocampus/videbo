@@ -144,6 +144,23 @@ class DistributionControllerTestCase(IsolatedAsyncioTestCase):
         self.assertIsNone(output)
         mock_filter_nodes.assert_called_once_with(fake_match_func)
 
+    @patch.object(distribution, "TaskManager")
+    def test_remove_from_nodes(self, mock_task_manager: MagicMock) -> None:
+        mock_remove1, mock_remove2 = MagicMock(), MagicMock()
+        mock_node1 = MagicMock(remove=mock_remove1)
+        mock_node2 = MagicMock(remove=mock_remove2)
+        obj = distribution.DistributionController()
+        obj._dist_nodes = {"a": mock_node1, "b": mock_node2}
+
+        mock_file = MagicMock()
+        obj.remove_from_nodes(mock_file)
+        mock_remove1.assert_called_once_with(mock_file, safe=False)
+        mock_remove2.assert_called_once_with(mock_file, safe=False)
+        self.assertListEqual(
+            [call(mock_remove1.return_value), call(mock_remove2.return_value)],
+            mock_task_manager.fire_and_forget.call_args_list,
+        )
+
     @patch.object(distribution.DistributionController, "filter_nodes")
     @patch.object(distribution, "partial")
     @patch.object(distribution.DistributionController, "sort_nodes")
@@ -341,7 +358,10 @@ class DistributionControllerTestCase(IsolatedAsyncioTestCase):
     ) -> None:
         # Ensure error is raised, if no node with the provided URL is known:
 
-        mock_node = MagicMock(unlink_node=AsyncMock())
+        mock_disable = AsyncMock(
+            side_effect=distribution.DistNodeAlreadyDisabled("foo")
+        )
+        mock_node = MagicMock(disable=mock_disable, set_node_state=AsyncMock())
 
         obj = distribution.DistributionController()
         url = "foo/bar"
@@ -359,6 +379,8 @@ class DistributionControllerTestCase(IsolatedAsyncioTestCase):
         await obj.remove_dist_node(url)
         self.assertDictEqual({}, obj._dist_nodes)
         mock_unknown_err_init.assert_not_called()
+        mock_node.disable.assert_awaited_once_with()
+        mock_node.set_node_state.assert_awaited_once_with(False)
 
     @patch.object(distribution.UnknownDistURL, "__init__", return_value=None)
     @patch.object(distribution.DistributionController, "get_node")
