@@ -1,6 +1,8 @@
+from enum import Enum
 from math import isnan, nan
 from pathlib import Path
 from typing import Any, Optional
+from typing_extensions import assert_never
 
 from pydantic import BaseModel, validator
 
@@ -19,22 +21,26 @@ __all__ = [
 ]
 
 
-# TODO: Define an enum for `codec_type`:
+class CodecType(str, Enum):
+    audio = 'audio'
+    video = 'video'
+
+
 class FFProbeStream(BaseModel):
     """Relevant parts of the `stream` section of a `ffprobe` output."""
 
     index: int
     codec_name: str
-    codec_type: str
+    codec_type: CodecType
     duration: float = nan
 
     def is_allowed(self) -> bool:
         """Ensures video/audio codec is whitelisted in settings."""
-        if self.codec_type == "video":
+        if self.codec_type is CodecType.video:
             return self.codec_name in settings.video.video_codecs_allowed
-        if self.codec_type == "audio":
+        if self.codec_type is CodecType.audio:
             return self.codec_name in settings.video.audio_codecs_allowed
-        return True
+        assert_never(self.codec_type)
 
 
 class FFProbeFormat(BaseModel):
@@ -96,7 +102,10 @@ class VideoInfo(BaseModel):
             return "." + v
         raise ValueError(f"{v} does not match formats {fmt.names}")
 
-    def get_first_stream_of_type(self, codec: str) -> Optional[FFProbeStream]:
+    def get_first_stream_of_type(
+        self,
+        codec: CodecType,
+    ) -> Optional[FFProbeStream]:
         """Returns first stream of a certain type ("video" or "audio")."""
         for stream in self.streams:
             if stream.codec_type == codec:
@@ -111,12 +120,12 @@ class VideoInfo(BaseModel):
         """
         if not self.format.is_allowed():
             raise ContainerFormatNotAllowed(self.format.names)
-        video_stream = self.get_first_stream_of_type("video")
+        video_stream = self.get_first_stream_of_type(CodecType.video)
         if video_stream is None:
             raise VideoCodecNotAllowed(None)
         if not video_stream.is_allowed():
             raise VideoCodecNotAllowed(video_stream.codec_name)
-        audio_stream = self.get_first_stream_of_type("audio")
+        audio_stream = self.get_first_stream_of_type(CodecType.audio)
         if audio_stream and not audio_stream.is_allowed():
             raise AudioCodecNotAllowed(audio_stream.codec_name)
 

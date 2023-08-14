@@ -111,8 +111,6 @@ class BaseSettings(PydanticBaseSettings, SettingsBaseModel):
             return init_settings, env_settings, config_file_settings
 
 
-# TODO: Consider using a generic URL-joining function everywhere
-#       that automatically handles slashes properly
 def no_slash_at_the_end(string: str) -> str:
     """
     Returns a version of `string` with no forward slash at the end.

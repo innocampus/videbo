@@ -15,7 +15,7 @@ class FFProbeStreamTestCase(TestCase):
         obj = models.FFProbeStream(
             index=1,
             codec_name="foo",
-            codec_type="video",
+            codec_type=models.CodecType.video,
         )
         self.assertTrue(obj.is_allowed())
         obj.codec_name = "baz"
@@ -24,18 +24,15 @@ class FFProbeStreamTestCase(TestCase):
         obj = models.FFProbeStream(
             index=1,
             codec_name="eggs",
-            codec_type="audio",
+            codec_type=models.CodecType.audio,
         )
         self.assertTrue(obj.is_allowed())
         obj.codec_name = "beans"
         self.assertFalse(obj.is_allowed())
 
-        obj = models.FFProbeStream(
-            index=1,
-            codec_name="whatever",
-            codec_type="something weird",
-        )
-        self.assertTrue(obj.is_allowed())
+        obj.codec_type = MagicMock()
+        with self.assertRaises(AssertionError):
+            obj.is_allowed()
 
 
 class FFProbeFormatTestCase(TestCase):
@@ -105,7 +102,7 @@ class VideoInfoTestCase(TestCase):
         stream = models.FFProbeStream(
             index=1,
             codec_name="spam",
-            codec_type="eggs",
+            codec_type=models.CodecType.video,
         )
         fmt = models.FFProbeFormat(
             filename=Path("abc"),
@@ -139,12 +136,12 @@ class VideoInfoTestCase(TestCase):
         stream_0 = models.FFProbeStream(
             index=0,
             codec_name="spam",
-            codec_type="eggs",
+            codec_type=models.CodecType.video,
         )
         stream_1 = models.FFProbeStream(
             index=1,
             codec_name="x",
-            codec_type="y",
+            codec_type=models.CodecType.audio,
         )
         fmt = models.FFProbeFormat(
             filename=Path("abc"),
@@ -154,10 +151,10 @@ class VideoInfoTestCase(TestCase):
             bit_rate=3,
         )
         obj = models.VideoInfo(streams=[stream_0, stream_1], format=fmt, file_ext="foo")
-        output = obj.get_first_stream_of_type("y")
+        output = obj.get_first_stream_of_type(models.CodecType.audio)
         self.assertEqual(stream_1, output)
 
-        output = obj.get_first_stream_of_type("something else")
+        output = obj.get_first_stream_of_type("something else")  # type: ignore[arg-type]
         self.assertIsNone(output)
 
     @patch.object(models.AudioCodecNotAllowed, "__init__", return_value=None)
@@ -178,7 +175,7 @@ class VideoInfoTestCase(TestCase):
         stream = models.FFProbeStream(
             index=1,
             codec_name="spam",
-            codec_type="eggs",
+            codec_type=models.CodecType.video,
         )
         fmt = models.FFProbeFormat(
             filename=Path("abc"),
@@ -210,7 +207,7 @@ class VideoInfoTestCase(TestCase):
             obj.ensure_is_allowed()
         mock_format_is_allowed.assert_called_once_with()
         mock_stream_is_allowed.assert_not_called()
-        mock_get_first_stream_of_type.assert_called_once_with("video")
+        mock_get_first_stream_of_type.assert_called_once_with(models.CodecType.video)
         mock_container_format_not_allowed_init.assert_not_called()
         mock_video_codec_not_allowed_init.assert_called_once_with(None)
         mock_audio_codec_not_allowed_init.assert_not_called()
@@ -226,7 +223,7 @@ class VideoInfoTestCase(TestCase):
             obj.ensure_is_allowed()
         mock_format_is_allowed.assert_called_once_with()
         mock_stream_is_allowed.assert_called_once_with()
-        mock_get_first_stream_of_type.assert_called_once_with("video")
+        mock_get_first_stream_of_type.assert_called_once_with(models.CodecType.video)
         mock_container_format_not_allowed_init.assert_not_called()
         mock_video_codec_not_allowed_init.assert_called_once_with(stream.codec_name)
         mock_audio_codec_not_allowed_init.assert_not_called()
@@ -242,7 +239,9 @@ class VideoInfoTestCase(TestCase):
             obj.ensure_is_allowed()
         mock_format_is_allowed.assert_called_once_with()
         mock_stream_is_allowed.assert_has_calls([call(), call()])
-        mock_get_first_stream_of_type.assert_has_calls([call("video"), call("audio")])
+        mock_get_first_stream_of_type.assert_has_calls(
+            [call(models.CodecType.video), call(models.CodecType.audio)]
+        )
         mock_container_format_not_allowed_init.assert_not_called()
         mock_video_codec_not_allowed_init.assert_not_called()
         mock_audio_codec_not_allowed_init.assert_called_once_with(stream.codec_name)
@@ -258,7 +257,9 @@ class VideoInfoTestCase(TestCase):
         self.assertIsNone(obj.ensure_is_allowed())
         mock_format_is_allowed.assert_called_once_with()
         mock_stream_is_allowed.assert_called_once_with()
-        mock_get_first_stream_of_type.assert_has_calls([call("video"), call("audio")])
+        mock_get_first_stream_of_type.assert_has_calls(
+            [call(models.CodecType.video), call(models.CodecType.audio)]
+        )
         mock_container_format_not_allowed_init.assert_not_called()
         mock_video_codec_not_allowed_init.assert_not_called()
         mock_audio_codec_not_allowed_init.assert_not_called()
@@ -273,7 +274,9 @@ class VideoInfoTestCase(TestCase):
         self.assertIsNone(obj.ensure_is_allowed())
         mock_format_is_allowed.assert_called_once_with()
         mock_stream_is_allowed.assert_has_calls([call(), call()])
-        mock_get_first_stream_of_type.assert_has_calls([call("video"), call("audio")])
+        mock_get_first_stream_of_type.assert_has_calls(
+            [call(models.CodecType.video), call(models.CodecType.audio)]
+        )
         mock_container_format_not_allowed_init.assert_not_called()
         mock_video_codec_not_allowed_init.assert_not_called()
         mock_audio_codec_not_allowed_init.assert_not_called()
@@ -282,7 +285,7 @@ class VideoInfoTestCase(TestCase):
         stream = models.FFProbeStream(
             index=0,
             codec_name="spam",
-            codec_type="eggs",
+            codec_type=models.CodecType.video,
         )
         fmt = models.FFProbeFormat(
             filename=Path("abc"),
