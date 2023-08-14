@@ -84,7 +84,6 @@ class BaseJWTData(VideboBaseModel):
 
     exp: int  # expiration time claim
     iss: TokenIssuer  # issuer claim
-    # TODO: implement `internal` convenience property
 
     @validator('iss', pre=True)
     def iss_is_enum_member(cls, v: Union[TokenIssuer, str]) -> TokenIssuer:
@@ -100,6 +99,10 @@ class BaseJWTData(VideboBaseModel):
                 except KeyError:
                     raise ValueError(f"Invalid issuer '{v}'")
         raise TypeError(f"{repr(v)} is not a valid issuer type")
+
+    @property
+    def internal(self) -> bool:
+        return self.iss == TokenIssuer.internal
 
     def dict(self, *args: Any, **kwargs: Any) -> dict[str, Any]:
         """
@@ -136,7 +139,7 @@ class BaseJWTData(VideboBaseModel):
             The JWT string containing the model instance's data.
         """
         if key is None:
-            if self.iss == TokenIssuer.internal:
+            if self.internal:
                 key = settings.internal_api_secret
             else:
                 key = settings.external_api_secret

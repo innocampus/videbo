@@ -13,7 +13,7 @@ from videbo import settings
 from videbo.auth import ensure_auth
 from videbo.misc import MEGA
 from videbo.misc.functions import rel_path
-from videbo.models import HashedFilesList, Role, RequestJWTData, TokenIssuer
+from videbo.models import HashedFilesList, Role, RequestJWTData
 from videbo.network import NetworkInterfaces
 from videbo.web import ensure_json_body, file_serve_headers, serve_file_via_x_accel
 from ...hashed_file import HashedFile
@@ -114,6 +114,6 @@ async def request_file(request: Request, jwt_data: RequestFileJWTData) -> Union[
         )
     uri = Path(settings.webserver.x_accel_location, rel_path(str(video)))
     limit_rate = settings.webserver.get_x_accel_limit_rate(
-        internal=jwt_data.iss == TokenIssuer.internal
+        internal=jwt_data.internal
     )
     return serve_file_via_x_accel(uri, limit_rate, download_filename)

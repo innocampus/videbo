@@ -18,7 +18,7 @@ from videbo import settings
 from videbo.auth import ensure_auth
 from videbo.exceptions import FFMpegError
 from videbo.misc.functions import rel_path
-from videbo.models import RequestJWTData, Role, TokenIssuer
+from videbo.models import RequestJWTData, Role
 from videbo.route_def import RouteTableDef
 from videbo.temp_file import TempFile
 from videbo.web import ensure_json_body, file_serve_headers, serve_file_via_x_accel
@@ -216,8 +216,8 @@ async def request_file(request: Request, jwt_data: RequestFileJWTData) -> Union[
             if a permanently stored video was requested, but no video with
             the provided file hash and extension was found.
     """
-    hash_, ext, type_ = jwt_data.hash, jwt_data.file_ext, jwt_data.type
-    internal = jwt_data.iss == TokenIssuer.internal
+    hash_, ext = jwt_data.hash, jwt_data.file_ext
+    type_, internal = jwt_data.type, jwt_data.internal
     file_storage = FileStorage.get_instance()
     if type_ == FileType.VIDEO:
         # TODO: Simplify `get_file`/`get_path`

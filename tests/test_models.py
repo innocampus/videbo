@@ -1,6 +1,6 @@
 from time import time
 from unittest import TestCase
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock, PropertyMock, patch
 from typing import Optional
 
 import jwt
@@ -72,16 +72,26 @@ class BaseJWTDataTestCase(TestCase):
         with self.assertRaises(ValidationError):
             models.BaseJWTData(**kwargs)
 
+    def test_internal(self) -> None:
+        obj = models.BaseJWTData(exp=int(time()), iss=models.TokenIssuer.internal)
+        self.assertTrue(obj.internal)
+        obj = models.BaseJWTData(exp=int(time()), iss=models.TokenIssuer.external)
+        self.assertFalse(obj.internal)
+
     def test_dict(self) -> None:
         obj = models.BaseJWTData(exp=1, iss=models.TokenIssuer.external)
         output = obj.dict()
         self.assertEqual('ext', output['iss'])
         self.assertNotIsInstance(output['iss'], models.TokenIssuer)
 
-    def test_encode(self) -> None:
+    @patch.object(models.BaseJWTData, "internal", new_callable=PropertyMock)
+    def test_encode(self, mock_internal: PropertyMock) -> None:
         exp = int(time()) + 300
+
+        # Check that it defaults to internal secret:
         iss = models.TokenIssuer.internal
-        data = {'exp': exp, 'iss': iss.value}
+        data = {'exp': exp, 'iss': iss}
+        mock_internal.return_value = True
         obj = models.BaseJWTData(exp=exp, iss=iss)
         token = obj.encode()
         expected = jwt.encode(data, self.internal_secret, algorithm=models.DEFAULT_JWT_ALG, headers={'kid': iss.value})
@@ -89,8 +99,10 @@ class BaseJWTDataTestCase(TestCase):
         decoded = jwt.decode(token, self.internal_secret, algorithms=[models.DEFAULT_JWT_ALG], issuer=iss.value)
         self.assertDictEqual(data, decoded)
 
+        # Check that it defaults to external secret:
         iss = models.TokenIssuer.external
         data = {'exp': exp, 'iss': iss.value}
+        mock_internal.return_value = False
         obj = models.BaseJWTData(exp=exp, iss=iss)
         token = obj.encode()
         expected = jwt.encode(data, self.external_secret, algorithm=models.DEFAULT_JWT_ALG, headers={'kid': iss.value})
@@ -98,6 +110,7 @@ class BaseJWTDataTestCase(TestCase):
         decoded = jwt.decode(token, self.external_secret, algorithms=[models.DEFAULT_JWT_ALG], issuer=iss.value)
         self.assertDictEqual(data, decoded)
 
+        # Check that it uses the provided key:
         key = "secret"
         obj = models.BaseJWTData(exp=exp, iss=iss)
         token = obj.encode(key=key)
