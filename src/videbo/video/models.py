@@ -24,13 +24,14 @@ __all__ = [
 class CodecType(str, Enum):
     audio = 'audio'
     video = 'video'
+    data = 'data'  # e.g. timecode stream
 
 
 class FFProbeStream(BaseModel):
     """Relevant parts of the `stream` section of a `ffprobe` output."""
 
     index: int
-    codec_name: str
+    codec_name: Optional[str]
     codec_type: CodecType
     duration: float = nan
 
@@ -40,6 +41,8 @@ class FFProbeStream(BaseModel):
             return self.codec_name in settings.video.video_codecs_allowed
         if self.codec_type is CodecType.audio:
             return self.codec_name in settings.video.audio_codecs_allowed
+        if self.codec_type is CodecType.data:
+            return True
         assert_never(self.codec_type)
 
 

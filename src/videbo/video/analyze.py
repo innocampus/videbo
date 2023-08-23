@@ -137,6 +137,8 @@ async def get_ffprobe_info(
     try:
         return VideoInfo.parse_raw(stdout.decode())
     except ValidationError:
+        # TODO: Passing `stderr` and discarding the `ValidationError` is wrong;
+        #       ensure validation problems are properly logged!
         raise FFProbeError(stderr=stderr.decode())
 
 
