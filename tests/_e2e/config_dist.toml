@@ -1,5 +1,6 @@
 files_path = "/tmp/videbo_test_dist"
-listen_port = 9030
+listen_port = 9031
 internal_api_secret = "secret"
 external_api_secret = "secure"
+public_base_url = "http://localhost:9021"
 dev_mode = true

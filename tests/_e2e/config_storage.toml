@@ -1,10 +1,12 @@
 files_path = "/tmp/videbo_test_storage"
+listen_port = 9021
 internal_api_secret = "secret"
 external_api_secret = "secure"
+public_base_url = "http://localhost:9021"
 dev_mode = true
 
 [distribution]
 static_node_base_urls = [
-  "http://localhost:9030",
+  "http://localhost:9031",
 ]
 copy_views_threshold = 0
