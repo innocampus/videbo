@@ -120,6 +120,18 @@ class FunctionsTestCase(IsolatedAsyncioTestCase):
         output = functions.rel_path(name)
         self.assertEqual(expected_output, output)
 
+    def test_mime_type_from_file_name(self) -> None:
+        path = "something.mp4"
+        mime_type = functions.mime_type_from_file_name(path)
+        self.assertEqual("video/mp4", mime_type)
+        path = "something.invalid"
+        mime_type = functions.mime_type_from_file_name(path)
+        self.assertEqual("application/octet-stream", mime_type)
+        with self.assertRaises(ValueError):
+            functions.mime_type_from_file_name(path, strict=True)
+            functions.mime_type_from_file_name("", strict=True)
+            functions.mime_type_from_file_name(".mp4", strict=True)
+
     def test_get_parameters_of_class(self) -> None:
         def function(x: Any, y: bool, z: Union[str, float], foo: int) -> None:
             pass

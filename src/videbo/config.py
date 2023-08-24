@@ -13,9 +13,9 @@ from pydantic.config import Extra
 from pydantic.env_settings import SettingsSourceCallable
 from pydantic.fields import Field, ModelField, SHAPE_LIST, SHAPE_SET
 from pydantic.networks import AnyHttpUrl, IPvAnyAddress
-from pydantic.types import ConstrainedStr
 
 from videbo.misc import MEGA
+from videbo.misc.constants import VIDEO_CONTAINER_FORMATS, VIDEO_MIME_TYPES
 from videbo.misc.functions import is_subclass
 from videbo.types import PathT
 
@@ -161,20 +161,28 @@ class ThumbnailSettings(SettingsBaseModel):
     cache_max_mb: float = Field(30.0, ge=0)
 
 
-class VideoMimeType(ConstrainedStr):
-    regex = r"video/[-+.\w]+"
-
-
 class VideoSettings(SettingsBaseModel):
     max_file_size_mb: float = Field(200.0, gt=0)
     binary_file: str = 'file'
     binary_ffmpeg: str = 'ffmpeg'
     binary_ffprobe: str = 'ffprobe'
     check_user: Optional[str] = None
-    mime_types_allowed: set[VideoMimeType] = {'video/mp4', 'video/webm'}  # type: ignore[arg-type]
+    mime_types_allowed: set[str] = {'video/mp4', 'video/webm'}
     container_formats_allowed: set[str] = {'mp4', 'webm'}
     video_codecs_allowed: set[str] = {'h264', 'vp8'}
     audio_codecs_allowed: set[str] = {'aac', 'vorbis'}
+
+    @validator("mime_types_allowed", each_item=True)
+    def ensure_valid_mime_type(cls, v: str) -> str:
+        if v not in VIDEO_MIME_TYPES:
+            raise ValueError(f"Not a valid video MIME type: {v}")
+        return v
+
+    @validator("container_formats_allowed", each_item=True)
+    def ensure_valid_format(cls, v: str) -> str:
+        if v not in VIDEO_CONTAINER_FORMATS:
+            raise ValueError(f"Not a valid video container format: {v}")
+        return v
 
     @property
     def max_file_size_bytes(self) -> int:

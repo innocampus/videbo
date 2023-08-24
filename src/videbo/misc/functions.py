@@ -13,6 +13,7 @@ from typing_extensions import TypeGuard
 
 from videbo.exceptions import InvalidRouteSignature
 from videbo.types import ExtendedHandler, PathT
+from .constants import VIDEO_FILE_EXT_MIME_TYPE
 from . import MEGA
 
 
@@ -133,6 +134,38 @@ def rel_path(filename: str) -> Path:
     if len(Path(filename).parts) != 1:
         raise ValueError(f"'{filename}' is not a valid filename")
     return Path(filename[:2], filename)
+
+
+def mime_type_from_file_name(file: PathT, strict: bool = False) -> str:
+    """
+    Returns the appropriate MIME type based on a the extension of a file.
+
+    Will only return an official IANA registered media type.
+    (Ref. https://www.iana.org/assignments/media-types/media-types.xhtml)
+
+    NOTE: Only handles video files!
+
+    Args:
+        file:
+            Either a string or `Path` object containing the file name
+        strict (optional):
+            If `True` and no matching MIME type is found, an error is raised;
+            if `False` (default) and no matching MIME type is found, the
+            generic `"application/octet-stream"` is returned.
+
+    Returns:
+        A string of the MIME type matching the given file's extension.
+
+    Raises:
+        `ValueError` if `strict` is `True` and no matching MIME type is found
+    """
+    ext = Path(file).suffix[1:]
+    mime_type = VIDEO_FILE_EXT_MIME_TYPE.get(ext)
+    if mime_type is not None:
+        return mime_type
+    if strict:
+        raise ValueError(f"Unrecognized file extension: {ext}")
+    return "application/octet-stream"
 
 
 def get_parameters_of_class(

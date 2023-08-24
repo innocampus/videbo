@@ -17,11 +17,14 @@ from aiohttp.web_routedef import RouteTableDef
 from pydantic import ValidationError
 
 from videbo.client import Client
-from videbo.misc.functions import sanitize_filename, get_route_model_param
+from videbo.misc.functions import (
+    get_route_model_param,
+    mime_type_from_file_name,
+    sanitize_filename,
+)
 from videbo.misc.task_manager import TaskManager
 from videbo.models import BaseRequestModel
 from videbo.types import CleanupContext, ExtendedHandler, StrDict
-from videbo.video.models import VideoInfo
 
 
 log = logging.getLogger(__name__)
@@ -242,5 +245,5 @@ def serve_file_via_x_accel(
     """
     headers = file_serve_headers(download_filename)
     headers.update(x_accel_headers(str(redirect_uri), limit_rate_bytes))
-    content_type = VideoInfo.content_type_for(''.join(redirect_uri.suffixes))
+    content_type = mime_type_from_file_name(redirect_uri)
     return Response(headers=headers, content_type=content_type)

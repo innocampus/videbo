@@ -244,23 +244,22 @@ class WebTestCase(SilentLogMixin, IsolatedAsyncioTestCase):
         output = web.x_accel_headers(redirect_uri)
         self.assertDictEqual(expected_output, output)
 
-    @patch.object(web.VideoInfo, "content_type_for")
+    @patch.object(web, "mime_type_from_file_name")
     @patch.object(web, "x_accel_headers")
     @patch.object(web, "file_serve_headers")
     def test_serve_file_via_x_accel(
         self,
         mock_file_serve_headers: MagicMock,
         mock_x_accel_headers: MagicMock,
-        mock_content_type_for: MagicMock,
+        mock_mime_type_from_file_name: MagicMock,
     ) -> None:
         hdr1_key, hdr1_val = "spam", "eggs"
         hdr2_key, hdr2_val = "foo", "bar"
         mock_file_serve_headers.return_value = {hdr1_key: hdr1_val}
         mock_x_accel_headers.return_value = {hdr2_key: hdr2_val}
-        mock_content_type_for.return_value = content = "video/mp4"
+        mock_mime_type_from_file_name.return_value = content = "video/mp4"
 
-        file_suffixes = ".tar.gz"
-        redirect_uri = Path(f"abc/def/file{file_suffixes}")
+        redirect_uri = Path("abc/def/file.tar.gz")
         limit_rate_bytes = 12345
         download_filename = "something"
 
@@ -280,7 +279,7 @@ class WebTestCase(SilentLogMixin, IsolatedAsyncioTestCase):
             str(redirect_uri),
             limit_rate_bytes,
         )
-        mock_content_type_for.assert_called_once_with(file_suffixes)
+        mock_mime_type_from_file_name.assert_called_once_with(redirect_uri)
 
 
 class CustomValidationError(ValidationError):

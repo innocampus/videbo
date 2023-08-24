@@ -2,6 +2,8 @@ from pathlib import Path
 from unittest import TestCase
 from unittest.mock import MagicMock, patch
 
+from pydantic import ValidationError
+
 from tests.silent_log import SilentLogMixin
 from videbo import config
 
@@ -116,6 +118,30 @@ class WebserverSettingsTestCase(TestCase):
         self.assertEqual(expected_output, output)
         output = obj.get_x_accel_limit_rate(internal=True)
         self.assertEqual(0, output)
+
+
+class VideoSettingsTestCase(TestCase):
+    def test_ensure_valid_mime_type(self) -> None:
+        mime_types = {"video/x-m4v", "video/mpeg"}
+        valid = config.VideoSettings(mime_types_allowed=mime_types)
+        self.assertSetEqual(mime_types, valid.mime_types_allowed)
+        mime_types.add("foo/bar")
+        with self.assertRaises(ValidationError):
+            config.VideoSettings(mime_types_allowed=mime_types)
+
+    def test_ensure_valid_format(self) -> None:
+        formats = {"m4v", "mpg"}
+        valid = config.VideoSettings(container_formats_allowed=formats)
+        self.assertSetEqual(formats, valid.container_formats_allowed)
+        formats.add("foobarbaz")
+        with self.assertRaises(ValidationError):
+            config.VideoSettings(container_formats_allowed=formats)
+
+    def test_max_file_size_bytes(self) -> None:
+        in_mb = 69.420
+        in_b = int(in_mb * config.MEGA)
+        obj = config.VideoSettings(max_file_size_mb=in_mb)
+        self.assertEqual(in_b, obj.max_file_size_bytes)
 
 
 class DistributionSettingsTestCase(TestCase):
