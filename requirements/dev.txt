@@ -1,7 +1,7 @@
 -r full.txt
 build==0.10.0
 coverage==7.3.0
-flake8==6.1.0
 mkdocs-material==9.2.5
 mkdocstrings[python]==0.22.0
 mypy==1.5.1
+ruff==0.0.286

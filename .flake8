@@ -1,6 +1,0 @@
-[flake8]
-# Ignore the following error codes:
-# E501 - line too long (> 79 characters)
-# F403 - ‘from module import *’ used; unable to detect undefined names
-# F405 - name may be undefined, or defined from star imports: module
-ignore = E501,F403,F405

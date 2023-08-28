@@ -12,5 +12,5 @@ mypy
 echo
 
 echo 'Linting source and test files...'
-flake8 src/ tests/
+ruff src/ tests/
 echo -e 'No issues found.\n'
