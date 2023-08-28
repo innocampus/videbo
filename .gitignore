@@ -21,13 +21,8 @@
 __pycache__/
 *.py[cod]
 
-# Testing:
-/.coverage
-
-# mypy:
-.mypy_cache/
-
 # Miscellaneous:
+/.cache/
 /.tmp/
 /screen.rc
 /ffmpeg
