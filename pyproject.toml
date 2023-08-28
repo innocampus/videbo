@@ -128,10 +128,10 @@ select = [
     "W",    # pycodestyle warnings
     "F",    # pyflakes
 #    "D",    # pydocstyle
-#    "A",    # flake8-builtins
-#    "C",    # flake8-comprehensions
-#    "B",    # flake8-bugbear
-#    "N",    # pep8-naming
+    "A",    # flake8-builtins
+    "C",    # flake8-comprehensions
+    "B",    # flake8-bugbear
+    "N",    # pep8-naming
 #    "PL",   # pylint
 #    "RUF",  # ruff-specific
 ]
@@ -142,9 +142,13 @@ ignore = [
     "D401",  # First line of docstring should be in imperative mood -> no, it shouldn't
     "D407",  # Missing dashed underline after section -> different docstring style
     "N818",  # Exception name {name} should be named with an Error suffix -> no, it shouldn't
+    "A003",  # Class attribute {name} is shadowing a Python builtin -> namespaces make this OK
 ]
 
 [tool.ruff.per-file-ignores]
+"src/**/__init__.py" = [
+    "A001",  # Variable {name} is shadowing a Python builtin
+]
 "tests/*.py" = [
     "D100",  # Missing docstring in public module
     "D101",  # Missing docstring in public class
@@ -154,4 +158,8 @@ ignore = [
 
 [tool.ruff.pep8-naming]
 # Allow Pydantic's `@validator` decorator to trigger class method treatment.
-classmethod-decorators = ["classmethod", "pydantic.validator"]
+classmethod-decorators = [
+    "classmethod",
+    "pydantic.validator",
+    "pydantic.class_validators.validator",
+]
