@@ -97,7 +97,7 @@ class BaseJWTData(VideboBaseModel):
                 try:
                     return TokenIssuer[v]
                 except KeyError:
-                    raise ValueError(f"Invalid issuer '{v}'")
+                    raise ValueError(f"Invalid issuer '{v}'") from None
         raise TypeError(f"{repr(v)} is not a valid issuer type")
 
     @property
@@ -232,7 +232,7 @@ class RequestJWTData(BaseJWTData):
             try:
                 return Role[v]
             except KeyError:
-                raise ValueError(f"Invalid role name '{v}'")
+                raise ValueError(f"Invalid role name '{v}'") from None
         raise TypeError(f"{repr(v)} is not a valid role type")
 
     @validator('role')

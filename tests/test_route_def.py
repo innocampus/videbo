@@ -43,7 +43,7 @@ class RouteTableDefTestCase(IsolatedAsyncioTestCase):
         )
         self.assertTrue(callable(decorator))
         # Grab the OPTIONS route handler:
-        options_handler = getattr(decorator, "__options_handler__")
+        options_handler = decorator.__options_handler__  # type: ignore[attr-defined]
         self.assertTrue(callable(options_handler))
 
         # Test inner decorator:

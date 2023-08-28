@@ -125,7 +125,7 @@ async def upload_file(request: Request, jwt_data: UploadFileJWTData) -> Response
             log.error(repr(e))
         else:
             log.exception(e)
-        raise HTTPInternalServerError()
+        raise HTTPInternalServerError() from e
     finally:
         storage.num_current_uploads -= 1
 
@@ -242,7 +242,7 @@ async def request_file(request: Request, jwt_data: RequestFileJWTData) -> Union[
         try:
             path = file_storage.get_perm_video_path(hash_, ext)
         except FileNotFoundError:
-            raise HTTPNotFound()
+            raise HTTPNotFound() from None
         # Don't consider redirecting internal requests:
         if not internal:
             stored_file = file_storage.get_file(hash_, ext)

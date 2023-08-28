@@ -15,9 +15,9 @@ class SortableMock(MagicMock):
         super().__init__(*args, **kwargs)
         self.__mock_sort_key__ = __mock_sort_key__
 
-        def __lt__(_self: SortableMock, other: SortableMock) -> bool:
+        def less_than(_self: SortableMock, other: SortableMock) -> bool:
             self_val = getattr(_self, _self.__mock_sort_key__)
             other_val = getattr(other, other.__mock_sort_key__)
             return self_val < other_val
 
-        self.__lt__ = __lt__
+        self.__lt__ = less_than

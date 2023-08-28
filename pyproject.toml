@@ -163,3 +163,6 @@ classmethod-decorators = [
     "pydantic.validator",
     "pydantic.class_validators.validator",
 ]
+extend-ignore-names = [
+    "tearDownAsync",  # method defined on `aiohttp.test_utils.AioHTTPTestCase`
+]

@@ -104,13 +104,13 @@ async def request_file(request: Request, jwt_data: RequestFileJWTData) -> Union[
         video = await file_controller.get_file(file_hash)
     except NoSuchFile:
         log.info(f"Requested file that does not exist on this node: {file_hash}")
-        raise HTTPNotFound()
+        raise HTTPNotFound() from None
     except asyncio.TimeoutError:
         log.info(f"Waited for file, but timeout reached, file {file_hash}")
-        raise HTTPServiceUnavailable()
+        raise HTTPServiceUnavailable() from None
     except TooManyWaitingClients:
         log.info(f"Too many waiting users, file {file_hash}")
-        raise HTTPServiceUnavailable()
+        raise HTTPServiceUnavailable() from None
     video.last_requested = int(time())
     download_filename = request.query.get('downloadas')
     if not settings.webserver.x_accel_location:

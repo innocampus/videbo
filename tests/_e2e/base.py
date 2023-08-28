@@ -35,6 +35,7 @@ class BaseE2ETestCase(SilentLogMixin, AioHTTPTestCase):
                 f"Test case is finished, but files were found inside "
                 f"the directory '{dir_path}'; not deleting",
                 category=RuntimeWarning,
+                stacklevel=2,
             )
         else:
             rmtree(dir_path)
@@ -82,11 +83,11 @@ class BaseE2ETestCase(SilentLogMixin, AioHTTPTestCase):
 
         Source: https://stackoverflow.com/a/39606065/19770795
         """
-        outcome = getattr(self, "_outcome")
+        outcome = self._outcome  # type: ignore[attr-defined]
         if hasattr(outcome, "errors"):
             # <=3.10
             result = self.defaultTestResult()
-            getattr(self, "_feedErrorsToResult")(result, outcome.errors)
+            self._feedErrorsToResult(result, outcome.errors)  # type: ignore[attr-defined]
         else:
             # Python >=3.11
             result = outcome.result

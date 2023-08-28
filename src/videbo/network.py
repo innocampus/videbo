@@ -190,7 +190,7 @@ class NetworkInterfaces:
                     f"Unexpected nginx stub status format"
                 )
                 log.error(str(err))
-                raise err
+                raise err from None
         if not updated:
             err = UnknownServerStatusFormatError(
                 f"Data received from '{url}' does not match the "

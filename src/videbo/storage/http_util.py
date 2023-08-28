@@ -302,7 +302,7 @@ async def handle_thumbnail_request(
         try:
             path = file_storage.get_perm_thumbnail_path(hash_, ext, num=num)
         except FileNotFoundError:
-            raise HTTPNotFound()
+            raise HTTPNotFound() from None
         log.debug(f"Serve thumbnail {num} for video {hash_}")
     elif jwt_data.type == FileType.THUMBNAIL_TEMP:
         path = file_storage.get_temp_thumbnail_path(hash_, num=num)
@@ -313,7 +313,7 @@ async def handle_thumbnail_request(
         body = await file_storage.thumb_memory_cache.get_and_update(path)
     except FileNotFoundError:
         log.error(f"File does not exist: {path}")
-        raise HTTPNotFound()
+        raise HTTPNotFound() from None
     return Response(
         body=body,
         content_type="image/jpeg",

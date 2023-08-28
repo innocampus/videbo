@@ -373,18 +373,18 @@ class DistributorNode:
                     f"HTTP code {code} while requesting download to {self}"
                 )
         finally:
-            # Regardless of success or failure, always remove the file from
-            # `._files_loading` and set its `.copying` attribute to `False`:
+            # Always remove the file from `._files_loading`:
             self._files_loading.discard(file)
-            if not self.can_start_downloading:
-                return
-            # Check if other files are scheduled for download and if they are,
-            # fire off the next download task (callback-style):
-            try:
-                file, from_url = self._files_awaiting_download.next()
-            except DownloadScheduler.NothingScheduled:
-                return
-            TaskManager.fire_and_forget(self._copy(file, from_url=from_url))
+            if self.can_start_downloading:
+                # Check if other files are scheduled for download and if so,
+                # fire off the next download task (callback-style):
+                try:
+                    file, from_url = self._files_awaiting_download.next()
+                except DownloadScheduler.NothingScheduled:
+                    return
+                TaskManager.fire_and_forget(
+                    self._copy(file, from_url=from_url)
+                )
 
     async def _delete(
         self,

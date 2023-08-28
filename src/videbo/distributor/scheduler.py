@@ -31,7 +31,7 @@ class DownloadScheduler:
         try:
             tup = max(self.files_from_urls, key=lambda x: x[0])
         except ValueError:
-            raise self.NothingScheduled
+            raise self.NothingScheduled from None
         else:
             self.files_from_urls.discard(tup)
             log.info(f"Next file to download: {tup[0]} from {tup[1]}")

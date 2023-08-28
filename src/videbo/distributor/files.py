@@ -135,7 +135,7 @@ class DistributorFileController:
         try:
             dist_file = self.files[file_hash]
         except KeyError:
-            raise NoSuchFile()
+            raise NoSuchFile() from None
         if dist_file.copy_status:
             if self.waiting >= self.MAX_WAITING_CLIENTS:
                 raise TooManyWaitingClients()
@@ -215,12 +215,12 @@ class DistributorFileController:
                               f"{copy_status.loaded_bytes} bytes, but expected {expected_file_size} bytes.")
                     raise CopyFileError()
                 log.info(f"Copied file {file} ({file_size_mb:.1f} MB) from {from_url}")
-            except Exception:
+            except Exception as e:
                 # Set event to wake up all waiting tasks even though we don't have the file.
                 copy_status.event.set()
                 self.files.pop(file.hash)
                 log.exception(f"Error when copying file {file} from {from_url}")
-                raise CopyFileError()
+                raise CopyFileError() from e
             finally:
                 self.files_being_copied.discard(new_file)
                 if file_obj:

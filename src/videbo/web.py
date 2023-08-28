@@ -174,12 +174,12 @@ def ensure_json_body(
                 data = await request.json()
             except JSONDecodeError:
                 log.info("Request body is not valid JSON")
-                raise HTTPBadRequest(headers=headers)
+                raise HTTPBadRequest(headers=headers) from None
             try:
                 kwargs[param_name] = cls.parse_obj(data)
             except ValidationError as error:
                 log.info(f"JSON in request does not match model: {error}")
-                raise HTTPBadRequest(headers=headers)
+                raise HTTPBadRequest(headers=headers) from None
             return await function(request, *args, **kwargs)
         return wrapper
 

@@ -17,7 +17,12 @@ class SettingsBaseModelTestCase(TestCase):
         bar: int
 
     def test_split_str(self) -> None:
-        data = dict(list_of_str="a,b,c", set_of_str="x,y", foo="FOO", bar=1)
+        data = {
+            "list_of_str": "a,b,c",
+            "set_of_str": "x,y",
+            "foo": "FOO",
+            "bar": 1,
+        }
         instance = self.TestModel(**data)
         self.assertListEqual(["a", "b", "c"], instance.list_of_str)
         self.assertSetEqual({"y", "x"}, instance.set_of_str)
@@ -25,12 +30,12 @@ class SettingsBaseModelTestCase(TestCase):
         self.assertEqual(1, instance.bar)
 
     def test_discard_empty_str_elements(self) -> None:
-        data = dict(
-            list_of_str=["a", "b", "", "", ""],
-            set_of_str={"x", "y", ""},
-            foo="FOO",
-            bar=1,
-        )
+        data = {
+            "list_of_str": ["a", "b", "", "", ""],
+            "set_of_str": {"x", "y", ""},
+            "foo": "FOO",
+            "bar": 1,
+        }
         instance = self.TestModel(**data)
         self.assertListEqual(["a", "b"], instance.list_of_str)
         self.assertSetEqual({"y", "x"}, instance.set_of_str)
@@ -69,7 +74,7 @@ class BaseSettingsTestCase(TestCase):
         class TestModel(config.BaseSettings):
             foo: SubModel = default
 
-        obj = TestModel(**dict(foo=None))
+        obj = TestModel(**{"foo": None})
         self.assertEqual(default, obj.foo)
 
     def test_config_customise_sources(self) -> None:

@@ -80,7 +80,7 @@ async def get_video_mime_type(
         stdout, _ = await wait_for(proc.communicate(), timeout_seconds)
     except AsyncioTimeoutError:
         proc.kill()
-        raise FileCmdError(timeout=True)
+        raise FileCmdError(timeout=True) from None
     # Strip linebreaks, lowercase, extract first part:
     return stdout.decode().strip().lower().split(";")[0]
 
@@ -133,13 +133,13 @@ async def get_ffprobe_info(
         stdout, stderr = await wait_for(proc.communicate(), timeout_seconds)
     except AsyncioTimeoutError:
         proc.kill()
-        raise FFProbeError(timeout=True)
+        raise FFProbeError(timeout=True) from None
     try:
         return VideoInfo.parse_raw(stdout.decode())
     except ValidationError:
         # TODO: Passing `stderr` and discarding the `ValidationError` is wrong;
         #       ensure validation problems are properly logged!
-        raise FFProbeError(stderr=stderr.decode())
+        raise FFProbeError(stderr=stderr.decode()) from None
 
 
 async def get_video_info(path: PathT, log: Logger = _log) -> VideoInfo:
@@ -244,7 +244,7 @@ async def create_thumbnail(
         await wait_for(proc.wait(), timeout_seconds)
     except AsyncioTimeoutError:
         proc.kill()
-        raise FFMpegError(timeout=True)
+        raise FFMpegError(timeout=True) from None
 
 
 async def create_thumbnail_securely(

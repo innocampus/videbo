@@ -78,11 +78,11 @@ def jwt_kid_internal(token: str) -> bool:
     try:
         kid: str = jwt.get_unverified_header(token)["kid"]
     except KeyError:
-        raise InvalidAuthData("JWT missing key ID header")
+        raise InvalidAuthData("JWT missing key ID header") from None
     try:
         kid = TokenIssuer(kid)
     except ValueError:
-        raise InvalidAuthData(f"{kid} is not a valid key ID")
+        raise InvalidAuthData(f"{kid} is not a valid key ID") from None
     return kid == TokenIssuer.internal
 
 
@@ -114,7 +114,9 @@ def validate_jwt_data(request: Request, min_level: int, jwt_model: type[J]) -> J
             log.debug(msg)
         raise error
     except ValidationError as error:
-        raise InvalidAuthData(f"JWT data does not correspond to expected data: {error}")
+        raise InvalidAuthData(
+            f"JWT data does not correspond to expected data: {error}"
+        ) from None
     if data.role < min_level:
         raise NotAuthorized()
     return data
@@ -152,10 +154,10 @@ def ensure_auth(min_level: int, *, headers: Optional[LooseHeaders] = None) -> Ca
             try:
                 jwt_data = validate_jwt_data(request, min_level, param_class)
             except (jwt.InvalidTokenError, NotAuthorized):
-                raise HTTPUnauthorized(headers=headers)
+                raise HTTPUnauthorized(headers=headers) from None
             except InvalidAuthData as e:
                 log.info("Auth data invalid: %s", str(e))
-                raise HTTPBadRequest(headers=headers)
+                raise HTTPBadRequest(headers=headers) from None
             if min_level >= Role.admin and settings.forbid_admin_via_proxy and "X-Forwarded-For" in request.headers:
                 raise HTTPForbidden(headers=headers)
             return await function(request, **{param_name: jwt_data})

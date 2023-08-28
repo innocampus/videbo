@@ -36,7 +36,7 @@ class BytesLimitLRUTestCase(TestCase):
 
     def test_total_bytes(self) -> None:
         self.assertEqual(self.ITEMS_BYTES, self.obj.total_bytes)
-        self.assertEqual(self.ITEMS_BYTES, getattr(self.obj, '_total_bytes'))
+        self.assertEqual(self.ITEMS_BYTES, self.obj._total_bytes)
 
     def test_space_left(self) -> None:
         self.assertEqual(self.MAX_BYTES - self.ITEMS_BYTES, self.obj.space_left)
@@ -44,13 +44,13 @@ class BytesLimitLRUTestCase(TestCase):
     def test_delitem(self) -> None:
         del self.obj[self.ITEMS_LIST[-1][0]]  # delete last item
         self.assertDictEqual(OrderedDict(self.ITEMS_LIST[:-1]), self.obj)
-        self.assertEqual(self.ITEMS_BYTES - self.BYTES_PER_ITEM, getattr(self.obj, '_total_bytes'))
+        self.assertEqual(self.ITEMS_BYTES - self.BYTES_PER_ITEM, self.obj._total_bytes)
         del self.obj[self.ITEMS_LIST[0][0]]  # delete first item
         self.assertDictEqual(OrderedDict(self.ITEMS_LIST[1:-1]), self.obj)
-        self.assertEqual(self.ITEMS_BYTES - 2 * self.BYTES_PER_ITEM, getattr(self.obj, '_total_bytes'))
+        self.assertEqual(self.ITEMS_BYTES - 2 * self.BYTES_PER_ITEM, self.obj._total_bytes)
         with self.assertRaises(KeyError):
             del self.obj['keydoesnotexit']
-        self.assertEqual(self.ITEMS_BYTES - 2 * self.BYTES_PER_ITEM, getattr(self.obj, '_total_bytes'))
+        self.assertEqual(self.ITEMS_BYTES - 2 * self.BYTES_PER_ITEM, self.obj._total_bytes)
 
     def test_getitem(self) -> None:
         key, value = self.ITEMS_LIST[0]  # The item that was added first to the object

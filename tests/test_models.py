@@ -27,7 +27,7 @@ class BaseResponseModelTestCase(TestCase):
 
         obj = ModelForTesting(foo=42, bar='baz')
 
-        json_kwargs = dict(exclude_unset=True)
+        json_kwargs = {'exclude_unset': True}
         text = obj.json(**json_kwargs)
         status = 201
         response = obj.json_response(status_code=status, **json_kwargs)

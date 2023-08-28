@@ -77,7 +77,7 @@ class RouteTableDef(AIOHTTPRouteTableDef):
             self.options(path)(options_cors_handler)
             return wrapper
         # This makes the OPTIONS route handler testable:
-        setattr(decorator, "__options_handler__", options_cors_handler)
+        decorator.__options_handler__ = options_cors_handler  # type: ignore[attr-defined]
         return decorator
 
     def get_with_cors(

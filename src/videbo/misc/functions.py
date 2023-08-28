@@ -4,7 +4,7 @@ from asyncio import get_running_loop
 from asyncio.subprocess import Process
 from asyncio.subprocess import create_subprocess_exec as _create_subproc
 from collections.abc import Callable
-from inspect import Parameter, isclass, signature
+from inspect import Parameter, signature
 from pathlib import Path
 from shutil import copyfile as _shutil_copyfile
 from subprocess import DEVNULL
@@ -186,8 +186,8 @@ def get_parameters_of_class(
         List of `inspect.Parameter` instances in the order they were defined
     """
     output = []
-    for name, param in signature(function).parameters.items():
-        if isclass(param.annotation) and issubclass(param.annotation, cls):
+    for param in signature(function).parameters.values():
+        if is_subclass(param.annotation, cls):
             output.append(param)
     return output
 
