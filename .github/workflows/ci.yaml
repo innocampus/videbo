@@ -24,11 +24,10 @@ jobs:
         cache: 'pip'
         cache-dependency-path: 'requirements/dev.txt'
 
-    - name: Upgrade pip
-      run: pip install -U pip
-
     - name: Install dependencies
-      run: pip install -Ur requirements/dev.txt
+      run: |
+        pip install -U pip
+        pip install -Ur requirements/dev.txt
 
     - name: Install Videbo
       run: pip install -e .
@@ -67,11 +66,10 @@ jobs:
     - uses: FedericoCarboni/setup-ffmpeg@v2
       id: setup-ffmpeg
 
-    - name: Upgrade pip
-      run: pip install -U pip
-
     - name: Install dependencies
-      run: pip install -Ur requirements/dev.txt
+      run: |
+        pip install -U pip
+        pip install -Ur requirements/dev.txt
 
     - name: Install Videbo
       run: pip install -e .
@@ -82,8 +80,8 @@ jobs:
     - name: Run end-to-end tests for Python ${{ matrix.python-version }}
       run: python -m tests 'e2e_test*.py'
 
-  type-checks:
-    name: Type checks with mypy (Python ${{ matrix.python-version }})
+  lint:
+    name: Linting (Python ${{ matrix.python-version }})
     runs-on: ubuntu-latest
     strategy:
       matrix:
@@ -99,39 +97,11 @@ jobs:
         python-version: ${{ matrix.python-version }}
         cache: 'pip'
         cache-dependency-path: 'requirements/dev.txt'
-
-    - name: Upgrade pip
-      run: pip install -U pip
 
     - name: Install dependencies
-      run: pip install -Ur requirements/dev.txt
+      run: |
+        pip install -U pip
+        pip install -Ur requirements/dev.txt
 
-    - name: Run mypy
-      run: mypy
-
-  lint:
-    name: Lint with flake8 (Python ${{ matrix.python-version }})
-    runs-on: ubuntu-latest
-    strategy:
-      matrix:
-        python-version:
-        - '3.9'
-        - '3.10'
-        - '3.11'
-    steps:
-    - uses: actions/checkout@v3
-
-    - uses: actions/setup-python@v3
-      with:
-        python-version: ${{ matrix.python-version }}
-        cache: 'pip'
-        cache-dependency-path: 'requirements/dev.txt'
-
-    - name: Upgrade pip
-      run: pip install -U pip
-
-    - name: Install flake8
-      run: pip install -U flake8
-
-    - name: Run flake8
-      run: flake8 src/ tests/
+    - name: Run linters
+      run: ./scripts/lint.sh
