@@ -16,10 +16,16 @@ from videbo.misc.functions import rel_path
 from videbo.models import HashedFilesList, Role, RequestJWTData
 from videbo.network import NetworkInterfaces
 from videbo.web import ensure_json_body, file_serve_headers, serve_file_via_x_accel
-from ...hashed_file import HashedFile
+from videbo.hashed_file import HashedFile
 from videbo.storage.api.models import RequestFileJWTData, FileType
 from videbo.distributor.files import DistributorFileController, TooManyWaitingClients, NoSuchFile, NotSafeToDelete
-from .models import *
+from .models import (
+    DistributorCopyFile,
+    DistributorDeleteFiles,
+    DistributorDeleteFilesResponse,
+    DistributorFileList,
+    DistributorStatus,
+)
 
 
 log = logging.getLogger(__name__)
