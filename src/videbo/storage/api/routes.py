@@ -97,7 +97,8 @@ async def upload_file(request: Request, jwt_data: UploadFileJWTData) -> Response
         return FileTooBig().json_response(log=log)
     storage = FileStorage.get_instance()
     storage.num_current_uploads += 1
-    temp_file = TempFile.create(storage.temp_dir)
+    extension = Path(field.filename).suffix if field.filename else None
+    temp_file = TempFile.create(storage.temp_dir, extension=extension)
     # Any error should be followed by a cleanup of the temp. file
     try:
         return await save_temp_and_get_response(temp_file, field, log=log)

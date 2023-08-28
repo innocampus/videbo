@@ -169,7 +169,6 @@ async def get_video_info(path: PathT, log: Logger = _log) -> VideoInfo:
         raise exception
     try:
         probe_info = await get_ffprobe_info(path)
-        probe_info.ensure_is_allowed()
     except (FFProbeError, VideoNotAllowed) as e:
         log.warning(repr(e))
         raise

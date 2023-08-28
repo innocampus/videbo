@@ -120,7 +120,7 @@ class HTTPUtilTestCase(SilentLogMixin, IsolatedAsyncioTestCase):
     ) -> None:
         # Mock `VideoInfo`:
         mock_get_video_info.return_value = mock_video_info = MagicMock()
-        mock_video_info.file_ext = file_ext = ".foo"
+        mock_video_info.get_consistent_file_ext.return_value = ext = ".foo"
         mock_video_info.get_duration.return_value = duration = 3.14
         # Mock `TempFile`:
         mock_file = create_autospec(http_util.TempFile, instance=True)
@@ -147,7 +147,7 @@ class HTTPUtilTestCase(SilentLogMixin, IsolatedAsyncioTestCase):
             mock_file.path,
             log=mock_logger,
         )
-        mock_file.persist.assert_awaited_once_with(file_ext=file_ext)
+        mock_file.persist.assert_awaited_once_with(file_ext=ext)
 
     @patch.object(http_util.FileUploaded, "from_video")
     @patch.object(http_util.FileStorage, "get_instance")

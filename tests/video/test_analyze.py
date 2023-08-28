@@ -174,12 +174,8 @@ class AnalyzeTestCase(IsolatedAsyncioTestCase):
         mock_get_video_mime_type.return_value = "foo"
         ffprobe_err = analyze.FFProbeError()
         vid_not_allowed = analyze.VideoNotAllowed()
-        mock_info = MagicMock(
-            ensure_is_allowed=MagicMock(
-                side_effect=(ffprobe_err, vid_not_allowed, None)
-            )
-        )
-        mock_get_ffprobe_info.return_value = mock_info
+        mock_info = MagicMock()
+        mock_get_ffprobe_info.side_effect = (ffprobe_err, vid_not_allowed, mock_info)
 
         # Fail due to ffprobe error:
         with self.assertRaises(analyze.FFProbeError) as ctx:

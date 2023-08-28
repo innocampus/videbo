@@ -31,15 +31,30 @@ class TempFile:
     def create(
         cls,
         directory: PathT,
+        *,
+        extension: Optional[str] = None,
         open_mode: Optional[Literal["wb", "rb"]] = None,
     ) -> TempFile:
         """
-        Creates a temp. file in the specified `directory`.
+        Creates a temporary file and returns an instance representing it.
 
-        If `open_mode` is given, opens the new file in that mode.
-        Returns a corresponding instance of this class.
+        Args:
+            directory:
+                The directory in which the file should be created
+            extension (optional):
+                If provided, that extension is appended to the otherwise
+                pseudo-randomly generated file name
+            open_mode (optional):
+                If provided, opens the newly created file in that mode.
+
+        Returns:
+            An instance of the class representing the newly created file.
         """
-        fd, path = mkstemp(prefix=cls.file_name_prefix, dir=str(directory))
+        fd, path = mkstemp(
+            suffix=extension,
+            prefix=cls.file_name_prefix,
+            dir=str(directory),
+        )
         return cls(fd, Path(path), open_mode=open_mode)
 
     def __init__(

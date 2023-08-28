@@ -129,7 +129,7 @@ async def save_temp_video(
     async with temp_file.open():
         await read_data(temp_file, video_form_field, log=log)
     video_info = await get_video_info(temp_file.path, log=log)
-    await temp_file.persist(file_ext=video_info.file_ext)
+    await temp_file.persist(file_ext=video_info.get_consistent_file_ext())
     return round(video_info.get_duration(), 1)
 
 

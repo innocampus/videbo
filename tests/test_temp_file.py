@@ -22,10 +22,15 @@ class TempFileTestCase(IsolatedAsyncioTestCase):
     @patch.object(temp_file, "mkstemp")
     def test_create(self, mock_mkstemp: MagicMock) -> None:
         mock_mkstemp.return_value = mock_fd, mock_path = object(), "foo"
-        test_dir = "bar"
-        obj = temp_file.TempFile.create(test_dir, open_mode="wb")
+        test_dir, test_ext = "bar", ".spam"
+        obj = temp_file.TempFile.create(
+            test_dir,
+            extension=test_ext,
+            open_mode="wb",
+        )
         self.assertIsInstance(obj, temp_file.TempFile)
         mock_mkstemp.assert_called_once_with(
+            suffix=test_ext,
             prefix=temp_file.TempFile.file_name_prefix,
             dir=test_dir,
         )
