@@ -12,7 +12,7 @@ from videbo import settings
 from videbo.client import Client
 from videbo.exceptions import LMSInterfaceError
 from videbo.lms_api import LMS
-from videbo.misc.constants import JPG_EXT, MEGA
+from videbo.misc.constants import JPG_EXT, MAX_NUM_FILES_TO_PRINT, MEGA
 from videbo.misc.functions import get_free_disk_space, move_file, rel_path, run_in_default_executor
 from videbo.misc.periodic import Periodic
 from videbo.misc.task_manager import TaskManager
@@ -27,7 +27,7 @@ log = getLogger(__name__)
 
 
 FILE_EXT_WHITELIST = ('.mp4', '.webm')
-VALID_EXTENSIONS = frozenset(FILE_EXT_WHITELIST + (JPG_EXT,))
+VALID_EXTENSIONS = frozenset({*FILE_EXT_WHITELIST, JPG_EXT})
 
 
 class FileStorage:
@@ -93,19 +93,19 @@ class FileStorage:
             for obj in self.storage_dir.glob('**/*'):
                 if obj.is_file():
                     file_split = obj.name.split('.')
-                    if len(file_split) == 2:
+                    if len(file_split) == 2:  # noqa: PLR2004
                         file_hash = file_split[0]
                         file_ext = "." + file_split[1]
                         if file_ext in FILE_EXT_WHITELIST:
                             f = self._add_video_to_cache(file_hash, file_ext, obj)
-                            if len(self._cached_files) > 20:
+                            if len(self._cached_files) > MAX_NUM_FILES_TO_PRINT:
                                 continue
-                            elif len(self._cached_files) == 20:
+                            elif len(self._cached_files) == MAX_NUM_FILES_TO_PRINT:
                                 log.info("Skip logging the other files that were found")
                             else:
                                 log.info(f"Found video {f}")
         except Exception as e:
-            log.exception(f"{str(e)} in load_file_list")
+            log.exception(f"{e!s} in load_file_list")
         log.info(f"Found {len(self._cached_files)} videos in storage")
 
     def _add_video_to_cache(self, file_hash: str, file_ext: str, file_path: Path) -> StoredVideoFile:

@@ -1,7 +1,7 @@
 import os
 from distutils.util import strtobool
 
-from videbo.misc.constants import MEGA
+from videbo.misc.constants import HTTP_CODE_OK, MEGA
 from videbo.storage.api.client import StorageClient as Client
 from videbo.storage.api.models import StorageFileInfo
 
@@ -18,9 +18,9 @@ def print_response(http_code: int) -> None:
     """
     Prints a generic response to stdout based on the given HTTP status code.
 
-    Any code other than 200 will result in a warning-style message.
+    Any code other than `HTTP_CODE_OK` will result in a warning-style message.
     """
-    if http_code == 200:
+    if http_code == HTTP_CODE_OK:
         print(f"{GREEN}Request was successful!{RESET}")
     else:
         print(
@@ -32,10 +32,27 @@ def print_response(http_code: int) -> None:
 async def show_storage_status(client: Client) -> None:
     """Requests the current status of the storage node and prints it."""
     status, data = await client.get_status()
-    if status == 200:
+    if status == HTTP_CODE_OK:
         print(data.json(indent=4))
     else:
         print_response(status)
+
+
+async def delete_orphaned_files(client: Client, *files: StorageFileInfo) -> None:
+    status, response_dict = await client.delete_files(*files)
+    if status != HTTP_CODE_OK:
+        print_response(status)
+        return
+    if response_dict["status"] == "ok":
+        print(
+            f"{GREEN}Request was successful!{RESET}\n"
+            f"All orphaned files have been deleted from storage."
+        )
+        return
+    print(f"{YELLOW}Warning!{RESET} The following files were not deleted:")
+    for file_hash in response_dict["not_deleted"]:
+        print(file_hash)
+    print("Please check the storage logs for more information.")
 
 
 async def find_orphaned_files(
@@ -69,7 +86,7 @@ async def find_orphaned_files(
         return
     print("Querying storage for orphaned files...")
     status, data = await client.get_filtered_files(orphaned=True)
-    if status != 200:
+    if status != HTTP_CODE_OK:
         print_response(status)
         return
     num_files = len(data.files)
@@ -88,26 +105,12 @@ async def find_orphaned_files(
             f"use the command with the {BOLD}--delete{RESET} flag."
         )
         return
-
-    if not yes_all and not strtobool(
+    if yes_all or strtobool(
         input("Are you sure, you want to delete them? (yes/no) ")
     ):
+        await delete_orphaned_files(client, *data.files)
+    else:
         print("Aborted.")
-        return
-    status, response_dict = await client.delete_files(*data.files)
-    if status != 200:
-        print_response(status)
-        return
-    if response_dict["status"] == "ok":
-        print(
-            f"{GREEN}Request was successful!{RESET}\n"
-            f"All orphaned files have been deleted from storage."
-        )
-        return
-    print(f"{YELLOW}Warning!{RESET} The following files were not deleted:")
-    for file_hash in response_dict["not_deleted"]:
-        print(file_hash)
-    print("Please check the storage logs for more information.")
 
 
 def list_files(*files: StorageFileInfo) -> None:
@@ -132,14 +135,14 @@ def list_files(*files: StorageFileInfo) -> None:
     print(horizontal_sep)
     for file in files:
         size_str = f"{round(file.size / MEGA, 1)} MB"
-        print(f"| {str(file):{name_length}} | {size_str:>{size_length}} |")
+        print(f"| {file!s:{name_length}} | {size_str:>{size_length}} |")
     print(horizontal_sep)
 
 
 async def show_distributor_nodes(client: Client) -> None:
     """Requests the current status of distributor nodes and prints it."""
     status, data = await client.get_distributor_nodes()
-    if status == 200:
+    if status == HTTP_CODE_OK:
         print(data.json(indent=4))
     else:
         print_response(status)

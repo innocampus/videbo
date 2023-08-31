@@ -1,7 +1,7 @@
 from __future__ import annotations
 import logging
 from collections.abc import AsyncIterator, Iterator
-from typing import Optional, TYPE_CHECKING
+from typing import ClassVar, Optional, TYPE_CHECKING
 from urllib.parse import urlencode
 
 from aiohttp.web_app import Application
@@ -9,6 +9,7 @@ from aiohttp.web_app import Application
 from videbo import settings
 from videbo.client import Client
 from videbo.exceptions import HTTPClientError, LMSInterfaceError
+from videbo.misc.constants import HTTP_CODE_OK
 from videbo.models import (
     LMSRequestJWTData,
     VideosMissingRequest,
@@ -28,7 +29,7 @@ class LMS:
     FUNCTION_QUERY_PARAMETER = "function"
     VIDEOS_CHECK_MAX_BATCH_SIZE = 10_000
 
-    _collection: dict[str, LMS] = {}
+    _collection: ClassVar[dict[str, LMS]] = {}
 
     @classmethod
     def add(cls, *urls: str) -> None:
@@ -76,7 +77,7 @@ class LMS:
             raise LMSInterfaceError(
                 f"Error trying to check video existence on {self.api_url}"
             ) from e
-        if http_code != 200:
+        if http_code != HTTP_CODE_OK:
             raise LMSInterfaceError(
                 f"Got response code {http_code} while "
                 f"attempting to check video existence on {self.api_url}"
@@ -125,6 +126,6 @@ class LMS:
                     log.warning(f"{e} occurred on {site.api_url}.")
                     raise
                 # Continue only with videos unknown to previously checked LMS:
-                hashes = response.hashes
+                hashes = response.hashes  # noqa: PLW2901
             batches[batch_idx] = hashes
         return [video for videos in batches for video in videos]

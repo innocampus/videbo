@@ -5,7 +5,7 @@ from collections.abc import AsyncIterator
 from enum import Enum
 from logging import Logger, getLogger
 from time import time
-from typing import Optional
+from typing import ClassVar, Optional
 
 from aiohttp.web_app import Application
 from pydantic import BaseModel
@@ -13,7 +13,7 @@ from pydantic import BaseModel
 from videbo import settings
 from videbo.client import Client
 from videbo.exceptions import HTTPClientError, UnknownServerStatusFormatError
-from videbo.misc.constants import MEGA
+from videbo.misc.constants import HTTP_CODE_OK, MEGA
 from videbo.models import NodeStatus
 
 
@@ -84,14 +84,18 @@ class NetworkInterfaces:
     NetworkInterfaces: a class to monitor your interfaces
     """
     # make _interfaces a singleton since they can be shared on one system
-    _instance: Optional[NetworkInterfaces] = None
-    _interfaces: dict[str, NetworkInterface] = {}
+    _instance: ClassVar[Optional[NetworkInterfaces]] = None
+    _interfaces: dict[str, NetworkInterface]
+    _last_time_network_proc: float
+    _fetch_task: Optional[Task[None]]
+    _server_status: Optional[StubStatus]
 
     def __init__(self) -> None:
         self.http_client: Client = Client()
-        self._last_time_network_proc: float = 0.0
-        self._fetch_task: Optional[Task[None]] = None
-        self._server_status: Optional[StubStatus] = None
+        self._interfaces = {}
+        self._last_time_network_proc = 0.0
+        self._fetch_task = None
+        self._server_status = None
 
     @staticmethod
     def get_instance() -> NetworkInterfaces:
@@ -126,7 +130,7 @@ class NetworkInterfaces:
                 rx_bytes_before, tx_bytes_before = interface.rx.bytes, interface.tx.bytes
                 interface.rx = InterfaceStats.parse_obj(rx_match.groupdict())
                 interface.tx = InterfaceStats.parse_obj(tx_match.groupdict())
-                if self._last_time_network_proc > 0.:
+                if self._last_time_network_proc:
                     interface.rx.update_throughput(rx_bytes_before, interval_seconds)
                     interface.tx.update_throughput(tx_bytes_before, interval_seconds)
         self._last_time_network_proc += interval_seconds
@@ -170,7 +174,7 @@ class NetworkInterfaces:
         except (HTTPClientError, ConnectionRefusedError) as e:
             log.warning("Error requesting %s: %s", url, repr(e))
             return
-        if http_code != 200:
+        if http_code != HTTP_CODE_OK:
             log.warning(f"unexpected response from {url} (return code {http_code})")
             return
         text = response_data.decode("utf-8")

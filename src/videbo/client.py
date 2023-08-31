@@ -6,13 +6,15 @@ from collections.abc import AsyncIterator
 from json.decoder import JSONDecodeError
 from time import time
 from types import TracebackType
-from typing import Any, Optional, TypeVar, Union, overload
+from typing import Any, ClassVar, Optional, TypeVar, Union, overload
 
 from aiohttp import client as aiohttp_client
 from aiohttp.web_app import Application
 from pydantic import ValidationError
 
 from videbo.exceptions import HTTPClientError
+from videbo.misc.constants import HTTP_CODE_OK
+from videbo.misc.functions import is_subclass
 from videbo.models import BaseRequestModel, BaseResponseModel, RequestJWTData, Role, TokenIssuer
 
 
@@ -47,7 +49,7 @@ class Client:
     cache stores tokens along with their expiration date-time.
     Serves as a convenience wrapper around the `aiohttp.ClientSession`.
     """
-    _instances: list[Client] = []
+    _instances: ClassVar[list[Client]] = []
 
     _session_kwargs: dict[str, Any]
     _session: aiohttp_client.ClientSession
@@ -316,7 +318,7 @@ class Client:
             if log_connection_error:
                 log.exception(f"{e.__class__.__name__} during web request to {url}")
             raise HTTPClientError() from e
-        if isinstance(return_model, type) and issubclass(return_model, BaseResponseModel):
+        if is_subclass(return_model, BaseResponseModel):
             return response.status, return_model.parse_obj(response_data)
         return response.status, response_data
 
@@ -353,7 +355,7 @@ class Client:
         kwargs.setdefault("headers", {})
         self.update_auth_header(kwargs["headers"], jwt)
         async with self._session.request("GET", url, **kwargs) as response:
-            if response.status != 200:
+            if response.status != HTTP_CODE_OK:
                 log.error(
                     "HTTP status %s while requesting file from %s",
                     response.status,

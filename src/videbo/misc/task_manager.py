@@ -1,7 +1,7 @@
 from asyncio import CancelledError, Task, create_task
 from collections.abc import Coroutine
 from logging import getLogger
-from typing import Any, Optional, TypeVar
+from typing import Any, ClassVar, Optional, TypeVar
 
 
 log = getLogger(__name__)
@@ -10,7 +10,7 @@ _T = TypeVar("_T")
 
 
 class TaskManager:
-    _tasks: set[Task[Any]] = set()
+    _tasks: ClassVar[set[Task[Any]]] = set()
 
     @classmethod
     def cancel_all(cls) -> None:

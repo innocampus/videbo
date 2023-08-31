@@ -56,7 +56,7 @@ class BaseSettingsTestCase(TestCase):
             config.CONFIG_FILE_PATHS_PARAM: add_config_file_paths
         })
         self.assertListEqual(
-            config.DEFAULT_CONFIG_FILE_PATHS + [Path("foo"), Path("bar")],
+            [*config.DEFAULT_CONFIG_FILE_PATHS, Path("foo"), Path("bar")],
             obj._config_file_paths,
         )
         mock_super___init__.assert_called_once_with(**kwargs)

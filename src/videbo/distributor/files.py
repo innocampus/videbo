@@ -13,7 +13,7 @@ from aiohttp.web_app import Application
 
 from videbo import settings
 from videbo.client import Client
-from videbo.misc.constants import MEGA
+from videbo.misc.constants import MAX_NUM_FILES_TO_PRINT, MEGA
 from videbo.misc.functions import get_free_disk_space, rel_path
 from videbo.misc.task_manager import TaskManager
 from videbo.models import Role, TokenIssuer
@@ -23,6 +23,8 @@ from videbo.distributor.api.models import DistributorCopyFileStatus
 
 
 log = getLogger(__name__)
+
+COPY_STATUS_UPDATE_PERIOD = 120
 
 
 class CopyFileStatus:
@@ -86,10 +88,10 @@ class DistributorFileController:
                 file.file_size = obj.stat().st_size
                 self.files[file_hash] = file
                 self.files_total_size += file.file_size
-                if len(self.files) < 20:
+                if len(self.files) < MAX_NUM_FILES_TO_PRINT:
                     log.info(f"Found video {obj}")
 
-        if len(self.files) >= 20:
+        if len(self.files) >= MAX_NUM_FILES_TO_PRINT:
             log.info("Skip logging the other files that were found")
         log.info(f"Found {len(self.files)} videos")
 
@@ -204,7 +206,7 @@ class DistributorFileController:
                     copy_status.loaded_bytes += len(data)
                     await get_running_loop().run_in_executor(None, file_obj.write, data)
                     # If the download is taking a lot of time, periodically print status.
-                    if (time() - last_update_time) > 120:
+                    if (time() - last_update_time) > COPY_STATUS_UPDATE_PERIOD:
                         last_update_time = time()
                         loaded_mb = copy_status.loaded_bytes / MEGA
                         percent = 100 * (copy_status.loaded_bytes / expected_file_size)

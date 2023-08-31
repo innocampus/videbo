@@ -145,7 +145,7 @@ class WebserverSettings(SettingsBaseModel):
 
 
 class LMSSettings(SettingsBaseModel):
-    api_urls: list[AnyHttpUrl] = []
+    api_urls: list[AnyHttpUrl] = Field(default_factory=list)
 
     _norm_lms_api_urls = validator(
         "api_urls",
@@ -166,10 +166,11 @@ class VideoSettings(SettingsBaseModel):
     binary_ffmpeg: str = 'ffmpeg'
     binary_ffprobe: str = 'ffprobe'
     check_user: Optional[str] = None
-    mime_types_allowed: set[str] = {'video/mp4', 'video/webm'}
-    container_formats_allowed: set[str] = {'mp4', 'webm'}
-    video_codecs_allowed: set[str] = {'h264', 'vp8'}
-    audio_codecs_allowed: set[str] = {'aac', 'vorbis'}
+    mime_types_allowed: set[str] = {'video/mp4', 'video/webm'}  # noqa: RUF012
+    container_formats_allowed: set[str] = {'mp4', 'webm'}       # noqa: RUF012
+    video_codecs_allowed: set[str] = {'h264', 'vp8'}            # noqa: RUF012
+    audio_codecs_allowed: set[str] = {'aac', 'vorbis'}          # noqa: RUF012
+
 
     @validator("mime_types_allowed", each_item=True)
     def ensure_valid_mime_type(cls, v: str) -> str:
@@ -189,7 +190,7 @@ class VideoSettings(SettingsBaseModel):
 
 
 class DistributionSettings(SettingsBaseModel):
-    static_node_base_urls: list[AnyHttpUrl] = []
+    static_node_base_urls: list[AnyHttpUrl] = Field(default_factory=list)
     copy_views_threshold: int = Field(3, ge=0)
     views_retention_minutes: float = Field(240., gt=0)
     views_update_freq_minutes: float = Field(30., gt=0)

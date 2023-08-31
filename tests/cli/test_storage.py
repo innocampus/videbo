@@ -71,6 +71,7 @@ class ModuleTestCase(IsolatedAsyncioTestCase):
         mock_data.json.assert_not_called()
         mock_print_resp.assert_called_once_with(code)
 
+    # TODO: Decouple from and write separate test for `delete_orphaned_files`
     @patch.object(storage, "list_files")
     @patch.object(storage, "print_response")
     @patch.object(storage, "input")

@@ -243,7 +243,7 @@ async def create_user_subprocess(
     By default `stdout` and `stderr` are both set to `subprocess.DEVNULL`.
     """
     if sudo_user:
-        args = ("-u", sudo_user, program) + args
+        args = ("-u", sudo_user, program, *args)
         program = "sudo"
     kwargs.setdefault("stdout", DEVNULL)
     kwargs.setdefault("stderr", DEVNULL)

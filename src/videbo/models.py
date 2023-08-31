@@ -98,7 +98,7 @@ class BaseJWTData(VideboBaseModel):
                     return TokenIssuer[v]
                 except KeyError:
                     raise ValueError(f"Invalid issuer '{v}'") from None
-        raise TypeError(f"{repr(v)} is not a valid issuer type")
+        raise TypeError(f"{v!r} is not a valid issuer type")
 
     @property
     def internal(self) -> bool:
@@ -233,7 +233,7 @@ class RequestJWTData(BaseJWTData):
                 return Role[v]
             except KeyError:
                 raise ValueError(f"Invalid role name '{v}'") from None
-        raise TypeError(f"{repr(v)} is not a valid role type")
+        raise TypeError(f"{v!r} is not a valid role type")
 
     @validator('role')
     def role_appropriate(cls, v: Role, values: dict[str, Any]) -> Role:

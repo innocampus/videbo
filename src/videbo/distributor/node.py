@@ -4,7 +4,7 @@ from typing import Optional
 
 from videbo import settings
 from videbo.exceptions import HTTPClientError
-from videbo.misc.constants import MEGA
+from videbo.misc.constants import HTTP_CODE_OK, MEGA
 from videbo.misc.periodic import Periodic
 from videbo.misc.task_manager import TaskManager
 from videbo.models import HashedFileModel
@@ -230,7 +230,7 @@ class DistributorNode:
         set to bad, the error is logged and consecutive connection errors are
         set to no longer be logged.
 
-        If the endpoint responds with anything other than status code 200,
+        If the endpoint responds with anything other than the `HTTP_CODE_OK`,
         the node state is set to bad and the response code is error-logged.
         """
         try:
@@ -240,11 +240,11 @@ class DistributorNode:
         except HTTPClientError as e:
             self._log_connection_error = False
             if self.is_good:
-                log.error(f"{repr(e)} while fetching status of {self}")
+                log.error(f"{e!r} while fetching status of {self}")
                 await self.set_node_state(False)
             return
         self._log_connection_error = True
-        if code == 200:
+        if code == HTTP_CODE_OK:
             self._status = resp_data
             if not self.is_good:
                 log.info(f"Connected to {self} ({self.free_space} MB free)")
@@ -287,9 +287,9 @@ class DistributorNode:
         try:
             code, resp_data = await self.http_client.get_files_list()
         except HTTPClientError as e:
-            log.error(f"{repr(e)} while fetching files list of {self}")
+            log.error(f"{e!r} while fetching files list of {self}")
             return
-        if code != 200:
+        if code != HTTP_CODE_OK:
             log.error(f"HTTP code {code} while fetching files list of {self}")
             return
         for file in resp_data.files:
@@ -363,9 +363,9 @@ class DistributorNode:
         try:
             code = await self.http_client.copy(file, from_url=from_url)
         except HTTPClientError as e:
-            log.error(f"{repr(e)} while requesting file download to {self}")
+            log.error(f"{e!r} while requesting file download to {self}")
         else:
-            if code == 200:
+            if code == HTTP_CODE_OK:
                 self._files_hosted.add(file)  # Node can now serve the file
                 log.info(f"Downloaded `{file}` from `{from_url}` to {self}")
             else:
@@ -394,8 +394,8 @@ class DistributorNode:
         """
         Makes a request to the node's API to get delete certain files.
 
-        An error during the request or any HTTP status code other than 200
-        are treated as failure to trigger deletion.
+        An error during the request or any HTTP status code other than
+        `HTTP_CODE_OK` are treated as failure to trigger deletion.
 
         If successful, the internal `status.free_space` is updated based on
         the response data and the actual number of deleted files is logged.
@@ -422,9 +422,9 @@ class DistributorNode:
         try:
             code, resp_data = await self.http_client.delete(*files, safe=safe)
         except HTTPClientError as e:
-            log.error(f"{repr(e)} while requesting file deletion from {self}")
+            log.error(f"{e!r} while requesting file deletion from {self}")
             raise DistributionError from e
-        if code == 200:
+        if code == HTTP_CODE_OK:
             self.status.free_space = resp_data.free_space
             num_removed = count - len(resp_data.files_skipped)
             log.info(f"Removed {num_removed} file(s) from {self}")
