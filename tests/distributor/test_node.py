@@ -2,6 +2,7 @@ import logging
 from unittest import IsolatedAsyncioTestCase
 from unittest.mock import AsyncMock, MagicMock, PropertyMock, call, create_autospec, patch
 
+from videbo.misc.constants import MEGA
 from videbo.distributor import node
 from ..sortable_mock import SortableMock
 
@@ -263,7 +264,7 @@ class DistributorNodeTestCase(IsolatedAsyncioTestCase):
         # Already distributor:
         mock_is_distributor_for.return_value = True
         mock_free_space.return_value = 1
-        mock_file = MagicMock(size=15 * node.MEGA)
+        mock_file = MagicMock(size=15 * MEGA)
         obj = node.DistributorNode(_FOOBAR)
         obj._enabled = True
         obj._good = False
@@ -938,9 +939,9 @@ class DistributorNodeTestCase(IsolatedAsyncioTestCase):
         mock_free_space.return_value = 1
         mock_total_space.return_value = 4
 
-        file1 = SortableMock("views", views=10, size=0.9 * node.MEGA)
-        file2 = SortableMock("views", views=20, size=0.5 * node.MEGA)
-        file3 = SortableMock("views", views=30, size=0.2 * node.MEGA)
+        file1 = SortableMock("views", views=10, size=0.9 * MEGA)
+        file2 = SortableMock("views", views=20, size=0.5 * MEGA)
+        file3 = SortableMock("views", views=30, size=0.2 * MEGA)
         obj._files_hosted = [file2, file1, file3]
         # We expect `file1` to be marked for deletion first because it will
         # end at the end of the sorted list, followed by `file2`, at which

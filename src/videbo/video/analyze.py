@@ -15,7 +15,7 @@ from videbo.exceptions import (
     MimeTypeNotAllowed,
     VideoNotAllowed,
 )
-from videbo.misc import JPG_EXT
+from videbo.misc.constants import JPG_EXT
 from videbo.misc.functions import (
     copy_file,
     create_user_subprocess,

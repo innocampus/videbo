@@ -1,3 +1,8 @@
+JPG_EXT = ".jpg"  # for thumbnails
+
+# TODO: Introduce consistency between binary and decimal prefixes
+MEGA = 1024 * 1024
+
 VIDEO_FILE_EXT_MIME_TYPE = {
     "3g2": "video/3gpp2",
     "3gp": "video/3gpp",

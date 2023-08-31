@@ -13,7 +13,7 @@ from pydantic import BaseModel
 from videbo import settings
 from videbo.client import Client
 from videbo.exceptions import HTTPClientError, UnknownServerStatusFormatError
-from videbo.misc import MEGA
+from videbo.misc.constants import MEGA
 from videbo.models import NodeStatus
 
 

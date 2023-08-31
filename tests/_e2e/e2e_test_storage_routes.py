@@ -8,7 +8,7 @@ from hashlib import md5
 from aiohttp import FormData
 
 from videbo import settings
-from videbo.misc import MEGA
+from videbo.misc.constants import MEGA
 from videbo.misc.functions import rel_path
 from videbo.models import Role, TokenIssuer
 from videbo.storage.api.models import (

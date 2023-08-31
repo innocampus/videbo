@@ -14,8 +14,7 @@ from pydantic.env_settings import SettingsSourceCallable
 from pydantic.fields import Field, ModelField, SHAPE_LIST, SHAPE_SET
 from pydantic.networks import AnyHttpUrl, IPvAnyAddress
 
-from videbo.misc import MEGA
-from videbo.misc.constants import VIDEO_CONTAINER_FORMATS, VIDEO_MIME_TYPES
+from videbo.misc.constants import MEGA, VIDEO_CONTAINER_FORMATS, VIDEO_MIME_TYPES
 from videbo.misc.functions import is_subclass
 from videbo.types import PathT
 

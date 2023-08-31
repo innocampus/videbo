@@ -11,7 +11,7 @@ from aiohttp.web_fileresponse import FileResponse
 
 from videbo import settings
 from videbo.auth import ensure_auth
-from videbo.misc import MEGA
+from videbo.misc.constants import MEGA
 from videbo.misc.functions import rel_path
 from videbo.models import HashedFilesList, Role, RequestJWTData
 from videbo.network import NetworkInterfaces

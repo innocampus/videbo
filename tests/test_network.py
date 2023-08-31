@@ -5,7 +5,7 @@ from unittest.mock import AsyncMock, MagicMock, call, patch
 
 from tests.silent_log import SilentLogMixin
 from videbo.exceptions import HTTPClientError
-from videbo.misc import MEGA
+from videbo.misc.constants import MEGA
 from videbo import network
 
 

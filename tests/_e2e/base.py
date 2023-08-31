@@ -9,7 +9,7 @@ from aiohttp.web import Application
 
 from tests.silent_log import SilentLogMixin
 from videbo import settings
-from videbo.misc import MEGA
+from videbo.misc.constants import MEGA
 from videbo.models import BaseJWTData
 from videbo.storage.api.routes import routes
 from videbo.web import get_application

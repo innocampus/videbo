@@ -3,7 +3,7 @@ from logging import getLogger
 from pathlib import Path
 
 from videbo import settings
-from videbo.misc import MEGA
+from videbo.misc.constants import MEGA
 from videbo.misc.functions import run_in_default_executor
 from videbo.misc.lru_dict import BytesLimitLRU
 

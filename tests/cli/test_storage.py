@@ -2,6 +2,7 @@ from io import StringIO
 from unittest import IsolatedAsyncioTestCase
 from unittest.mock import AsyncMock, MagicMock, patch
 
+from videbo.misc.constants import MEGA
 from videbo.cli import storage
 
 
@@ -146,8 +147,8 @@ class ModuleTestCase(IsolatedAsyncioTestCase):
         ######################
         # Two orphaned files #
 
-        file1 = MagicMock(size=storage.MEGA)
-        file2 = MagicMock(size=2 * storage.MEGA)
+        file1 = MagicMock(size=MEGA)
+        file2 = MagicMock(size=2 * MEGA)
         mock_get_filtered_files.return_value = (200, MagicMock(files=[file1, file2]))
         self.assertIsNone(
             await storage.find_orphaned_files(mock_client, delete=False)
@@ -286,11 +287,11 @@ class ModuleTestCase(IsolatedAsyncioTestCase):
         file_str_2 = "foobarbafoobarbafoobarbafoobarbafoobarbafoobarbafoobarbafoobarba.mkv"
         file_1 = MagicMock(
             __str__=MagicMock(return_value=file_str_1),
-            size=2.5 * storage.MEGA,
+            size=2.5 * MEGA,
         )
         file_2 = MagicMock(
             __str__=MagicMock(return_value=file_str_2),
-            size=6.1111111111111 * storage.MEGA,
+            size=6.1111111111111 * MEGA,
         )
         expected_output = (
             "",

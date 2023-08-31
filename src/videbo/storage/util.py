@@ -12,7 +12,7 @@ from videbo import settings
 from videbo.client import Client
 from videbo.exceptions import LMSInterfaceError
 from videbo.lms_api import LMS
-from videbo.misc import JPG_EXT, MEGA
+from videbo.misc.constants import JPG_EXT, MEGA
 from videbo.misc.functions import get_free_disk_space, move_file, rel_path, run_in_default_executor
 from videbo.misc.periodic import Periodic
 from videbo.misc.task_manager import TaskManager

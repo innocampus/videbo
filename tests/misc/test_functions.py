@@ -7,6 +7,7 @@ from unittest import IsolatedAsyncioTestCase
 from unittest.mock import AsyncMock, MagicMock, patch
 
 from videbo.misc import functions
+from videbo.misc.constants import MEGA
 
 
 class FunctionsTestCase(IsolatedAsyncioTestCase):
@@ -17,7 +18,7 @@ class FunctionsTestCase(IsolatedAsyncioTestCase):
             f_bavail=100_000,
             f_frsize=1000,
         )
-        expected_output = 100_000_000 / functions.MEGA
+        expected_output = 100_000_000 / MEGA
         output = await functions.get_free_disk_space(test_path)
         self.assertEqual(expected_output, output)
         mock_statvfs.assert_called_once_with(test_path)

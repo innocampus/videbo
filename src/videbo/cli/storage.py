@@ -1,7 +1,7 @@
 import os
 from distutils.util import strtobool
 
-from videbo.misc import MEGA
+from videbo.misc.constants import MEGA
 from videbo.storage.api.client import StorageClient as Client
 from videbo.storage.api.models import StorageFileInfo
 

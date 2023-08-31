@@ -13,9 +13,7 @@ from typing_extensions import TypeGuard
 
 from videbo.exceptions import InvalidRouteSignature
 from videbo.types import ExtendedHandler, PathT
-from .constants import VIDEO_FILE_EXT_MIME_TYPE
-from . import MEGA
-
+from .constants import MEGA, VIDEO_FILE_EXT_MIME_TYPE
 
 __all__ = [
     "run_in_default_executor",

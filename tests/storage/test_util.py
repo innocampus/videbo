@@ -9,6 +9,7 @@ from tempfile import mkdtemp
 from typing import TypeVar
 
 from tests.silent_log import SilentLogMixin
+from videbo.misc.constants import JPG_EXT, MEGA
 from videbo.storage import util
 
 
@@ -263,7 +264,7 @@ class FileStorageTestCase(SilentLogMixin, IsolatedAsyncioTestCase):
 
     def test_files_total_size_mb(self) -> None:
         expected_output = 2.1  # MB
-        self.storage._cached_files_total_size = expected_output * util.MEGA
+        self.storage._cached_files_total_size = expected_output * MEGA
         self.assertEqual(expected_output, self.storage.files_total_size_mb)
 
     def test_files_count(self) -> None:
@@ -409,7 +410,7 @@ class FileStorageTestCase(SilentLogMixin, IsolatedAsyncioTestCase):
         output = self.storage.get_perm_thumbnail_path(FOO, BAR, num=num)
         self.assertEqual(expected_output, output)
         mock_get_file.assert_called_once_with(FOO, BAR)
-        mock_get_path.assert_called_once_with(f"{FOO}_{num}{util.JPG_EXT}", temp=False)
+        mock_get_path.assert_called_once_with(f"{FOO}_{num}{JPG_EXT}", temp=False)
 
     @patch.object(util.FileStorage, "get_path")
     def test_get_temp_thumbnail_path(self, mock_get_path: MagicMock) -> None:
@@ -418,7 +419,7 @@ class FileStorageTestCase(SilentLogMixin, IsolatedAsyncioTestCase):
         num = 42
         output = self.storage.get_temp_thumbnail_path(FOO, num=num)
         self.assertEqual(expected_output, output)
-        mock_get_path.assert_called_once_with(f"{FOO}_{num}{util.JPG_EXT}", temp=True)
+        mock_get_path.assert_called_once_with(f"{FOO}_{num}{JPG_EXT}", temp=True)
 
     @patch.object(util, "run_in_default_executor")
     @patch.object(util.FileStorage, "get_path")
@@ -461,7 +462,7 @@ class FileStorageTestCase(SilentLogMixin, IsolatedAsyncioTestCase):
         ))
         vid_storage_calls = [call(FOO + BAR)]
         thumb_storage_calls = [
-            call(f"{FOO}_{num}{util.JPG_EXT}")
+            call(f"{FOO}_{num}{JPG_EXT}")
             for num in range(thumb_count)
         ]
         self.assertListEqual(
@@ -521,7 +522,7 @@ class FileStorageTestCase(SilentLogMixin, IsolatedAsyncioTestCase):
         ))
         self.assertListEqual(
             [
-                call(f"{FOO}_{num}{util.JPG_EXT}", temp=False)
+                call(f"{FOO}_{num}{JPG_EXT}", temp=False)
                 for num in range(test_count)
             ],
             mock_get_path.call_args_list,

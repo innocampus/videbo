@@ -3,7 +3,7 @@ from pathlib import Path
 from unittest import IsolatedAsyncioTestCase
 from unittest.mock import AsyncMock, MagicMock, patch
 
-from videbo.misc import MEGA
+from videbo.misc.constants import MEGA
 from videbo.storage import thumbnail_cache
 
 

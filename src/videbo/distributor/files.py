@@ -13,7 +13,7 @@ from aiohttp.web_app import Application
 
 from videbo import settings
 from videbo.client import Client
-from videbo.misc import MEGA
+from videbo.misc.constants import MEGA
 from videbo.misc.functions import get_free_disk_space, rel_path
 from videbo.misc.task_manager import TaskManager
 from videbo.models import Role, TokenIssuer

@@ -4,7 +4,7 @@ from typing import Optional
 
 from videbo import settings
 from videbo.exceptions import HTTPClientError
-from videbo.misc import MEGA
+from videbo.misc.constants import MEGA
 from videbo.misc.periodic import Periodic
 from videbo.misc.task_manager import TaskManager
 from videbo.models import HashedFileModel

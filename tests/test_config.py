@@ -6,6 +6,7 @@ from pydantic import ValidationError
 
 from tests.silent_log import SilentLogMixin
 from videbo import config
+from videbo.misc.constants import MEGA
 
 
 class SettingsBaseModelTestCase(TestCase):
@@ -144,7 +145,7 @@ class VideoSettingsTestCase(TestCase):
 
     def test_max_file_size_bytes(self) -> None:
         in_mb = 69.420
-        in_b = int(in_mb * config.MEGA)
+        in_b = int(in_mb * MEGA)
         obj = config.VideoSettings(max_file_size_mb=in_mb)
         self.assertEqual(in_b, obj.max_file_size_bytes)
 
