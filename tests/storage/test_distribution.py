@@ -278,7 +278,7 @@ class DistributionControllerTestCase(IsolatedAsyncioTestCase):
         # No source available; storage too busy:
         mock_get_node.side_effect = dst, None
         mock_partial.side_effect = can_receive, can_provide
-        tx_load = 0.991
+        tx_load = distribution.settings.distribution.max_load_file_copy + 0.01
         with self.assertLogs(distribution.log, logging.WARNING):
             output = obj.handle_distribution(mock_file, tx_load)
         self.assertIsNone(output)

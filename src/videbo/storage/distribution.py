@@ -214,11 +214,13 @@ class DistributionController:
         can_provide = partial(DistributorNode.can_provide_copy, file=file)
         from_node = self.get_node(can_provide)
         # If there is no `from_node`, storage may serve as source:
-        tx_load_threshold = 0.99
-        if from_node is None and storage_tx_load > tx_load_threshold:
+        if (
+            from_node is None
+            and storage_tx_load > settings.distribution.max_load_file_copy
+        ):
             log.warning(
-                f"Cannot distribute video; TX load {storage_tx_load:.1%} "
-                f"above threshold {tx_load_threshold:.1%}"
+                f"Cannot copy video; TX load {storage_tx_load:.1%} above "
+                f"threshold {settings.distribution.max_load_file_copy:.1%}"
             )
             return None
         to_node.put_video(file, from_node=from_node)

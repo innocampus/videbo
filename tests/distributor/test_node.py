@@ -307,13 +307,22 @@ class DistributorNodeTestCase(IsolatedAsyncioTestCase):
         mock_is_distributor_for.assert_called_once_with(mock_file)
         mock_free_space.assert_called_once_with()
 
+    @patch.object(node, "settings")
+    @patch.object(node.DistributorNode, "tx_load", new_callable=PropertyMock)
     @patch.object(node.DistributorNode, "__contains__")
-    def test_can_provide_copy(self, mock___contains__: MagicMock) -> None:
-        mock___contains__.return_value = True
+    def test_can_provide_copy(
+        self,
+        mock___contains__: MagicMock,
+        mock_tx_load: PropertyMock,
+        mock_settings: MagicMock,
+    ) -> None:
         mock_file = MagicMock()
+        mock___contains__.return_value = True
         obj = node.DistributorNode(_FOOBAR)
         obj._enabled = True
         obj._good = True
+        mock_tx_load.return_value = 0.89999
+        mock_settings.distribution.max_load_file_copy = 0.9
         self.assertTrue(obj.can_provide_copy(mock_file))
 
         mock___contains__.return_value = False
@@ -323,13 +332,27 @@ class DistributorNodeTestCase(IsolatedAsyncioTestCase):
         obj._good = False
         self.assertFalse(obj.can_provide_copy(mock_file))
 
+        obj._good = True
+        obj._enabled = False
+        self.assertFalse(obj.can_provide_copy(mock_file))
+
+        obj._enabled = True
+        mock_tx_load.return_value = 0.90001
+        self.assertFalse(obj.can_provide_copy(mock_file))
+
+    @patch.object(node, "settings")
     @patch.object(node.DistributorNode, "tx_load", new_callable=PropertyMock)
-    def test_can_serve(self, mock_tx_load: PropertyMock) -> None:
+    def test_can_serve(
+        self,
+        mock_tx_load: PropertyMock,
+        mock_settings: MagicMock,
+    ) -> None:
         mock_file = MagicMock()
         obj = node.DistributorNode(_FOOBAR)
         obj._enabled = True
         obj._good = True
-        mock_tx_load.return_value = 0.5
+        mock_tx_load.return_value = 0.49999
+        mock_settings.max_load_file_serving = 0.5
         obj._files_hosted = {mock_file}
         self.assertTrue(obj.can_serve(mock_file))
 
@@ -345,7 +368,7 @@ class DistributorNodeTestCase(IsolatedAsyncioTestCase):
         self.assertFalse(obj.can_serve(mock_file))
 
         obj._enabled = True
-        mock_tx_load.return_value = 0.951
+        mock_tx_load.return_value = 0.50001
         self.assertFalse(obj.can_serve(mock_file))
 
     @patch.object(node.DistributorNode, "set_node_state")

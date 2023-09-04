@@ -195,10 +195,12 @@ class DistributionSettings(SettingsBaseModel):
     views_retention_minutes: float = Field(240., gt=0)
     views_update_freq_minutes: float = Field(30., gt=0)
     node_cleanup_freq_minutes: float = Field(240., gt=0)
-    free_space_target_ratio: float = Field(0.1, ge=0)
+    free_space_target_ratio: float = Field(0.1, ge=0, le=1)
     max_parallel_copying_tasks: int = Field(20, ge=1)
     leave_free_space_mb: float = Field(4000.0, ge=0)
     last_request_safety_minutes: float = Field(240., ge=0)
+    max_load_file_copy: float = Field(0.99, gt=0, le=1)
+    load_threshold_delayed_redirect: float = Field(0.5, ge=0, le=1)
 
     _norm_node_urls = validator(
         "static_node_base_urls",
@@ -224,6 +226,7 @@ class Settings(BaseSettings):
     max_temp_storage_hours: float = Field(12., gt=0)
     temp_file_cleanup_freq_hours: float = Field(1., gt=0)
     tx_max_rate_mbit: float = Field(20.0, gt=0)
+    max_load_file_serving: float = Field(0.95, gt=0, le=1)
     network_info_fetch_interval: float = Field(10.0, gt=0)
     webserver: WebserverSettings = WebserverSettings()
     lms: LMSSettings = LMSSettings()

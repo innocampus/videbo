@@ -210,11 +210,20 @@ class DistributorNode:
         Returns `False`, if the node does not have a (full) copy of the `file`
         or if it is disabled or in a bad state.
         """
-        return file in self and self._enabled and self._good
+        return (
+            file in self
+            and self._enabled
+            and self._good
+            and self.tx_load <= settings.distribution.max_load_file_copy
+        )
 
     def can_serve(self, file: StoredVideoFile) -> bool:
         """`True`, if the node is enabled, under 95 % load and reachable"""
-        if not (self._enabled and self._good and self.tx_load < 0.95):
+        if not (
+            self._enabled
+            and self._good
+            and self.tx_load <= settings.max_load_file_serving
+        ):
             return False
         return file in self._files_hosted or file in self._files_loading
 

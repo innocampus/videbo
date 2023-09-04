@@ -19,7 +19,7 @@ class RedirectToDistributorTestCase(TestCase):
             mock_request,
             mock_node,
             MagicMock(),
-            MagicMock(),
+            log=MagicMock(),
         )
         self.assertEqual(expected_url, obj.location)
         mock_extract_jwt_from_request.assert_called_once_with(mock_request)
@@ -35,7 +35,7 @@ class RedirectToDistributorTestCase(TestCase):
             mock_request,
             mock_node,
             MagicMock(),
-            MagicMock(),
+            log=MagicMock(),
         )
         self.assertEqual(expected_url, obj.location)
         mock_extract_jwt_from_request.assert_called_once_with(mock_request)

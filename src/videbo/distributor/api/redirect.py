@@ -15,6 +15,7 @@ class RedirectToDistributor(HTTPFound):
         request: Request,
         node: DistributorNode,
         file: StoredVideoFile,
+        *,
         log: Logger,
     ) -> None:
         """

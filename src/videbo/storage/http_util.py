@@ -186,7 +186,7 @@ async def save_temp_and_get_response(
 
 def ensure_acceptable_load(
     tx_load: float,
-    tx_load_threshold: float,
+    tx_load_threshold: float = settings.max_load_file_serving,
     log: Logger = _log,
 ) -> None:
     """Raises `HTTPServiceUnavailable` (503) if load exceeds threshold."""
@@ -235,30 +235,30 @@ async def handle_video_request(
         `HTTPServiceUnavailable` (503)
             if all distributors and the storage node are too busy
     """
-    own_tx_load = NetworkInterfaces.get_instance().get_tx_load() or 0.
+    tx_load = NetworkInterfaces.get_instance().get_tx_load() or 0.
     dist_controller = FileStorage.get_instance().distribution_controller
-    dist_controller.handle_distribution(file, own_tx_load)
+    dist_controller.handle_distribution(file, tx_load)
     if request.http_range.start is not None and request.http_range.start > 0:
         # Never redirect requests for later parts of the video
-        ensure_acceptable_load(own_tx_load, 0.95, log=log)
+        ensure_acceptable_load(tx_load, log=log)
         return  # Serve file
     node, has_complete_file = dist_controller.get_node_to_serve(file)
     if node is None:
-        # Found no distribution node that has the file and can serve it now
-        ensure_acceptable_load(own_tx_load, 0.9, log=log)
+        # Found no distribution node that has the file or is downloading it
+        ensure_acceptable_load(tx_load, log=log)
         return  # Serve file
     if has_complete_file:
         # Found distribution node that can serve the file immediately
-        raise RedirectToDistributor(request, node, file, log)
+        raise RedirectToDistributor(request, node, file, log=log)
     # Only found a distribution that is currently downloading the file
-    if own_tx_load <= 0.5:
+    if tx_load <= settings.distribution.load_threshold_delayed_redirect:
         return  # Serve file
     # Storage is fairly busy; we wait a moment to give the distributor
     # enough time to process the request to copy the file to it;
     # then we redirect to that node, knowing that the client will have
     # to wait until the file was fully copied to the node
     await async_sleep(1)
-    raise RedirectToDistributor(request, node, file, log)
+    raise RedirectToDistributor(request, node, file, log=log)
 
 
 async def verify_file_exists(path: Path, log: Logger = _log) -> None:
@@ -296,6 +296,7 @@ async def handle_thumbnail_request(
     if jwt_data.thumb_id is None:
         log.warning("JWT missing `thumb_id`")
         raise HTTPBadRequest()
+    # TODO: Consider checking file serving load threshold here too
     hash_, ext, num = jwt_data.hash, jwt_data.file_ext, jwt_data.thumb_id
     file_storage = FileStorage.get_instance()
     if jwt_data.type == FileType.THUMBNAIL:

@@ -274,6 +274,139 @@ class HTTPUtilTestCase(SilentLogMixin, IsolatedAsyncioTestCase):
                 await http_util.verify_file_exists(path)
         mock_run_in_default_executor.assert_awaited_once_with(path.is_file)
 
+    def test_ensure_acceptable_load(self) -> None:
+        # Should just pass:
+        http_util.ensure_acceptable_load(0.89999, 0.9)
+
+        with self.assertLogs(http_util._log, logging.WARNING):
+            with self.assertRaises(http_util.HTTPServiceUnavailable):
+                http_util.ensure_acceptable_load(0.90001, 0.9)
+
+    @patch.object(http_util, "RedirectToDistributor")
+    @patch.object(http_util, "ensure_acceptable_load")
+    @patch.object(http_util.FileStorage, "get_instance")
+    @patch.object(http_util.NetworkInterfaces, "get_instance")
+    async def test_handle_video_request(
+        self,
+        mock_get_ni_instance: MagicMock,
+        mock_get_fs_instance: MagicMock,
+        mock_ensure_acceptable_load: MagicMock,
+        mock_redirect_exception_cls: MagicMock,
+    ) -> None:
+        # Set the load to the threshold value:
+        load = http_util.settings.distribution.load_threshold_delayed_redirect
+        mock_network_interfaces = MagicMock(
+            get_tx_load=MagicMock(return_value=load)
+        )
+        mock_get_ni_instance.return_value = mock_network_interfaces
+        mock_dist_controller = MagicMock()
+        mock_get_fs_instance.return_value = MagicMock(
+            distribution_controller=mock_dist_controller
+        )
+        test_file = MagicMock()
+
+        # Should return early because the range start is > 0:
+        test_request = MagicMock(http_range=MagicMock(start=1))
+        await http_util.handle_video_request(test_request, test_file)
+        mock_dist_controller.handle_distribution.assert_called_once_with(
+            test_file,
+            load,
+        )
+        mock_ensure_acceptable_load.assert_called_once_with(
+            load,
+            log=http_util._log,
+        )
+        mock_dist_controller.get_node_to_serve.assert_not_called()
+
+        mock_dist_controller.handle_distribution.reset_mock()
+        mock_ensure_acceptable_load.reset_mock()
+
+        # Should return early because no distributor node was found:
+        test_request.http_range.start = None
+        mock_dist_controller.get_node_to_serve.return_value = None, False
+        await http_util.handle_video_request(test_request, test_file)
+        mock_dist_controller.handle_distribution.assert_called_once_with(
+            test_file,
+            load,
+        )
+        mock_ensure_acceptable_load.assert_called_once_with(
+            load,
+            log=http_util._log,
+        )
+        mock_dist_controller.get_node_to_serve.assert_called_once_with(
+            test_file
+        )
+
+        mock_dist_controller.handle_distribution.reset_mock()
+        mock_ensure_acceptable_load.reset_mock()
+        mock_dist_controller.get_node_to_serve.reset_mock()
+
+        # Should redirect because a distributor node has the file:
+        node = MagicMock()
+        mock_dist_controller.get_node_to_serve.return_value = node, True
+        class FakeRedirect(Exception): ...
+        mock_redirect_exception_cls.return_value = FakeRedirect()
+        with self.assertRaises(FakeRedirect):
+            await http_util.handle_video_request(test_request, test_file)
+        mock_dist_controller.handle_distribution.assert_called_once_with(
+            test_file,
+            load,
+        )
+        mock_ensure_acceptable_load.assert_not_called()
+        mock_dist_controller.get_node_to_serve.assert_called_once_with(
+            test_file
+        )
+        mock_redirect_exception_cls.assert_called_once_with(
+            test_request,
+            node,
+            test_file,
+            log=http_util._log,
+        )
+
+        mock_dist_controller.handle_distribution.reset_mock()
+        mock_dist_controller.get_node_to_serve.reset_mock()
+        mock_redirect_exception_cls.reset_mock()
+
+        # Should return because dist. node does not have the full file yet
+        # and storage load is not above threshold:
+        mock_dist_controller.get_node_to_serve.return_value = node, False
+        await http_util.handle_video_request(test_request, test_file)
+        mock_dist_controller.handle_distribution.assert_called_once_with(
+            test_file,
+            load,
+        )
+        mock_ensure_acceptable_load.assert_not_called()
+        mock_dist_controller.get_node_to_serve.assert_called_once_with(
+            test_file
+        )
+        mock_redirect_exception_cls.assert_not_called()
+
+        mock_dist_controller.handle_distribution.reset_mock()
+        mock_dist_controller.get_node_to_serve.reset_mock()
+
+        # Should redirect because storage load is above threshold:
+        load += 0.001
+        mock_network_interfaces.get_tx_load.return_value = load
+        with patch.object(http_util, "async_sleep") as mock_async_sleep:
+            with self.assertRaises(FakeRedirect):
+                await http_util.handle_video_request(test_request, test_file)
+        mock_dist_controller.handle_distribution.assert_called_once_with(
+            test_file,
+            load,
+        )
+        mock_ensure_acceptable_load.assert_not_called()
+        mock_dist_controller.get_node_to_serve.assert_called_once_with(
+            test_file
+        )
+        mock_redirect_exception_cls.assert_called_once_with(
+            test_request,
+            node,
+            test_file,
+            log=http_util._log,
+        )
+        mock_async_sleep.assert_awaited_once_with(1)
+
+
     @patch.object(http_util, "file_serve_headers")
     @patch.object(http_util.FileStorage, "get_instance")
     async def test_handle_thumbnail_request(

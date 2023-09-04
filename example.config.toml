@@ -49,7 +49,17 @@ temp_file_cleanup_freq_hours = 1.0
 # Must be greater than 0.
 
 tx_max_rate_mbit = 20.0
-# Maximum data transmission rate in Mbit per second; must be greater than 0.
+# Maximum data transmission rate in Mbit per second;
+# TX load will be calucalted as a ratio of the current TX rate to this value.
+# Must be greater than 0.
+
+max_load_file_serving = 0.95
+# The maximum acceptable TX load, with which files can still be served.
+# If a file request comes in while the storage node exceeds this TX load
+# and no distributors can serve the request, it will respond with a 503
+# HTTP error code.
+# No distributor that exceeds this TX load will be considered to serve a file.
+# Must be greater than 0 and not greater than 1.
 
 network_info_fetch_interval = 10.0
 # Number of seconds between attempts to fetch network information; must be greater than 0.
@@ -194,7 +204,7 @@ node_cleanup_freq_minutes = 240.0
 
 free_space_target_ratio = 0.1
 # Ratio of free space to total space on any distributor node that it should never fall below of.
-# Must be greater than or equal to 0.
+# Must be greater than or equal to 0 and not greater than 1.
 
 max_parallel_copying_tasks = 20
 # Any time a video is copied to a distributor node, this a separate task is launched for it by the storage node;
@@ -209,6 +219,21 @@ last_request_safety_minutes = 240.0
 # The minimum number of minutes to wait after the last request for a specific video file on the distributor node
 # before it should be considered safe do delete that file.
 # Must be greater than or equal to 0.
+
+load_threshold_delayed_redirect = 0.5
+# If during a file request the best available distributor is still in the
+# process of downloading the file in question, the storage node will still
+# redirect the client to that node (after a short delay), if the TX load of
+# the storage node exceeds this value.
+# Must be greater than or equal to 0 and not greater than 1.
+
+max_load_file_copy = 0.99
+# The maximum acceptable TX load, with which files can be copied/uploaded.
+# If the storage node tries to copy a file to a distributor, but no other
+# distributor can upload it, the storage node will provide the copy itself,
+# unless its TX load exceeds this value. A distributor will not upload a copy
+# to another node, if its TX load exceeds this value.
+# Must be greater than 0 and not greater than 1.
 
 [monitoring]
 # Settings block related to monitoring (using Prometheus);
