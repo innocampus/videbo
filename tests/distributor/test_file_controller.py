@@ -1,13 +1,13 @@
 from unittest import IsolatedAsyncioTestCase
 from unittest.mock import MagicMock, patch
 
-from videbo.distributor import files
+from videbo.distributor.file_controller import DistributorFileController
 
 
 class DistributorFileControllerTestCase(IsolatedAsyncioTestCase):
-    @patch.object(files.DistributorFileController, "get_instance")
+    @patch.object(DistributorFileController, "get_instance")
     async def test_distributor_context(self, mock_get_dfc_instance: MagicMock) -> None:
-        iterator = files.DistributorFileController.app_context(MagicMock())
+        iterator = DistributorFileController.app_context(MagicMock())
         self.assertIsNone(await iterator.__anext__())
         mock_get_dfc_instance.assert_called_once_with()
 

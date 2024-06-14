@@ -13,7 +13,7 @@ from prometheus_client.process_collector import ProcessCollector
 from videbo import settings
 from videbo.distributor.api.models import DistributorStatus
 from videbo.misc.periodic import Periodic
-from .util import FileStorage
+from .file_controller import StorageFileController
 from .api.models import StorageStatus
 
 
@@ -99,7 +99,7 @@ class Monitoring:
         After updating the dictionaries, the metrics are written to the text file for the Prometheus node exporter.
         """
         assert isinstance(settings.monitoring.prom_text_file, Path)
-        storage = FileStorage.get_instance()
+        storage = StorageFileController.get_instance()
         storage_status = await storage.get_status()
         dist_status_dict = storage.distribution_controller.get_nodes_status(only_good=True, only_enabled=True)
         # Make sure the distributors returned here have not changed;

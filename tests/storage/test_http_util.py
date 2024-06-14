@@ -150,7 +150,7 @@ class HTTPUtilTestCase(SilentLogMixin, IsolatedAsyncioTestCase):
         mock_file.persist.assert_awaited_once_with(file_ext=ext)
 
     @patch.object(http_util.FileUploaded, "from_video")
-    @patch.object(http_util.FileStorage, "get_instance")
+    @patch.object(http_util.StorageFileController, "get_instance")
     @patch.object(http_util, "generate_thumbnails")
     @patch.object(http_util, "InvalidFormat")
     @patch.object(http_util, "FileTooBig")
@@ -284,12 +284,12 @@ class HTTPUtilTestCase(SilentLogMixin, IsolatedAsyncioTestCase):
 
     @patch.object(http_util, "RedirectToDistributor")
     @patch.object(http_util, "ensure_acceptable_load")
-    @patch.object(http_util.FileStorage, "get_instance")
+    @patch.object(http_util.StorageFileController, "get_instance")
     @patch.object(http_util.NetworkInterfaces, "get_instance")
     async def test_handle_video_request(
         self,
         mock_get_ni_instance: MagicMock,
-        mock_get_fs_instance: MagicMock,
+        mock_get_storage_instance: MagicMock,
         mock_ensure_acceptable_load: MagicMock,
         mock_redirect_exception_cls: MagicMock,
     ) -> None:
@@ -300,7 +300,7 @@ class HTTPUtilTestCase(SilentLogMixin, IsolatedAsyncioTestCase):
         )
         mock_get_ni_instance.return_value = mock_network_interfaces
         mock_dist_controller = MagicMock()
-        mock_get_fs_instance.return_value = MagicMock(
+        mock_get_storage_instance.return_value = MagicMock(
             distribution_controller=mock_dist_controller
         )
         test_file = MagicMock()
@@ -408,7 +408,7 @@ class HTTPUtilTestCase(SilentLogMixin, IsolatedAsyncioTestCase):
 
 
     @patch.object(http_util, "file_serve_headers")
-    @patch.object(http_util.FileStorage, "get_instance")
+    @patch.object(http_util.StorageFileController, "get_instance")
     async def test_handle_thumbnail_request(
             self,
             mock_get_storage_instance: MagicMock,

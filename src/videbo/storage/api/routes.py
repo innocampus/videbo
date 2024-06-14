@@ -29,7 +29,7 @@ from videbo.storage.http_util import (
     verify_file_exists,
     handle_video_request,
 )
-from videbo.storage.util import FileStorage, schedule_video_delete
+from videbo.storage.file_controller import StorageFileController, schedule_video_delete
 from videbo.storage.exceptions import (
     BadFileExtension,
     FileTooBigError,
@@ -80,8 +80,8 @@ async def upload_file(request: Request, jwt_data: UploadFileJWTData) -> Response
 
     To save them into permanent storage, the `save_file` route must be called.
 
-    While the upload is taking place, the `FileStorage.num_current_uploads`
-    counter is incremented by one.
+    While the upload is taking place, the
+    `StorageFileController.num_current_uploads` counter is incremented by one.
 
     Args:
         request:
@@ -112,7 +112,7 @@ async def upload_file(request: Request, jwt_data: UploadFileJWTData) -> Response
         return InvalidFormat().json_response(log=log)
     except FileTooBigError:
         return FileTooBig().json_response(log=log)
-    storage = FileStorage.get_instance()
+    storage = StorageFileController.get_instance()
     storage.num_current_uploads += 1
     extension = Path(field.filename).suffix if field.filename else None
     temp_file = TempFile.create(storage.temp_dir, extension=extension)
@@ -159,7 +159,7 @@ async def save_file(request: Request, jwt_data: SaveFileJWTData) -> Response:
         raise HTTPForbidden()
     hash_, ext = request.match_info["hash"], request.match_info["file_ext"]
     try:
-        await FileStorage.get_instance().store_permanently(hash_, ext)
+        await StorageFileController.get_instance().store_permanently(hash_, ext)
     except FileNotFoundError:
         return FileDoesNotExist(file_hash=hash_).json_response(log=log)
     return OK().json_response()
@@ -236,7 +236,7 @@ async def request_file(request: Request, jwt_data: RequestFileJWTData) -> Union[
     """
     hash_, ext = jwt_data.hash, jwt_data.file_ext
     type_, internal = jwt_data.type, jwt_data.internal
-    file_storage = FileStorage.get_instance()
+    file_storage = StorageFileController.get_instance()
     if type_ == FileType.VIDEO:
         # TODO: Simplify `get_file`/`get_path`
         try:
@@ -272,7 +272,7 @@ async def request_file(request: Request, jwt_data: RequestFileJWTData) -> Union[
 @ensure_auth(Role.admin)
 @ensure_json_body
 async def add_dist_node(_request: Request, _jwt_data: RequestJWTData, data: DistributorNodeInfo) -> NoReturn:
-    FileStorage.get_instance().distribution_controller.add_new_dist_node(data.base_url)
+    StorageFileController.get_instance().distribution_controller.add_new_dist_node(data.base_url)
     raise HTTPOk()
 
 
@@ -280,7 +280,7 @@ async def add_dist_node(_request: Request, _jwt_data: RequestJWTData, data: Dist
 @ensure_auth(Role.admin)
 @ensure_json_body
 async def remove_dist_node(_request: Request, _jwt_data: RequestJWTData, data: DistributorNodeInfo) -> NoReturn:
-    await FileStorage.get_instance().distribution_controller.remove_dist_node(data.base_url)
+    await StorageFileController.get_instance().distribution_controller.remove_dist_node(data.base_url)
     raise HTTPOk()
 
 
@@ -288,7 +288,7 @@ async def remove_dist_node(_request: Request, _jwt_data: RequestJWTData, data: D
 @ensure_auth(Role.admin)
 @ensure_json_body
 async def disable_dist_node(_request: Request, _jwt_data: RequestJWTData, data: DistributorNodeInfo) -> NoReturn:
-    await FileStorage.get_instance().distribution_controller.disable_dist_node(data.base_url)
+    await StorageFileController.get_instance().distribution_controller.disable_dist_node(data.base_url)
     raise HTTPOk()
 
 
@@ -296,21 +296,21 @@ async def disable_dist_node(_request: Request, _jwt_data: RequestJWTData, data: 
 @ensure_auth(Role.admin)
 @ensure_json_body
 async def enable_dist_node(_request: Request, _jwt_data: RequestJWTData, data: DistributorNodeInfo) -> NoReturn:
-    await FileStorage.get_instance().distribution_controller.enable_dist_node(data.base_url)
+    await StorageFileController.get_instance().distribution_controller.enable_dist_node(data.base_url)
     raise HTTPOk()
 
 
 @routes.get(r'/api/storage/distributor/status')
 @ensure_auth(Role.admin)
 async def get_all_dist_nodes(_request: Request, _jwt_data: RequestJWTData) -> Response:
-    nodes_statuses = FileStorage.get_instance().distribution_controller.get_nodes_status()
+    nodes_statuses = StorageFileController.get_instance().distribution_controller.get_nodes_status()
     return DistributorStatusDict(nodes=nodes_statuses).json_response()
 
 
 @routes.get(r'/api/storage/status')
 @ensure_auth(Role.admin)
 async def get_status(_request: Request, _jwt_data: RequestJWTData) -> Response:
-    storage_status = await FileStorage.get_instance().get_status()
+    storage_status = await StorageFileController.get_instance().get_status()
     return storage_status.json_response()
 
 
@@ -325,7 +325,7 @@ async def get_files_list(request: Request, _jwt_data: RequestJWTData) -> Respons
     files = [
         StorageFileInfo.from_orm(file)
         async for file
-        in FileStorage.get_instance().filtered_files(orphaned=orphaned)
+        in StorageFileController.get_instance().filtered_files(orphaned=orphaned)
     ]
     return StorageFilesList(files=files).json_response()
 
@@ -334,7 +334,7 @@ async def get_files_list(request: Request, _jwt_data: RequestJWTData) -> Respons
 @ensure_auth(Role.admin)
 @ensure_json_body
 async def batch_delete_files(_request: Request, _jwt_data: RequestJWTData, data: DeleteFilesList) -> Response:
-    storage = FileStorage.get_instance()
+    storage = StorageFileController.get_instance()
     not_deleted = list(await storage.remove_files(*data.hashes))
     if not_deleted:
         return NotAllFilesDeleted(not_deleted=not_deleted).json_response()

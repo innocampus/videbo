@@ -290,8 +290,8 @@ class DistributorNode:
 
         A connection error or unexpected response code is logged accordingly.
         """
-        from videbo.storage.util import FileStorage
-        storage = FileStorage.get_instance()
+        from videbo.storage.file_controller import StorageFileController
+        storage = StorageFileController.get_instance()
         unknown_files: list[HashedFileModel] = []
         try:
             code, resp_data = await self.http_client.get_files_list()

@@ -8,7 +8,7 @@ from videbo.network import NetworkInterfaces
 from videbo.web import start_web_server
 
 from .api.routes import routes
-from .util import FileStorage
+from .file_controller import StorageFileController
 
 
 async def monitoring_context(_app: Application) -> AsyncIterator[None]:
@@ -30,7 +30,7 @@ def start() -> None:
         cleanup_contexts=(
             NetworkInterfaces.app_context,
             LMS.app_context,
-            FileStorage.app_context,
+            StorageFileController.app_context,
             monitoring_context,
         ),
         verbose=settings.dev_mode,

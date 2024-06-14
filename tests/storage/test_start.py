@@ -52,7 +52,7 @@ class StartTestCase(IsolatedAsyncioTestCase):
             cleanup_contexts=(
                 start.NetworkInterfaces.app_context,
                 start.LMS.app_context,
-                start.FileStorage.app_context,
+                start.StorageFileController.app_context,
                 start.monitoring_context,
             ),
             verbose=mock_settings.dev_mode,

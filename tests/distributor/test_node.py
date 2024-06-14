@@ -544,7 +544,7 @@ class DistributorNodeTestCase(IsolatedAsyncioTestCase):
         mock__fetch_files_list.assert_awaited_once_with()
 
     @patch.object(node.DistributorNode, "_delete")
-    @patch("videbo.storage.util.FileStorage.get_instance")
+    @patch("videbo.storage.file_controller.StorageFileController.get_instance")
     async def test__fetch_files_list(
         self,
         mock_get_storage_instance: MagicMock,

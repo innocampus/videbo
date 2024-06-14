@@ -32,7 +32,7 @@ from .exceptions import (
     FileTooBigError,
 )
 from .stored_file import StoredVideoFile
-from .util import FileStorage, is_allowed_file_ending
+from .file_controller import StorageFileController, is_allowed_file_ending
 
 __all__ = [
     "CHUNK_SIZE_DEFAULT",
@@ -172,7 +172,7 @@ async def save_temp_and_get_response(
     thumb_count = await generate_thumbnails(
         temp_file.path,
         duration,
-        interim_dir=FileStorage.get_instance().temp_out_dir,
+        interim_dir=StorageFileController.get_instance().temp_out_dir,
     )
     log.info(f"{thumb_count} thumbnails generated for video: {digest}")
     data = FileUploaded.from_video(
@@ -236,7 +236,7 @@ async def handle_video_request(
             if all distributors and the storage node are too busy
     """
     tx_load = NetworkInterfaces.get_instance().get_tx_load() or 0.
-    dist_controller = FileStorage.get_instance().distribution_controller
+    dist_controller = StorageFileController.get_instance().distribution_controller
     dist_controller.handle_distribution(file, tx_load)
     if request.http_range.start is not None and request.http_range.start > 0:
         # Never redirect requests for later parts of the video
@@ -274,7 +274,7 @@ async def handle_thumbnail_request(
     """
     Returns a regular `Response` with the raw thumbnail data.
 
-    Uses the `FileStorage` capabilities of caching recently requested
+    Uses the `StorageFileController` capabilities of caching recently requested
     thumbnails in RAM, if the the cache option was configured accordingly.
 
     Args:
@@ -298,7 +298,7 @@ async def handle_thumbnail_request(
         raise HTTPBadRequest()
     # TODO: Consider checking file serving load threshold here too
     hash_, ext, num = jwt_data.hash, jwt_data.file_ext, jwt_data.thumb_id
-    file_storage = FileStorage.get_instance()
+    file_storage = StorageFileController.get_instance()
     if jwt_data.type == FileType.THUMBNAIL:
         try:
             path = file_storage.get_perm_thumbnail_path(hash_, ext, num=num)

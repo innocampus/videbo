@@ -30,9 +30,9 @@ FILE_EXT_WHITELIST = ('.mp4', '.webm')
 VALID_EXTENSIONS = frozenset({*FILE_EXT_WHITELIST, JPG_EXT})
 
 
-class FileStorage:
+class StorageFileController:
     """Manages all stored files with their hashes as file names."""
-    _instance: ClassVar[Optional[FileStorage]] = None
+    _instance: ClassVar[Optional[StorageFileController]] = None
 
     storage_dir: Path  # permanent storage
     temp_dir: Path  # temporary storage
@@ -72,7 +72,7 @@ class FileStorage:
         yield  # No cleanup necessary
 
     @classmethod
-    def get_instance(cls) -> FileStorage:
+    def get_instance(cls) -> StorageFileController:
         if cls._instance is None:
             cls._instance = cls()
         return cls._instance
@@ -188,13 +188,13 @@ class FileStorage:
         Args:
             files:
                 An iterable of `StoredVideoFile` objects.
-                They should all be files that are actually managed by the `FileStorage`.
+                They should all be files that are actually managed by the `StorageFileController`.
             orphaned:
                 If `True` the method returns only the subset of `files` that are orphaned;
                 if `False` the method returns only the subset of `files` that are not orphaned.
 
         Returns:
-            Subset of the provided `files` that are managed by the `FileStorage` and match the desired `orphan` status.
+            Subset of the provided `files` that are managed by the `StorageFileController` and match the desired `orphan` status.
         """
         hashes = await LMS.filter_orphaned_videos(*files, client=self.http_client)
         orphaned_files = set()
@@ -358,7 +358,7 @@ class FileStorage:
         Args:
             *hashes:
                 Any number of hashes representing stored files.
-                They should all be files that are actually managed by the `FileStorage`.
+                They should all be files that are actually managed by the `StorageFileController`.
             origin (optional):
                 If provided a LMS API address, that LMS is _not_ checked.
                 This means any file _only_ known to that LMS will be removed.
@@ -436,7 +436,7 @@ def schedule_video_delete(file_hash: str, file_ext: str, origin: Optional[str] =
 
 
 async def _video_delete_task(file_hash: str, file_ext: str, origin: Optional[str] = None) -> None:
-    file_storage = FileStorage.get_instance()
+    file_storage = StorageFileController.get_instance()
     try:
         file = file_storage.get_file(file_hash, file_ext)
     except FileNotFoundError:

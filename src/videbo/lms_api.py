@@ -97,7 +97,7 @@ class LMS:
         Args:
             *files:
                 Any number of `StoredVideoFile` objects to check for their orphan status.
-                They should all be files that are actually managed by the central `FileStorage`.
+                They should all be files that are actually managed by the central `StorageFileController`.
             client:
                 The client to use for performing requests to the LMS sites.
             origin (optional):

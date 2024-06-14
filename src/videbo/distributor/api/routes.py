@@ -19,7 +19,7 @@ from videbo.distributor.exceptions import (
     NoSuchFile,
     TooManyWaitingClients,
 )
-from videbo.distributor.files import DistributorFileController
+from videbo.distributor.file_controller import DistributorFileController
 from .models import (
     DistributorCopyFile,
     DistributorDeleteFiles,

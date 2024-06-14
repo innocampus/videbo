@@ -3,7 +3,7 @@ from videbo.network import NetworkInterfaces
 from videbo.web import start_web_server
 
 from .api.routes import routes
-from .files import DistributorFileController
+from .file_controller import DistributorFileController
 
 
 def start() -> None:
