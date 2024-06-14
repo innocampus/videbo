@@ -283,6 +283,8 @@ class DistributionController:
             raise UnknownDistURL(base_url)
         # Call `DistributorNode.enable` or `DistributorNode.disable`:
         call = cast(Callable[[], Awaitable[None]], getattr(found_node, verb))
+        # TODO: The `await` causes a `TypeError` with `enable` because that is
+        #       not a coroutine method.
         await call()
         log.info(f"Successfully {verb}d {found_node}")
 

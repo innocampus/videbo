@@ -267,6 +267,11 @@ class Settings(BaseSettings):
         """The value of `distribution.node_cleanup_freq_minutes` in seconds"""
         return self.distribution.node_cleanup_freq_minutes * 60
 
+    @property
+    def dist_last_request_safety_seconds(self) -> float:
+        """The value of `distribution.last_request_safety_minutes` in seconds"""
+        return self.distribution.last_request_safety_minutes * 60
+
 
 def config_file_settings(settings: BaseSettings) -> dict[str, Any]:
     """

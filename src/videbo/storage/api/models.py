@@ -78,12 +78,54 @@ class DeleteFileJWTData(RequestJWTData):
     is_allowed_to_delete_file: bool
 
 
+# TODO: Since this model is used by the distributor as well,
+#       it and the `FileType` enum should probably be moved to `videbo.models`.
 class RequestFileJWTData(RequestJWTData):
     type: FileType
     hash: str
     file_ext: str
     thumb_id: Optional[int] = None
     rid: str  # random string identifying the user
+
+    @classmethod
+    def node_default(
+        cls,
+        file_hash: str,
+        file_ext: str,
+        *,
+        expiration_time: Optional[int] = None,
+    ) -> RequestFileJWTData:
+        """
+        Returns an instance with typical data for an inter-node request.
+
+        The `type` will always `FileType.VIDEO`, the `role` will be `Role.node`,
+        the `iss` field will be assigned `TokenIssuer.internal`, and `rid` will
+        be an empty string.
+
+        Args:
+            file_hash:
+                Assigned to the `hash` field
+            file_ext:
+                Assigned to the `file_ext` field
+            expiration_time (optional):
+                If passed, the value will be assigned to the `exp` field;
+                if omitted or `None` (default), the
+                `default_expiration_from_now` method is called
+                and its return value is assigned to `exp`.
+
+        Returns:
+            Instance of the class with sane defaults for inter-node requests.
+        """
+        return cls(
+            exp=expiration_time or cls.default_expiration_from_now(),
+            iss=TokenIssuer.internal,
+            role=Role.node,
+            type=FileType.VIDEO,
+            hash=file_hash,
+            file_ext=file_ext,
+            thumb_id=None,
+            rid='',
+        )
 
     @classmethod
     def client_default(

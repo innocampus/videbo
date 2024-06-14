@@ -11,6 +11,7 @@ class StoredVideoFile(HashedFile):
     unique_views: dict[str, float]  # rid -> timestamp of last view (time sorted)
 
     def __init__(self, file_hash: str, file_ext: str) -> None:
+        # TODO: Make file size a mandatory constructor argument
         super().__init__(file_hash, file_ext)
         self.size = -1
         self.unique_views = {}

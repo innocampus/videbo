@@ -31,6 +31,7 @@ class DistributorStatus(NodeStatus):
     copy_files_status: list[DistributorCopyFileStatus]
 
 
+# TODO: Why not pass file hash and ext. in the POST payload as well?
 class DistributorCopyFile(BaseRequestModel):
     from_base_url: str
     file_size: int  # in bytes
