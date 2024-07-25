@@ -32,7 +32,7 @@ from .exceptions import (
     FileTooBigError,
 )
 from .stored_file import StoredVideoFile
-from .file_controller import StorageFileController, is_allowed_file_ending
+from .file_controller import StorageFileController
 
 __all__ = [
     "CHUNK_SIZE_DEFAULT",
@@ -80,7 +80,9 @@ async def get_video_payload(
         if field is None:
             raise FormFieldMissing()
         field = await multipart.next()
-    if not is_allowed_file_ending(field.filename):
+    if field.filename and not field.filename.lower().endswith(
+        StorageFileController.VIDEO_EXT_WHITELIST
+    ):
         log.warning(f"File extension not allowed: {field.filename}")
         raise BadFileExtension()
     if request.content_length and request.content_length > settings.video.max_file_size_bytes:
@@ -172,7 +174,7 @@ async def save_temp_and_get_response(
     thumb_count = await generate_thumbnails(
         temp_file.path,
         duration,
-        interim_dir=StorageFileController.get_instance().temp_out_dir,
+        interim_dir=StorageFileController().temp_out_dir,
     )
     log.info(f"{thumb_count} thumbnails generated for video: {digest}")
     data = FileUploaded.from_video(
@@ -236,7 +238,7 @@ async def handle_video_request(
             if all distributors and the storage node are too busy
     """
     tx_load = NetworkInterfaces.get_instance().get_tx_load() or 0.
-    dist_controller = StorageFileController.get_instance().distribution_controller
+    dist_controller = StorageFileController().distribution_controller
     dist_controller.handle_distribution(file, tx_load)
     if request.http_range.start is not None and request.http_range.start > 0:
         # Never redirect requests for later parts of the video
@@ -244,13 +246,13 @@ async def handle_video_request(
         return  # Serve file
     node, has_complete_file = dist_controller.get_node_to_serve(file)
     if node is None:
-        # Found no distribution node that has the file or is downloading it
+        # Found no distributor node that has the file or is downloading it
         ensure_acceptable_load(tx_load, log=log)
         return  # Serve file
     if has_complete_file:
-        # Found distribution node that can serve the file immediately
+        # Found distributor node that can serve the file immediately
         raise RedirectToDistributor(request, node, file, log=log)
-    # Only found a distribution that is currently downloading the file
+    # Only found a distributor node that is currently downloading the file
     if tx_load <= settings.distribution.load_threshold_delayed_redirect:
         return  # Serve file
     # Storage is fairly busy; we wait a moment to give the distributor
@@ -298,20 +300,20 @@ async def handle_thumbnail_request(
         raise HTTPBadRequest()
     # TODO: Consider checking file serving load threshold here too
     hash_, ext, num = jwt_data.hash, jwt_data.file_ext, jwt_data.thumb_id
-    file_storage = StorageFileController.get_instance()
+    file_controller = StorageFileController()
     if jwt_data.type == FileType.THUMBNAIL:
-        try:
-            path = file_storage.get_perm_thumbnail_path(hash_, ext, num=num)
-        except FileNotFoundError:
-            raise HTTPNotFound() from None
+        stored_file = file_controller.get(hash_)
+        if stored_file is None or stored_file.ext != ext:
+            raise HTTPNotFound()
+        path = file_controller.get_thumbnail_path(hash_, num=num)
         log.debug(f"Serve thumbnail {num} for video {hash_}")
     elif jwt_data.type == FileType.THUMBNAIL_TEMP:
-        path = file_storage.get_temp_thumbnail_path(hash_, num=num)
+        path = file_controller.get_thumbnail_path(hash_, num=num, temp=True)
         log.debug(f"Serve temp thumbnail {num} for temp video {hash_}")
     else:
         raise RuntimeError("invalid request type")  # should be unreachable
     try:
-        body = await file_storage.thumb_memory_cache.get_and_update(path)
+        body = await file_controller.thumb_memory_cache.get_and_update(path)
     except FileNotFoundError:
         log.error(f"File does not exist: {path}")
         raise HTTPNotFound() from None

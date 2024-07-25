@@ -98,6 +98,7 @@ class LMS:
             *files:
                 Any number of `StoredVideoFile` objects to check for their orphan status.
                 They should all be files that are actually managed by the central `StorageFileController`.
+                TODO: Accept hashes instead of file objects.
             client:
                 The client to use for performing requests to the LMS sites.
             origin (optional):

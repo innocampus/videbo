@@ -2,8 +2,6 @@ HTTP_CODE_OK = 200
 
 JPG_EXT = ".jpg"  # for thumbnails
 
-MAX_NUM_FILES_TO_PRINT = 20
-
 # TODO: Introduce consistency between binary and decimal prefixes
 MEGA = 1024 * 1024
 

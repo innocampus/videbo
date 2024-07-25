@@ -1,5 +1,5 @@
-import asyncio
 import logging
+from asyncio.exceptions import TimeoutError as AsyncTimeoutError
 from pathlib import Path
 from typing import NoReturn, Union
 
@@ -48,8 +48,7 @@ async def get_status(_request: Request, _jwt_data: RequestJWTData) -> Response:
     Returns:
         A `Response` built from the `DistributorStatus` model.
     """
-    dist_status = await DistributorFileController.get_instance().get_status()
-    return dist_status.json_response()
+    return (await DistributorFileController().get_status()).json_response()
 
 
 @routes.get(r'/api/distributor/files')
@@ -68,7 +67,7 @@ async def get_all_files(_request: Request, _jwt_data: RequestJWTData) -> Respons
         A `Response` built from the `DistributorFileList` model.
     """
     return DistributorFileList.parse_obj({
-        "files": list(DistributorFileController.get_instance().iter_files())
+        "files": list(DistributorFileController().iter_files())
     }).json_response()
 
 
@@ -102,14 +101,27 @@ async def copy_file(
             controls the video file or if the node already had control of the
             file and therefore no download was necessary.
         HTTPInternalServerError:
-            If the file was being copied, but waiting for it to finish took
+            The file attributes were invalid, _or_
+            the download started, but failed, _or_
+            the file was being copied, but waiting for it to finish took
             longer than 1 hour.
     """
     hash_, ext = request.match_info["hash"], request.match_info["file_ext"]
-    file_controller = DistributorFileController.get_instance()
-    file_controller.copy_file(hash_, ext, data.from_base_url, data.file_size)
-    successful = await file_controller.file_exists(hash_, timeout=3600)
-    raise HTTPOk() if successful else HTTPInternalServerError()
+    file_controller = DistributorFileController()
+    try:
+        file_controller.schedule_copying(
+            hash_,
+            ext,
+            data.from_base_url,
+            data.file_size,
+        )
+    except ValueError:
+        raise HTTPInternalServerError() from None
+    try:
+        await file_controller.get_file(hash_, timeout=3600)
+    except (NoSuchFile, TooManyWaitingClients, AsyncTimeoutError):
+        raise HTTPInternalServerError() from None
+    raise HTTPOk()
 
 
 @routes.post(r'/api/distributor/delete')
@@ -145,13 +157,16 @@ async def delete_files(
         The `free_space` field of the response body will contain the total free
         space on the node in MB after successful deletion.
     """
-    file_controller = DistributorFileController.get_instance()
+    file_controller = DistributorFileController()
     files_skipped: HashedFilesList = []
     for file in data.files:
         try:
             await file_controller.delete_file(file.hash, safe=data.safe)
         except (NoSuchFile, NotSafeToDelete) as e:
             log.info(f"Skipping deletion: {e}")
+            files_skipped.append(file)
+        except OSError as e:
+            log.exception(f"{e.__class__.__name__} deleting {file.hash}")
             files_skipped.append(file)
     free_space = await file_controller.get_free_space()
     return DistributorDeleteFilesResponse(
@@ -193,7 +208,7 @@ async def request_file(
             to be finished, _or_ after waiting 60 seconds, the download is still
             not finished.
     """
-    file_controller = DistributorFileController.get_instance()
+    file_controller = DistributorFileController()
     if jwt_data.type != FileType.VIDEO:
         log.info(f"Invalid request type: {jwt_data.type}")
         # TODO: This should probably be a 406 instead of a 404.
@@ -203,21 +218,21 @@ async def request_file(
     except NoSuchFile as e:
         log.info(f"File request denied: {e}")
         raise HTTPNotFound() from None
-    except asyncio.TimeoutError:
+    except AsyncTimeoutError:
         log.warning(f"File request timed out: Still copying {jwt_data.hash}")
         raise HTTPServiceUnavailable() from None
     except TooManyWaitingClients as e:
         log.warning(f"File request failed: {e}")
         raise HTTPServiceUnavailable() from None
     file.set_requested_time()
-    download_filename = request.query.get('downloadas')
+    download_file_name = request.query.get('downloadas')
     if not settings.webserver.x_accel_location:
         return FileResponse(
             file_controller.get_path(file),
-            headers=file_serve_headers(download_filename),
+            headers=file_serve_headers(download_file_name),
         )
     uri = Path(settings.webserver.x_accel_location, rel_path(str(file)))
     limit_rate = settings.webserver.get_x_accel_limit_rate(
         internal=jwt_data.internal
     )
-    return serve_file_via_x_accel(uri, limit_rate, download_filename)
+    return serve_file_via_x_accel(uri, limit_rate, download_file_name)

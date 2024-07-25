@@ -1,22 +1,19 @@
-from __future__ import annotations
 from time import time
+from typing_extensions import Self
 
 from videbo.hashed_file import HashedFile
 
 
 class StoredVideoFile(HashedFile):
-    __slots__ = ("size", "unique_views")
+    __slots__ = ("unique_views", )
 
-    size: int  # in bytes
     unique_views: dict[str, float]  # rid -> timestamp of last view (time sorted)
 
-    def __init__(self, file_hash: str, file_ext: str) -> None:
-        # TODO: Make file size a mandatory constructor argument
-        super().__init__(file_hash, file_ext)
-        self.size = -1
+    def __init__(self, file_hash: str, file_ext: str, file_size: int) -> None:
+        super().__init__(file_hash, file_ext, file_size)
         self.unique_views = {}
 
-    def __lt__(self, other: StoredVideoFile) -> bool:
+    def __lt__(self, other: Self) -> bool:
         """Compare videos by their view counters."""
         return self.num_views < other.num_views
 

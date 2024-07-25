@@ -108,11 +108,12 @@ omit = [
 [tool.coverage.report]
 show_missing = true
 skip_covered = false
-exclude_lines = [
+exclude_also = [
     "if TYPE_CHECKING:",
     '''if __name__ == ['"]__main__['"]:''',
     "@overload",
     "assert_never",
+    "@(abc\\.)?abstractmethod",
 ]
 omit = [
     "tests/*",

@@ -10,14 +10,12 @@ class CopyingVideoFile(HashedFile):
     __slots__ = (
         "source_url",
         "time_started",
-        "expected_bytes",
         "loaded_bytes",
         "_finished",
     )
 
     source_url: str
     time_started: float
-    expected_bytes: int
     loaded_bytes: int
     _finished: Event  # Set when the file was downloaded completely
 
@@ -25,13 +23,12 @@ class CopyingVideoFile(HashedFile):
         self,
         file_hash: str,
         file_ext: str,
+        file_size: int,
         source_url: str,
-        expected_bytes: int,
     ) -> None:
-        super().__init__(file_hash, file_ext)
+        super().__init__(file_hash, file_ext, file_size)
         self.source_url = source_url
         self.time_started = time()
-        self.expected_bytes = expected_bytes
         self.loaded_bytes = 0
         self._finished = Event()
 

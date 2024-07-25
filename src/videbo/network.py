@@ -283,6 +283,7 @@ class NetworkInterfaces:
             return None
         return (current_rate * 8 / 1_000_000) / settings.tx_max_rate_mbit
 
+    # TODO: Consider moving this to `NodeStatus`.
     def update_node_status(self, status_obj: NodeStatus, logger: Logger = log) -> None:
         """Updates a given `NodeStatus` (subclass) instance with network interface information"""
         if self._server_status is not None:

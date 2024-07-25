@@ -24,8 +24,7 @@ class NotEnoughSpace(CopyFileError):
 class UnexpectedFileSize(CopyFileError):
     def __init__(self, file: CopyingVideoFile) -> None:
         super().__init__(
-            f"Loaded {file.loaded_bytes} bytes, "
-            f"but expected {file.expected_bytes} bytes."
+            f"Loaded {file.loaded_bytes} bytes, but expected {file.size} bytes."
         )
 
 

@@ -291,7 +291,7 @@ class DistributorNode:
         A connection error or unexpected response code is logged accordingly.
         """
         from videbo.storage.file_controller import StorageFileController
-        storage = StorageFileController.get_instance()
+        storage_file_controller = StorageFileController()
         unknown_files: list[HashedFileModel] = []
         try:
             code, resp_data = await self.http_client.get_files_list()
@@ -302,9 +302,8 @@ class DistributorNode:
             log.error(f"HTTP code {code} while fetching files list of {self}")
             return
         for file in resp_data.files:
-            try:
-                stored_file = storage.get_file(file.hash, file.ext)
-            except FileNotFoundError:
+            stored_file = storage_file_controller.get(file.hash)
+            if stored_file is None or stored_file.ext != file.ext:
                 log.warning(
                     f"Removing `{file}` from {self} "
                     f"since file does not exist on storage."

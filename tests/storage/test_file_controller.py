@@ -1,7 +1,5 @@
-import logging
 import shutil
 import time
-from collections.abc import Iterator
 from unittest import IsolatedAsyncioTestCase
 from unittest.mock import AsyncMock, MagicMock, Mock, PropertyMock, call, patch
 from pathlib import Path
@@ -13,10 +11,9 @@ from videbo.exceptions import LMSInterfaceError
 from videbo.lms_api import LMS
 from videbo.misc.constants import JPG_EXT, MEGA
 from videbo.misc.functions import move_file
-from videbo.misc.task_manager import TaskManager
 from videbo.network import NetworkInterfaces
 from videbo.storage.api.models import StorageStatus
-from videbo.storage.file_controller import StorageFileController, log, is_allowed_file_ending, _video_delete_task, schedule_video_delete
+from videbo.storage.file_controller import StorageFileController, log
 
 
 M = TypeVar('M', bound=Mock)
@@ -25,32 +22,38 @@ MODULE_NAME = 'videbo.storage.file_controller'
 FOO, BAR, BAZ = 'foo', 'bar', 'baz'
 
 
-class FileStorageTestCase(SilentLogMixin, IsolatedAsyncioTestCase):
-    path: Path
-
-    @classmethod
-    def setUpClass(cls) -> None:
-        super().setUpClass()
-        cls.path = Path(mkdtemp(prefix="videbo_test"))
-
+class StorageFileControllerTestCase(SilentLogMixin, IsolatedAsyncioTestCase):
     def setUp(self) -> None:
         super().setUp()
 
-        # All kinds of mocking:
+        # Mock global settings:
         self.settings_patcher = patch(f"{MODULE_NAME}.settings")
         self.mock_settings = self.settings_patcher.start()
-        self.mock_settings.files_path = self.path
+        self.mock_settings.files_path = Path("/tmp/foo")
         self.mock_settings.thumb_cache_max_mb = 0
 
-        self._prepare_directories_patcher = patch.object(StorageFileController, "_prepare_directories")
+        # Mock `_prepare_directories` method:
+        self._prepare_directories_patcher = patch.object(
+            StorageFileController,
+            "_prepare_directories",
+        )
         self.mock_prep_dirs = self._prepare_directories_patcher.start()
 
+        # Mock `Client` constructor (in the parent class):
+        self.client_patcher = patch("videbo.file_controller.Client")
+        self.mock_client_cls = self.client_patcher.start()
+
+        # Mock `_load_file_list` method (in the parent class):
+        self._load_file_list_patcher = patch(
+            "videbo.file_controller.FileController._load_file_list"
+        )
+        self.mock_load_file_list = self._load_file_list_patcher.start()
+
+        # Mock `ThumbnailCache` constructor:
         self.thumb_cache_patcher = patch(f"{MODULE_NAME}.ThumbnailCache")
         self.mock_thumb_cache_cls = self.thumb_cache_patcher.start()
 
-        self.client_patcher = patch(f"{MODULE_NAME}.Client")
-        self.mock_client_cls = self.client_patcher.start()
-
+        # Mock `DistributionController` constructor:
         self.mock_dist_controller = MagicMock()
         self.dist_controller_patcher = patch(
             f"{MODULE_NAME}.DistributionController",
@@ -58,47 +61,42 @@ class FileStorageTestCase(SilentLogMixin, IsolatedAsyncioTestCase):
         )
         self.mock_dist_controller_cls = self.dist_controller_patcher.start()
 
-        self._load_file_list_patcher = patch.object(StorageFileController, "_load_file_list")
-        self.mock_load_files = self._load_file_list_patcher.start()
-
+        # Mock `Periodic` constructor:
         self.periodic_patcher = patch(f"{MODULE_NAME}.Periodic")
         self.mock_periodic_cls = self.periodic_patcher.start()
 
-        # Initialize storage instance:
-        self.storage = StorageFileController()
+        # Initialize file_controller instance for convenience:
+        self.file_controller = StorageFileController()
 
     def tearDown(self) -> None:
         super().tearDown()
+        # Start with a fresh instance every time:
+        StorageFileController._instance = None
         self.periodic_patcher.stop()
-        self._load_file_list_patcher.stop()
         self.dist_controller_patcher.stop()
-        self.client_patcher.stop()
         self.thumb_cache_patcher.stop()
+        self._load_file_list_patcher.stop()
+        self.client_patcher.stop()
         self._prepare_directories_patcher.stop()
         self.settings_patcher.stop()
 
-    @classmethod
-    def tearDownClass(cls) -> None:
-        super().tearDownClass()
-        shutil.rmtree(cls.path)
-
     def test___init__(self) -> None:
-        # self.storage is initialized in setUp method
+        # self.file_controller is initialized in setUp method
 
         # Check dir preparation:
         self.mock_prep_dirs.assert_called_once_with()
 
-        # Check that utility lasses were correctly initialized:
+        # Check parent class calls:
+        self.mock_client_cls.assert_called_once_with()
+        self.mock_load_file_list.assert_called_once_with()
+
+        # Check that utility classes were correctly initialized:
         self.assertIs(
-            self.storage.thumb_memory_cache,
+            self.file_controller.thumb_memory_cache,
             self.mock_thumb_cache_cls.return_value,
         )
         self.assertIs(
-            self.storage.http_client,
-            self.mock_client_cls.return_value,
-        )
-        self.assertIs(
-            self.storage.distribution_controller,
+            self.file_controller.distribution_controller,
             self.mock_dist_controller_cls.return_value,
         )
         self.mock_dist_controller_cls.assert_called_once_with(
@@ -107,15 +105,14 @@ class FileStorageTestCase(SilentLogMixin, IsolatedAsyncioTestCase):
         )
 
         # Check default attribute values:
-        self.assertEqual(self.storage._cached_files, {})
-        self.assertEqual(self.storage._cached_files_total_size, 0)
+        self.assertEqual(self.file_controller.num_current_uploads, 0)
 
         # Check that periodic tasks were launched as expected:
         self.assertListEqual(
             self.mock_periodic_cls.call_args_list,
             [
-                call(self.storage.remove_old_temp_files),
-                call(self.storage.discard_old_video_views),
+                call(self.file_controller.remove_old_temp_files),
+                call(self.file_controller.discard_old_video_views),
             ]
         )
         mock_periodic_instance = self.mock_periodic_cls.return_value
@@ -127,323 +124,160 @@ class FileStorageTestCase(SilentLogMixin, IsolatedAsyncioTestCase):
             ]
         )
 
-        # Now try to initialize with an invalid files path:
-        self.mock_settings.files_path = Path("/doesnotexist")
-        with self.assertRaises(NotADirectoryError), self.assertLogs():
-            StorageFileController()
-
-    @patch.object(StorageFileController, "get_instance")
-    async def test_app_context(self, mock_get_fs_instance: MagicMock) -> None:
-        iterator = StorageFileController.app_context(MagicMock())
-        self.assertIsNone(await iterator.__anext__())
-        mock_get_fs_instance.assert_called_once_with()
-
-        mock_get_fs_instance.reset_mock()
-
-        with self.assertRaises(StopAsyncIteration):
-            await iterator.__anext__()
-
-        mock_get_fs_instance.assert_not_called()
-
-    @patch.object(StorageFileController, "__init__", return_value=None)
-    def test_get_instance(self, mock___init__: MagicMock) -> None:
-        self.assertIsNone(StorageFileController._instance)
-        obj = StorageFileController.get_instance()
-        self.assertIs(obj, StorageFileController._instance)
-        mock___init__.assert_called_once_with()
-
-        mock___init__.reset_mock()
-
-        check_obj = StorageFileController.get_instance()
-        self.assertIs(check_obj, obj)
-        mock___init__.assert_not_called()
+        # Check that it is a singleton:
+        self.assertIs(self.file_controller, StorageFileController())
 
     @patch.object(Path, "chmod")
     @patch.object(Path, "mkdir")
-    def test__prepare_directories(self, mock_mkdir: MagicMock, mock_chmod: MagicMock) -> None:
+    def test__prepare_directories_and_dir_properties(
+        self,
+        mock_mkdir: MagicMock,
+        mock_chmod: MagicMock,
+    ) -> None:
         self._prepare_directories_patcher.stop()
-        self.storage._prepare_directories()
-        self.assertEqual(self.storage.storage_dir, Path(self.path, "storage"))
-        self.assertEqual(self.storage.temp_dir, Path(self.path, "temp"))
-        self.assertEqual(self.storage.temp_out_dir, Path(self.path, "temp", "out"))
+        self.file_controller._prepare_directories()
+        self.assertEqual(
+            self.file_controller.files_dir,
+            Path(self.mock_settings.files_path, "storage"),
+        )
+        self.assertEqual(
+            self.file_controller.temp_dir,
+            Path(self.mock_settings.files_path, "temp"),
+        )
+        self.assertEqual(
+            self.file_controller.temp_out_dir,
+            Path(self.mock_settings.files_path, "temp", "out"),
+        )
         self.assertListEqual(
             [call(exist_ok=True)] * 3,
             mock_mkdir.call_args_list,
         )
         mock_chmod.assert_called_once_with(0o777)
 
-    @patch.object(StorageFileController, '_add_video_to_cache', return_value='foo')
-    def test__load_file_list(self, mock__add_video_to_cache: MagicMock) -> None:
-        self._load_file_list_patcher.stop()
+    def test_load_file_predicate(self) -> None:
+        file_path = Path("/foo/bar/spam.jpg")
+        self.assertFalse(self.file_controller.load_file_predicate(file_path))
+        file_path = Path("/foo/bar/spam.txt.mp4")
+        self.assertFalse(self.file_controller.load_file_predicate(file_path))
+        file_path = Path("/foo/bar/spam.txt")
+        self.assertFalse(self.file_controller.load_file_predicate(file_path))
+        file_path = Path("/foo/bar/spam.mp4")
+        self.assertTrue(self.file_controller.load_file_predicate(file_path))
+        file_path = Path("/foo/bar/spam.webm")
+        self.assertTrue(self.file_controller.load_file_predicate(file_path))
 
-        def do_tests():
-            # add method called, no log entry made
-            self.storage._cached_files = {n: None for n in range(21)}
-            with patch(f"{MODULE_NAME}.log") as mock_logger:
-                self.storage._load_file_list()
-                mock__add_video_to_cache.assert_called_once_with(hash_part, ext_part, file_to_load)
-                mock_logger.assert_not_called()
-            mock__add_video_to_cache.reset_mock()
+    @patch.object(
+        StorageFileController,
+        "files_dir",
+        new_callable=PropertyMock,
+    )
+    @patch.object(
+        StorageFileController,
+        "temp_dir",
+        new_callable=PropertyMock,
+    )
+    def test_get_path_and_get_thumbnail_path(
+        self,
+        mock_temp_dir: PropertyMock,
+        mock_files_dir: PropertyMock,
+    ) -> None:
+        mock_temp_dir.return_value = temp_dir = Path("spam")
+        mock_files_dir.return_value = files_dir = Path("eggs")
 
-            # add method called
-            self.storage._cached_files = {n: None for n in range(20)}
-            with self.assertLogs(log):
-                self.storage._load_file_list()
-                mock__add_video_to_cache.assert_called_once_with(hash_part, ext_part, file_to_load)
-            mock__add_video_to_cache.reset_mock()
+        name = "abcdef"
+        output = self.file_controller.get_path(name, temp=True)
+        expected_output = Path(temp_dir, name)
+        self.assertEqual(expected_output, output)
 
-            # add method called (other log case)
-            self.storage._cached_files = {n: None for n in range(10)}
-            with self.assertLogs(log):
-                self.storage._load_file_list()
-                mock__add_video_to_cache.assert_called_once_with(hash_part, ext_part, file_to_load)
+        output = self.file_controller.get_thumbnail_path(name, num=5, temp=True)
+        expected_output = Path(temp_dir, "abcdef_5.jpg")
+        self.assertEqual(expected_output, output)
 
-            mock__add_video_to_cache.side_effect = Exception
-            with self.assertLogs(log, logging.ERROR):
-                self.storage._load_file_list()
+        output = self.file_controller.get_path(name)
+        expected_output = Path(files_dir, "ab", name)
+        self.assertEqual(expected_output, output)
 
-        # Dummy files for this test:
-        self.storage.storage_dir = Path(self.path, "storage")
-        test_dir = Path(self.storage.storage_dir, 'test')
-        hash_part, ext_part = 'file_hash', '.mp4'
-        file_to_load = Path(test_dir, hash_part + ext_part)
-        wrong_ext = Path(test_dir, 'wrong.ext')
-        two_dot_file = Path(test_dir, 'some.file.mp4')
-        not_a_file = Path(test_dir, 'not_a_file')
-        self.storage.storage_dir.mkdir()
-        test_dir.mkdir()
-        file_to_load.touch()
-        wrong_ext.touch()
-        two_dot_file.touch()
-        not_a_file.mkdir()
-        try:
-            do_tests()
-        finally:
-            not_a_file.rmdir()
-            two_dot_file.unlink()
-            wrong_ext.unlink()
-            file_to_load.unlink()
-            test_dir.rmdir()
-            self.storage.storage_dir.rmdir()
+        output = self.file_controller.get_thumbnail_path(name, num=42)
+        expected_output = Path(files_dir, "ab", "abcdef_42.jpg")
+        self.assertEqual(expected_output, output)
 
-    @patch(f"{MODULE_NAME}.StoredVideoFile")
-    def test__add_video_to_cache(self, mock_file_class: MagicMock) -> None:
-        mock_file_obj = MagicMock()
-        mock_file_class.return_value = mock_file_obj
-        mock_file_size = 10
-        mock_stat_method = MagicMock(return_value=MagicMock(st_size=mock_file_size))
-        mock_file_path = MagicMock()
-        mock_file_path.stat = mock_stat_method
-
-        test_total_size, test_hash, test_ext = 10, 'abc', '.ext'
-        self.storage._cached_files_total_size = test_total_size
-
-        out = self.storage._add_video_to_cache(file_hash=test_hash, file_ext=test_ext, file_path=mock_file_path)
-
-        mock_file_class.assert_called_once_with(test_hash, test_ext)
-        mock_stat_method.assert_called_once_with()
-        self.assertEqual(mock_file_obj.size, mock_file_size)
-        self.assertIs(self.storage._cached_files[test_hash], mock_file_obj)
-        self.assertEqual(self.storage._cached_files_total_size, test_total_size + mock_file_size)
-        self.assertIs(out, mock_file_obj)
-
-        mock_file_class.reset_mock()
-        mock_stat_method.reset_mock()
-        mock_stat_method.side_effect = FileNotFoundError
-        with self.assertLogs(log, logging.ERROR):
-            out = self.storage._add_video_to_cache(file_hash=test_hash,
-                                                   file_ext=test_ext,
-                                                   file_path=mock_file_path)
-        mock_file_class.assert_called_once_with(test_hash, test_ext)
-        mock_stat_method.assert_called_once_with()
-        self.assertIs(out, mock_file_obj)
-
-    @patch(f"{MODULE_NAME}.time")
-    async def test_discard_old_video_views(self, mock_time: MagicMock) -> None:
-        self.mock_settings.views_retention_seconds = sec = 3.14
-        mock_time.return_value = mock_now = 42.
-        file1, file2 = MagicMock(), MagicMock()
-        self.storage._cached_files = {1: file1, 2: file2}
-        await self.storage.discard_old_video_views()
-        file1.discard_views_older_than.assert_called_once_with(mock_now - sec)
-        file2.discard_views_older_than.assert_called_once_with(mock_now - sec)
-
-    def test_files_total_size_mb(self) -> None:
-        expected_output = 2.1  # MB
-        self.storage._cached_files_total_size = expected_output * MEGA
-        self.assertEqual(expected_output, self.storage.files_total_size_mb)
-
-    def test_files_count(self) -> None:
-        expected_count = 5
-        self.storage._cached_files = {n: "foo" for n in range(expected_count)}
-        self.assertEqual(expected_count, self.storage.files_count)
-
-    def test_iter_files(self) -> None:
-        self.storage._cached_files = {n: f"foo{n}" for n in range(5)}
-        iterator = self.storage.iter_files()
-        self.assertIsInstance(iterator, Iterator)
-        self.assertListEqual(list(iterator), list(self.storage._cached_files.values()))
-
-    @patch.object(StorageFileController, "_filter_by_orphan_status")
-    @patch.object(StorageFileController, "iter_files")
-    async def test_filtered_files(self, mock_iter_files: MagicMock, mock__filter_by_orphan_status: AsyncMock) -> None:
-        test_extensions, test_types = ['.mp4'], ['video', 'video_temp']
-        expected_file = MagicMock(ext='.mp4')
-        wrong_ext_file = MagicMock(ext='.webm')
-        mock_iter_files.return_value = files = (wrong_ext_file, expected_file)
-        mock__filter_by_orphan_status.return_value = {expected_file}
-
-        # Test regular filter case without orphan status
-        out = [f async for f in self.storage.filtered_files(extensions=test_extensions, types=test_types)]
-        self.assertListEqual(out, [expected_file])
-        mock__filter_by_orphan_status.assert_not_awaited()
-
-        # Test with orphan status True
-        out = [
-            f async for f in self.storage.filtered_files(orphaned=True, extensions=test_extensions, types=test_types)
-        ]
-        self.assertEqual(out, [expected_file])
-        mock__filter_by_orphan_status.assert_awaited_once_with(files, True)
-
-        # Test with orphan status False
-        mock__filter_by_orphan_status.reset_mock()
-        mock__filter_by_orphan_status.return_value = set()
-        out = [
-            f async for f in self.storage.filtered_files(orphaned=False, extensions=test_extensions, types=test_types)
-        ]
-        self.assertEqual(out, [])
-        mock__filter_by_orphan_status.assert_awaited_once_with(files, False)
-
-        # Test exception raising
-        mock__filter_by_orphan_status.reset_mock()
-        with self.assertRaises(ValueError):
-            _ = [f async for f in self.storage.filtered_files(extensions=['wrong'])]
-        mock__filter_by_orphan_status.assert_not_awaited()
-
-        with self.assertRaises(ValueError):
-            _ = [f async for f in self.storage.filtered_files(types=['wrong'])]
-        mock__filter_by_orphan_status.assert_not_awaited()
-
-        self.storage._cached_files = {}
 
     @patch.object(LMS, "filter_orphaned_videos")
-    async def test__filter_by_orphan_status(self, mock_filter_orphaned_videos: AsyncMock) -> None:
-        class MockFile(MagicMock):
-            def __hash__(self) -> int:
-                return int(self.hash, 16)
+    @patch.object(StorageFileController, "iter_files")
+    async def test_filtered_files(
+        self,
+        mock_iter_files: MagicMock,
+        mock_filter_orphaned_videos: AsyncMock,
+    ) -> None:
+        test_extensions = ['.mp4']
+        expected_file = MagicMock(hash='foo', ext='.mp4')
+        wrong_ext_file = MagicMock(hash='bar', ext='.webm')
+        mock_iter_files.return_value = files = (wrong_ext_file, expected_file)
+        mock_filter_orphaned_videos.return_value = ['foo']
 
-            def __eq__(self, other) -> bool:
-                return self.hash == other.hash
+        # Test regular filter case without orphan status
+        async_iterator = self.file_controller.filtered_files(
+            extensions=test_extensions
+        )
+        out = [f async for f in async_iterator]
+        self.assertListEqual([expected_file], out)
+        mock_filter_orphaned_videos.assert_not_awaited()
 
-        file1, file2 = MockFile(hash=FOO), MockFile(hash=BAR)
-        self.storage._cached_files = {FOO: file1, BAR: file2}
-        mock_filter_orphaned_videos.return_value = [BAR, "causes warning"]
+        # Test with orphan status `True`
+        async_iterator = self.file_controller.filtered_files(orphaned=True)
+        out = [f async for f in async_iterator]
+        self.assertEqual([expected_file], out)
+        mock_filter_orphaned_videos.assert_awaited_once_with(
+            *files,
+            client=self.mock_client_cls.return_value,
+        )
 
-        orphaned = True
-        expected_output = {file2}
-        output = await self.storage._filter_by_orphan_status((file1, file2), orphaned=orphaned)
-        self.assertEqual(expected_output, output)
-        mock_filter_orphaned_videos.assert_awaited_once_with(file1, file2, client=self.storage.http_client)
-
+        # Test with orphan status `False`
         mock_filter_orphaned_videos.reset_mock()
-        mock_filter_orphaned_videos.return_value = [BAR]
-        orphaned = False
-        expected_output = {file1}
-        output = await self.storage._filter_by_orphan_status((file1, file2), orphaned=orphaned)
-        self.assertEqual(expected_output, output)
-        mock_filter_orphaned_videos.assert_awaited_once_with(file1, file2, client=self.storage.http_client)
+        async_iterator = self.file_controller.filtered_files(
+            orphaned=False,
+            extensions=test_extensions,
+        )
+        out = [f async for f in async_iterator]
+        self.assertEqual([], out)
+        mock_filter_orphaned_videos.assert_awaited_once_with(
+            *files,
+            client=self.mock_client_cls.return_value,
+        )
 
-    def test_get_file(self) -> None:
-        mock_file = MagicMock(ext=BAR)
-        self.storage._cached_files = {FOO: mock_file}
-        output = self.storage.get_file(FOO, BAR)
-        self.assertEqual(output, mock_file)
-        with self.assertRaises(FileNotFoundError):
-            self.storage.get_file(BAZ, BAR)
-
-    @patch(f"{MODULE_NAME}.rel_path")
-    def test_get_path(self, mock_rel_path: MagicMock) -> None:
-        self.storage.storage_dir = Path(self.path, "storage")
-        self.storage.temp_dir = Path(self.path, "temp")
-
-        mock_rel_path.return_value = mock_path = Path(BAZ, BAR)
-
-        temp = True
-        expected_output = Path(self.storage.temp_dir, FOO)
-        output = self.storage.get_path(FOO, temp=temp)
-        self.assertEqual(expected_output, output)
-        mock_rel_path.assert_not_called()
-
-        temp = False
-        expected_output = Path(self.storage.storage_dir, mock_path)
-        output = self.storage.get_path(FOO, temp=temp)
-        self.assertEqual(expected_output, output)
-        mock_rel_path.assert_called_once_with(FOO)
-
-    @patch.object(StorageFileController, "get_path")
-    @patch.object(StorageFileController, "get_file")
-    def test_get_perm_video_path(
-        self,
-        mock_get_file: MagicMock,
-        mock_get_path: MagicMock,
-    ) -> None:
-        mock_get_file.return_value = mock_file_obj = object()
-        mock_get_path.return_value = expected_output = Path(BAZ, BAR)
-
-        output = self.storage.get_perm_video_path(FOO, BAR)
-        self.assertEqual(expected_output, output)
-        mock_get_file.assert_called_once_with(FOO, BAR)
-        mock_get_path.assert_called_once_with(str(mock_file_obj), temp=False)
-
-    @patch.object(StorageFileController, "get_path")
-    def test_get_temp_video_path(self, mock_get_path: MagicMock) -> None:
-        mock_get_path.return_value = expected_output = Path(BAZ, BAR)
-
-        output = self.storage.get_temp_video_path(FOO, BAR)
-        self.assertEqual(expected_output, output)
-        mock_get_path.assert_called_once_with(FOO + BAR, temp=True)
-
-    @patch.object(StorageFileController, "get_path")
-    @patch.object(StorageFileController, "get_file")
-    def test_get_perm_thumbnail_path(
-        self,
-        mock_get_file: MagicMock,
-        mock_get_path: MagicMock,
-    ) -> None:
-        mock_get_path.return_value = expected_output = Path(BAZ, BAR)
-
-        num = 42
-        output = self.storage.get_perm_thumbnail_path(FOO, BAR, num=num)
-        self.assertEqual(expected_output, output)
-        mock_get_file.assert_called_once_with(FOO, BAR)
-        mock_get_path.assert_called_once_with(f"{FOO}_{num}{JPG_EXT}", temp=False)
-
-    @patch.object(StorageFileController, "get_path")
-    def test_get_temp_thumbnail_path(self, mock_get_path: MagicMock) -> None:
-        mock_get_path.return_value = expected_output = Path(BAZ, BAR)
-
-        num = 42
-        output = self.storage.get_temp_thumbnail_path(FOO, num=num)
-        self.assertEqual(expected_output, output)
-        mock_get_path.assert_called_once_with(f"{FOO}_{num}{JPG_EXT}", temp=True)
+        # Test exception raising
+        mock_filter_orphaned_videos.reset_mock()
+        async_iterator = self.file_controller.filtered_files(
+            extensions=['wrong']
+        )
+        with self.assertRaises(ValueError):
+            _ = [_ async for _ in async_iterator]
+        mock_filter_orphaned_videos.assert_not_awaited()
 
     @patch(f"{MODULE_NAME}.run_in_default_executor")
-    @patch.object(StorageFileController, "get_path")
+    @patch.object(
+        StorageFileController,
+        "files_dir",
+        new_callable=PropertyMock,
+    )
+    @patch.object(
+        StorageFileController,
+        "temp_dir",
+        new_callable=PropertyMock,
+    )
     async def test_store_file_permanently(
         self,
-        mock_get_path: MagicMock,
+        mock_temp_dir: PropertyMock,
+        mock_files_dir: PropertyMock,
         mock_run_in_default_executor: AsyncMock,
     ) -> None:
-        expected_source = Path(FOO, BAR)
-        expected_destination = Path(BAZ, BAR)
-        mock_get_path.side_effect = (expected_source, expected_destination)
+        mock_temp_dir.return_value = temp_dir = Path("spam")
+        mock_files_dir.return_value = files_dir = Path("eggs")
 
-        output = await self.storage.store_file_permanently(BAZ)
+        output = await self.file_controller.store_file_permanently("abcdef")
+        expected_source = Path(temp_dir, "abcdef")
+        expected_destination = Path(files_dir, "ab", "abcdef")
         self.assertEqual(expected_destination, output)
-        self.assertListEqual(
-            [call(BAZ, temp=True), call(BAZ, temp=False)],
-            mock_get_path.call_args_list,
-        )
         mock_run_in_default_executor.assert_awaited_once_with(
             move_file,
             expected_source,
@@ -451,59 +285,59 @@ class FileStorageTestCase(SilentLogMixin, IsolatedAsyncioTestCase):
             0o755,
         )
 
-    @patch.object(StorageFileController, "_add_video_to_cache")
+    @patch(f"{MODULE_NAME}.StoredVideoFile.from_path")
     @patch.object(StorageFileController, "store_file_permanently")
     async def test_store_permanently(
         self,
         mock_store_file_permanently: AsyncMock,
-        mock__add_video_to_cache: MagicMock,
+        mock_stored_file_from_path: MagicMock,
     ) -> None:
-        mock_store_file_permanently.return_value = mock_path = Path(BAZ)
+        file_name = "foo.bar"
+        mock_store_file_permanently.return_value = mock_path = Path(file_name)
+        mock_stored_file = MagicMock(hash="foo", ext="bar", size=1)
+        mock_stored_file_from_path.return_value = mock_stored_file
 
-        thumb_count = 4
-        self.assertIsNone(await self.storage.store_permanently(
-            FOO,
-            BAR,
-            thumbnail_count=thumb_count,
-        ))
-        vid_storage_calls = [call(FOO + BAR)]
-        thumb_storage_calls = [
-            call(f"{FOO}_{num}{JPG_EXT}")
-            for num in range(thumb_count)
+        thumbnail_count = 4
+        await self.file_controller.store_permanently(
+            file_name,
+            thumbnail_count=thumbnail_count,
+        )
+        # Check that the mock file was added to the controller:
+        self.assertIn("foo", self.file_controller)
+        self.assertEqual(mock_stored_file, self.file_controller["foo"])
+        # Check that the mocked `store_file_permanently` method was called for
+        # the "video" file first and then for all 4 thumbnails:
+        calls = [
+            call(file_name),
+            call(f"foo_0{JPG_EXT}"),
+            call(f"foo_1{JPG_EXT}"),
+            call(f"foo_2{JPG_EXT}"),
+            call(f"foo_3{JPG_EXT}"),
         ]
-        self.assertListEqual(
-            vid_storage_calls + thumb_storage_calls,
-            mock_store_file_permanently.await_args_list,
-        )
-        mock__add_video_to_cache.assert_called_once_with(
-            FOO,
-            BAR,
-            mock_path,
-        )
+        self.assertListEqual(calls, mock_store_file_permanently.await_args_list)
+        mock_stored_file_from_path.assert_called_once_with(mock_path)
 
     @patch(f"{MODULE_NAME}.run_in_default_executor")
-    @patch.object(StorageFileController, "get_perm_video_path")
+    @patch.object(StorageFileController, "get_path")
     async def test_remove_video(
         self,
-        mock_get_perm_video_path: MagicMock,
+        mock_get_path: MagicMock,
         mock_run_in_default_executor: AsyncMock,
     ) -> None:
-        mock_get_perm_video_path.return_value = mock_path = MagicMock()
-
-        self.storage._cached_files_total_size = test_total_size = 42070
-        self.storage._cached_files[FOO] = MagicMock()
-        mock_file = MagicMock(
-            hash=FOO,
-            ext=BAR,
-            size=test_total_size - 1,
-        )
-        self.assertIsNone(await self.storage.remove_video(mock_file))
-        self.assertDictEqual({}, self.storage._cached_files)
-        self.assertEqual(1, self.storage._cached_files_total_size)
-        mock_get_perm_video_path.assert_called_once_with(FOO, BAR)
-        mock_run_in_default_executor.assert_awaited_once_with(
-            mock_path.unlink
-        )
+        mock_file = MagicMock(hash="foo", size=100 * MEGA)
+        self.file_controller._files_total_size = 200 * MEGA
+        self.file_controller._files["foo"] = mock_file
+        # Ensure we set the correct private attributes here first:
+        self.assertIn("foo", self.file_controller)
+        self.assertEqual(200, self.file_controller.files_total_size_mb)
+        mock_get_path.return_value = mock_path = Path("abcdef")
+        await self.file_controller.remove_video(mock_file)
+        # Check that the mock file was removed from the controller:
+        self.assertNotIn("foo", self.file_controller)
+        self.assertEqual(100, self.file_controller.files_total_size_mb)
+        # Check that the mock functions were called as expected:
+        mock_get_path.assert_called_once_with(str(mock_file))
+        mock_run_in_default_executor.assert_awaited_once_with(mock_path.unlink)
         self.mock_dist_controller.remove_from_nodes.assert_called_once_with(
             mock_file
         )
@@ -522,15 +356,12 @@ class FileStorageTestCase(SilentLogMixin, IsolatedAsyncioTestCase):
             None, KeyError, None, KeyError
         )
 
-        self.assertIsNone(await self.storage.remove_thumbnails(
-            FOO,
+        self.assertIsNone(await self.file_controller.remove_thumbnails(
+            "foo",
             count=test_count,
         ))
         self.assertListEqual(
-            [
-                call(f"{FOO}_{num}{JPG_EXT}", temp=False)
-                for num in range(test_count)
-            ],
+            [call(f"foo_{num}{JPG_EXT}") for num in range(test_count)],
             mock_get_path.call_args_list,
         )
         self.assertListEqual(
@@ -538,7 +369,7 @@ class FileStorageTestCase(SilentLogMixin, IsolatedAsyncioTestCase):
             self.mock_thumb_cache_cls().__delitem__.call_args_list,
         )
         self.assertListEqual(
-            [call(mock_path.unlink) for _ in range(test_count)],
+            [call(mock_path.unlink)] * test_count,
             mock_run_in_default_executor.await_args_list,
         )
 
@@ -551,79 +382,155 @@ class FileStorageTestCase(SilentLogMixin, IsolatedAsyncioTestCase):
         mock_remove_thumbnails: AsyncMock,
         mock_remove_video: AsyncMock,
     ) -> None:
-        test_hashes = [FOO, BAR, BAZ]
+        test_hashes = ["foo", "bar", "baz"]
         test_origin = "abcde"
         mock_file_foo, mock_file_bar = object(), object()
-        self.storage._cached_files = {FOO: mock_file_foo, BAR: mock_file_bar}
-        mock_filter_orphaned_videos.return_value = [FOO]
+        self.file_controller._files = {
+            "foo": mock_file_foo,
+            "bar": mock_file_bar,
+        }
+        mock_filter_orphaned_videos.return_value = ["foo"]
 
-        output = await self.storage.remove_files(*test_hashes, origin=test_origin)
-        self.assertSetEqual({BAR, BAZ}, output)
-        mock_filter_orphaned_videos.assert_awaited_once_with(
-            mock_file_foo, mock_file_bar, client=self.storage.http_client, origin=test_origin
+        # Only `foo` is known and an orphan, the others should not be deleted.
+        not_deleted = await self.file_controller.remove_files(
+            *test_hashes,
+            origin=test_origin,
         )
-        mock_remove_thumbnails.assert_awaited_once_with(FOO)
+        self.assertSetEqual({"bar", "baz"}, not_deleted)
+        mock_filter_orphaned_videos.assert_awaited_once_with(
+            mock_file_foo,
+            mock_file_bar,
+            client=self.mock_client_cls.return_value,
+            origin=test_origin,
+        )
+        mock_remove_thumbnails.assert_awaited_once_with("foo")
         mock_remove_video.assert_awaited_once_with(mock_file_foo)
 
         mock_filter_orphaned_videos.reset_mock()
         mock_remove_thumbnails.reset_mock()
         mock_remove_video.reset_mock()
+        ########################################################################
 
+        # Failure to contact LMS; no files should be deleted.
         mock_filter_orphaned_videos.side_effect = LMSInterfaceError
-        output = await self.storage.remove_files(*test_hashes, origin=test_origin)
-        self.assertSetEqual(set(), output)
+        not_deleted = await self.file_controller.remove_files(
+            *test_hashes,
+            origin=test_origin,
+        )
+        self.assertSetEqual({"foo", "bar", "baz"}, not_deleted)
         mock_filter_orphaned_videos.assert_awaited_once_with(
-            mock_file_foo, mock_file_bar, client=self.storage.http_client, origin=test_origin
+            mock_file_foo,
+            mock_file_bar,
+            client=self.mock_client_cls.return_value,
+            origin=test_origin,
         )
         mock_remove_thumbnails.assert_not_called()
         mock_remove_video.assert_not_called()
+        mock_filter_orphaned_videos.reset_mock()
+        ########################################################################
 
-    def test__remove_old_temp_files(self) -> None:
+        # Error while removing video.
+        mock_remove_video.side_effect = OSError
+        mock_filter_orphaned_videos.side_effect = None
+        mock_filter_orphaned_videos.return_value = ["foo"]
+        with self.assertLogs(log, level="ERROR"):
+            not_deleted = await self.file_controller.remove_files(
+                *test_hashes,
+                origin=test_origin,
+            )
+        self.assertSetEqual({"foo", "bar", "baz"}, not_deleted)
+        mock_filter_orphaned_videos.assert_awaited_once_with(
+            mock_file_foo,
+            mock_file_bar,
+            client=self.mock_client_cls.return_value,
+            origin=test_origin,
+        )
+        mock_remove_thumbnails.assert_awaited_once_with("foo")
+        mock_remove_video.assert_awaited_once_with(mock_file_foo)
+
+    @patch.object(
+        StorageFileController,
+        "remove_files",
+        new_callable=MagicMock,  # No need for async mock
+    )
+    @patch(f"{MODULE_NAME}.TaskManager.fire_and_forget")
+    def test_schedule_file_removal(
+        self,
+        mock_fire_and_forget: MagicMock,
+        mock_remove_files: MagicMock,
+    ) -> None:
+        with self.assertLogs(log, level="WARNING"):
+            self.file_controller.schedule_file_removal(
+                file_hash="foo",
+                file_ext=".bar",
+                origin="baz",
+            )
+        self.file_controller._files["foo"] = MagicMock(ext=".bar")
+        self.file_controller.schedule_file_removal(
+            file_hash="foo",
+            file_ext=".bar",
+            origin="baz",
+        )
+        mock_remove_files.assert_called_once_with("foo", origin="baz")
+        mock_fire_and_forget.assert_called_once_with(
+            mock_remove_files.return_value
+        )
+
+    @patch.object(
+        StorageFileController,
+        "temp_dir",
+        new_callable=PropertyMock,
+    )
+    def test__remove_old_temp_files(self, mock_temp_dir: PropertyMock) -> None:
         self.mock_settings.max_temp_storage_hours = 1 / 3600  # 1 sec
 
-        self.storage.temp_dir = Path(self.path, "temp")
-        file1 = Path(self.storage.temp_dir, 'foo')
-        file2 = Path(self.storage.temp_dir, 'bar')
-        dir1 = Path(self.storage.temp_dir, 'dir1')
-        dir2 = Path(self.storage.temp_dir, 'dir2')
-        self.storage.temp_dir.mkdir()
-        file1.touch()
-        dir1.mkdir()
-        time.sleep(2)
-        file2.touch()
-        dir2.mkdir()
-
+        temp_dir = Path(mkdtemp(prefix="videbo_test"))
         try:
-            output = self.storage._remove_old_temp_files()
+            mock_temp_dir.return_value = temp_dir
+            file_old_enough = Path(temp_dir, "foo")
+            file_too_new = Path(temp_dir, "bar")
+            dir1 = Path(temp_dir, "dir1")
+            file_old_enough.touch()
+            dir1.mkdir()
+            time.sleep(2)
+            file_too_new.touch()
+            output = self.file_controller._remove_old_temp_files()
+            self.assertEqual(1, output)
+            self.assertFalse(file_old_enough.exists())
+            self.assertTrue(file_too_new.exists())
+            self.assertTrue(dir1.exists())
         finally:
-            dir2.rmdir()
-            file2.unlink(missing_ok=True)
-            dir1.rmdir()
-            file1.unlink(missing_ok=True)
-            self.storage.temp_dir.rmdir()
-        self.assertEqual(1, output)
+            shutil.rmtree(temp_dir)
 
     @patch(f"{MODULE_NAME}.run_in_default_executor")
     async def test_remove_old_temp_files(self, mock_run: AsyncMock) -> None:
         mock_run.return_value = count = 42
-        with self.assertLogs(log, logging.INFO) as log_ctx:
-            await self.storage.remove_old_temp_files()
+        with self.assertLogs(log, level="INFO") as log_ctx:
+            await self.file_controller.remove_old_temp_files()
             self.assertEqual(
                 f"Cleaned up temp directory: Removed {count} old file(s).",
                 log_ctx.records[0].msg,
             )
-        mock_run.assert_awaited_once_with(self.storage._remove_old_temp_files)
+        mock_run.assert_awaited_once_with(
+            self.file_controller._remove_old_temp_files
+        )
 
-    @patch.object(StorageFileController, 'files_total_size_mb', new_callable=PropertyMock)
-    @patch.object(StorageFileController, 'files_count', new_callable=PropertyMock)
+    @patch(f"{MODULE_NAME}.time")
+    async def test_discard_old_video_views(self, mock_time: MagicMock) -> None:
+        self.mock_settings.views_retention_seconds = sec = 3.14
+        mock_time.return_value = mock_now = 42.
+        file1, file2 = MagicMock(), MagicMock()
+        self.file_controller._files = {1: file1, 2: file2}
+        await self.file_controller.discard_old_video_views()
+        file1.discard_views_older_than.assert_called_once_with(mock_now - sec)
+        file2.discard_views_older_than.assert_called_once_with(mock_now - sec)
+
     @patch(f"{MODULE_NAME}.get_free_disk_space")
     @patch.object(NetworkInterfaces, 'get_instance')
     async def test_get_status(
         self,
-        mock_ni_get_instance: MagicMock,
-        mock_get_free_disk_space: MagicMock,
-        mock_files_count: MagicMock,
-        mock_files_total_size_mb: MagicMock,
+        mock_ni_cls: MagicMock,
+        mock_get_free_disk_space: AsyncMock,
     ) -> None:
         self.mock_settings.tx_max_rate_mbit = tx_max = 12345
         mock_iter_nodes = self.mock_dist_controller_cls.return_value.iter_nodes
@@ -631,64 +538,22 @@ class FileStorageTestCase(SilentLogMixin, IsolatedAsyncioTestCase):
             MagicMock(base_url="foo"),
             MagicMock(base_url="bar"),
         ]
-        mock_update_node_status = mock_ni_get_instance.return_value.update_node_status
+        mock_update_node_status = mock_ni_cls.return_value.update_node_status
         mock_get_free_disk_space.return_value = mock_free_disk_space = 999
-        mock_files_count.return_value = mock_files_count = 111
-        mock_files_total_size_mb.return_value = mock_files_total_size = 555
-        output = await self.storage.get_status()
+        self.file_controller._files = {"foo": Mock(), "bar": Mock()}
+        self.file_controller._files_total_size = 420 * MEGA
+        output = await self.file_controller.get_status()
         self.assertIsInstance(output, StorageStatus)
-        self.assertEqual(mock_files_total_size, output.files_total_size)
-        self.assertEqual(mock_files_count, output.files_count)
-        self.assertEqual(mock_free_disk_space, output.free_space)
-        mock_get_free_disk_space.assert_awaited_once_with(str(self.mock_settings.files_path))
         self.assertEqual(tx_max, output.tx_max_rate)
-        mock_update_node_status.assert_called_once_with(output, logger=log)
+        self.assertEqual(420, output.files_total_size)
+        self.assertEqual(2, output.files_count)
+        self.assertEqual(mock_free_disk_space, output.free_space)
         self.assertEqual(["foo", "bar"], output.distributor_nodes)
-        self.assertEqual(self.storage.num_current_uploads, output.num_current_uploads)
-
-
-class FunctionsTestCase(IsolatedAsyncioTestCase):
-    def test_is_allowed_file_ending(self) -> None:
-        test_name = None
-        self.assertTrue(is_allowed_file_ending(test_name))
-        test_name = 'foobar'
-        self.assertFalse(is_allowed_file_ending(test_name))
-        test_name = 'something.MP4'
-        self.assertTrue(is_allowed_file_ending(test_name))
-
-    @patch(f"{MODULE_NAME}._video_delete_task", new_callable=MagicMock)  # No need for async mock
-    @patch.object(TaskManager, "fire_and_forget")
-    def test_schedule_video_delete(
-        self,
-        mock_fire_and_forget: MagicMock,
-        mock__video_delete_task: MagicMock,
-    ) -> None:
-        self.assertIsNone(schedule_video_delete(
-            file_hash=FOO,
-            file_ext=BAR,
-            origin=BAZ,
-        ))
-        mock__video_delete_task.assert_called_once_with(FOO, BAR, BAZ)
-        mock_fire_and_forget.assert_called_once_with(mock__video_delete_task.return_value)
-
-    @patch.object(StorageFileController, "get_instance")
-    async def test__video_delete_task(self, mock_get_instance: MagicMock) -> None:
-        mock_file = MagicMock(hash=FOO)
-        mock_get_file, mock_remove_files = MagicMock(return_value=mock_file), AsyncMock()
-        mock_get_instance.return_value.get_file = mock_get_file
-        mock_get_instance.return_value.remove_files = mock_remove_files
-
-        self.assertIsNone(await _video_delete_task(
-            file_hash=FOO,
-            file_ext=BAR,
-            origin=BAZ,
-        ))
-        mock_get_file.assert_called_once_with(FOO, BAR)
-        mock_remove_files.assert_awaited_once_with(FOO, origin=BAZ)
-
-        mock_get_file.reset_mock()
-        mock_remove_files.reset_mock()
-        mock_get_file.side_effect = FileNotFoundError
-        self.assertIsNone(await _video_delete_task(FOO, BAR, BAZ))
-        mock_get_file.assert_called_once_with(FOO, BAR)
-        mock_remove_files.assert_not_awaited()
+        self.assertEqual(
+            self.file_controller.num_current_uploads,
+            output.num_current_uploads,
+        )
+        mock_get_free_disk_space.assert_awaited_once_with(
+            str(self.mock_settings.files_path)
+        )
+        mock_update_node_status.assert_called_once_with(output, logger=log)

@@ -36,8 +36,14 @@ async def run_in_default_executor(func: Callable[..., T], *args: Any) -> T:
     return await get_running_loop().run_in_executor(None, func, *args)
 
 
+# TODO: Accept a `pathlib.Path` argument.
 async def get_free_disk_space(path: str) -> float:
-    """Get free disk space at the given path in MB."""
+    """
+    Returns the free disk space at the given `path` in MB.
+
+    Raises:
+        FileNotFoundError: `path` does not exist.
+    """
     st = await run_in_default_executor(os.statvfs, path)
     return st.f_bavail * st.f_frsize / MEGA
 
@@ -71,16 +77,25 @@ def move_file(
     Returns:
         `True` if the `dst` path did not exist yet and `src` file was moved;
         `False` if `dst` already existed and `src` file was merely deleted.
+
+    Raises:
+        FileNotFoundError:
+            The source file does not exist.
+        FileExistsError:
+            The destination file already exists and `safe` was ste to `True`.
+        OSError:
+            Destination file or directory could not be created or the source
+            file could not be removed for some other reason.
     """
     dst = Path(dst)
     if create_dir_mode is not None:
         dst.parent.mkdir(mode=create_dir_mode, parents=True, exist_ok=True)
-    if dst.is_file():
+    if dst.is_file():  # delete `src` or raise error
         if safe:
             raise FileExistsError
         Path(src).unlink()
         return False
-    else:  # move
+    else:  # move `src` to `dst`
         Path(src).rename(dst)
         dst.chmod(chmod)
         return True
