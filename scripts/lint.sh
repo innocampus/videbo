@@ -12,5 +12,5 @@ mypy
 echo
 
 echo 'Linting source and test files...'
-ruff src/ tests/
+ruff check src/ tests/
 echo -e 'No issues found.\n'

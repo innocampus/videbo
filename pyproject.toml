@@ -48,15 +48,15 @@ classifiers = [
 dynamic = ["version", "readme", "dependencies"]
 
 [project.optional-dependencies]
-full = ["prometheus-client==0.17.1"]
+full = ["prometheus-client==0.20.0"]
 dev = [
-    "build==0.10.0",
-    "coverage==7.3.0",
-    "mkdocs-material==9.2.5",
-    "mkdocstrings[python]==0.22.0",
-    "mypy==1.5.1",
-    "ruff==0.0.286",
-    "prometheus-client==0.17.1",
+    "build==1.2.1",
+    "coverage==7.6.0",
+    "mkdocs-material==9.5.30",
+    "mkdocstrings[python]==0.25.1",
+    "mypy==1.11.0",
+    "ruff==0.5.4",
+    "prometheus-client==0.20.0",
 ]
 
 [project.urls]
@@ -124,6 +124,8 @@ omit = [
 
 [tool.ruff]
 cache-dir = ".cache/ruff"
+
+[tool.ruff.lint]
 select = [
     "E",    # pycodestyle errors
     "W",    # pycodestyle warnings
@@ -146,7 +148,7 @@ ignore = [
     "A003",  # Class attribute {name} is shadowing a Python builtin -> namespaces make this OK
 ]
 
-[tool.ruff.per-file-ignores]
+[tool.ruff.lint.per-file-ignores]
 "src/**/__init__.py" = [
     "A001",  # Variable {name} is shadowing a Python builtin
 ]
@@ -158,7 +160,7 @@ ignore = [
     "PLR0915",  # Too many statements
 ]
 
-[tool.ruff.pep8-naming]
+[tool.ruff.lint.pep8-naming]
 # Allow Pydantic's `@validator` decorator to trigger class method treatment.
 classmethod-decorators = [
     "classmethod",
@@ -169,5 +171,5 @@ extend-ignore-names = [
     "tearDownAsync",  # method defined on `aiohttp.test_utils.AioHTTPTestCase`
 ]
 
-[tool.ruff.pylint]
+[tool.ruff.lint.pylint]
 max-args = 8

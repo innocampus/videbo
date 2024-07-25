@@ -166,10 +166,10 @@ class VideoSettings(SettingsBaseModel):
     binary_ffmpeg: str = 'ffmpeg'
     binary_ffprobe: str = 'ffprobe'
     check_user: Optional[str] = None
-    mime_types_allowed: set[str] = {'video/mp4', 'video/webm'}  # noqa: RUF012
-    container_formats_allowed: set[str] = {'mp4', 'webm'}       # noqa: RUF012
-    video_codecs_allowed: set[str] = {'h264', 'vp8'}            # noqa: RUF012
-    audio_codecs_allowed: set[str] = {'aac', 'vorbis'}          # noqa: RUF012
+    mime_types_allowed: set[str] = {'video/mp4', 'video/webm'}
+    container_formats_allowed: set[str] = {'mp4', 'webm'}
+    video_codecs_allowed: set[str] = {'h264', 'vp8'}
+    audio_codecs_allowed: set[str] = {'aac', 'vorbis'}
 
 
     @validator("mime_types_allowed", each_item=True)
