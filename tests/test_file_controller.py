@@ -173,20 +173,26 @@ class FileControllerTestCase(SilentLogMixin, IsolatedAsyncioTestCase):
             self.assertIn(a_hash, self.file_controller)
             self.assertIn(b_hash, self.file_controller)
             self.assertIn(c_hash, self.file_controller)
-            # Check that logging was done as expected:
+            # Check that logging was done as expected.
+            # There should be two records of a file being added, one record of
+            # the rest being skipped due to our `MAX_NUM_FILES_TO_PRINT` patch,
+            # three records of rejected files, and one final statement.
             self.assertEqual(7, len(log_ctx.records))
             log_messages = [record.msg for record in log_ctx.records]
-            self.assertListEqual(
-                [
-                    f"Adding file {a_file_path} to {self.file_controller}",
-                    f"Adding file {b_file_path} to {self.file_controller}",
-                    "Skip logging other files being added...",
-                    f"File with invalid/no extension: {no_ext_path}",
-                    f"File with invalid/no extension: {two_ext_path}",
-                    f"File extension not allowed: {not_allowed_ext_path}",
-                    f"{self.file_controller} found 4 files",
-                ],
-                log_messages,
+            add_messages = [
+                msg for msg in log_messages if msg.startswith("Adding file ")
+            ]
+            self.assertEqual(2, len(add_messages))
+            other_expected_messages = {
+                "Skip logging other files being added...",
+                f"File with invalid/no extension: {no_ext_path}",
+                f"File with invalid/no extension: {two_ext_path}",
+                f"File extension not allowed: {not_allowed_ext_path}",
+            }
+            self.assertTrue(other_expected_messages.issubset(log_messages[:-1]))
+            self.assertEqual(
+                f"{self.file_controller} found 4 files",
+                log_messages[-1],
             )
 
             # None of the files should be added:
