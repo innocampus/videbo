@@ -1,7 +1,0 @@
--r full.txt
-build==1.2.1
-coverage==7.6.0
-mkdocs-material==9.5.30
-mkdocstrings[python]==0.25.1
-mypy==1.11.0
-ruff==0.5.4

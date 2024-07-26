@@ -45,18 +45,29 @@ classifiers = [
     "Topic :: Multimedia",
     "Topic :: Multimedia :: Video",
 ]
-dynamic = ["version", "readme", "dependencies"]
+dynamic = [
+    "readme",
+    "version",
+]
+dependencies = [
+    "aiohttp==3.9.5",
+    "pydantic==1.10.17",
+    "PyJWT==2.8.0",
+    "tomli==2.0.1",
+]
 
 [project.optional-dependencies]
-full = ["prometheus-client==0.20.0"]
+full = [
+    "prometheus-client==0.20.0",
+]
 dev = [
+    "videbo[full]",
     "build==1.2.1",
     "coverage==7.6.0",
     "mkdocs-material==9.5.30",
     "mkdocstrings[python]==0.25.1",
     "mypy==1.11.0",
     "ruff==0.5.4",
-    "prometheus-client==0.20.0",
 ]
 
 [project.urls]
@@ -66,8 +77,8 @@ documentation = "https://innocampus.github.io/videbo"
 
 [tool.setuptools.dynamic]
 readme = { file = ["README.md"] }
-dependencies = { file = "requirements/common.txt" }
 version = { attr = "videbo.__version__" }
+
 
 #########################
 # Static type checking: #
@@ -90,6 +101,7 @@ init_forbid_extra = true
 init_typed = true
 warn_required_dynamic_aliases = true
 warn_untyped_fields = true
+
 
 #######################
 # Unit test coverage: #
@@ -118,6 +130,7 @@ exclude_also = [
 omit = [
     "tests/*",
 ]
+
 
 ###############################
 # Linting and style checking: #
