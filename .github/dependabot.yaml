@@ -1,0 +1,58 @@
+# This sets up Dependabot to check for Github Actions updates.
+#
+# It also sets it up to check for Python package updates on two different schedules.
+# It checks weekly for minor and patch version updates and monthly for major version updates.
+#
+# This has the added benefit of making Dependabot create separate pull requests for the two schedules.
+# If e.g. a new major version comes out for a package, a PR will be created, and if then a patch version update is
+# available, another PR will be created for that.
+#
+# Since Dependabot does not currently support different schedules for the same directory natively, we use the workaround
+# of specifying the default branch in one of the configurations and omitting it in the other.
+# See this comment: https://github.com/dependabot/dependabot-core/issues/1778#issuecomment-1988140219
+
+version: 2
+updates:
+  # Check weekly for any updates to the GitHub actions used.
+  - package-ecosystem: 'github-actions'
+    directory: '/'
+    schedule:
+      interval: 'weekly'
+      time: '09:00'
+      timezone: 'Europe/Berlin'
+    commit-message:
+      prefix: '⬆'
+    assignees:
+      - 'daniil-berg'
+  # Check weekly for minor/patch updates to Python packages.
+  - package-ecosystem: 'pip'
+    directory: '/'
+    schedule:
+      interval: 'weekly'
+      time: '09:00'
+      timezone: 'Europe/Berlin'
+    ignore:
+      - dependency-name: '*'
+        update-types:
+          - 'version-update:semver-major'
+    commit-message:
+      prefix: '⬆'
+    assignees:
+      - 'daniil-berg'
+    target-branch: master
+  # Check monthly for major updates to Python packages.
+  - package-ecosystem: 'pip'
+    directory: '/'
+    schedule:
+      interval: 'monthly'
+      time: '09:00'
+      timezone: 'Europe/Berlin'
+    ignore:
+      - dependency-name: '*'
+        update-types:
+          - 'version-update:semver-minor'
+          - 'version-update:semver-patch'
+    commit-message:
+      prefix: '⬆ Major'
+    assignees:
+      - 'daniil-berg'
