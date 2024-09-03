@@ -64,8 +64,7 @@ jobs:
         cache: 'pip'
         cache-dependency-path: 'pyproject.toml'
 
-    - uses: FedericoCarboni/setup-ffmpeg@v3
-      id: setup-ffmpeg
+    - uses: ./.github/actions/setup-ffmpeg
 
     - name: Install dependencies
       run: |
