@@ -63,11 +63,11 @@ full = [
 dev = [
     "videbo[full]",
     "build==1.2.1",
-    "coverage==7.6.0",
-    "mkdocs-material==9.5.30",
-    "mkdocstrings[python]==0.25.1",
-    "mypy==1.11.0",
-    "ruff==0.5.4",
+    "coverage[toml]==7.6.1",
+    "mkdocs-material==9.5.34",
+    "mkdocstrings[python]==0.26.0",
+    "mypy==1.11.2",
+    "ruff==0.6.3",
 ]
 
 [project.urls]
