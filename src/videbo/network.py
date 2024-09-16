@@ -97,14 +97,14 @@ class NetworkInterfaces:
     # TODO(daniil-berg): Use a custom `Periodic` instead of the `_fetch_task`.
     #                    https://github.com/innocampus/videbo/issues/24
     _fetch_task: Optional[Task[None]]
-    _server_status: Optional[StubStatus]
+    _server_status: StubStatus
 
     def __init__(self) -> None:
         self.http_client: Client = Client()
         self._interfaces = {}
         self._last_time_network_proc = 0.0
         self._fetch_task = None
-        self._server_status = None
+        self._server_status = StubStatus()
 
     @staticmethod
     def get_instance() -> NetworkInterfaces:
@@ -185,8 +185,6 @@ class NetworkInterfaces:
             return
         text = response_data.decode("utf-8")
         lines = text.split("\n")
-        if self._server_status is None:
-            self._server_status = StubStatus()
         if re.match(HTML_PATTERN, text):
             self._server_status.server_type = ServerType.apache
             updated = self._update_apache_status(lines)

@@ -35,7 +35,7 @@ class NetworkInterfacesTestCase(SilentLogMixin, IsolatedAsyncioTestCase):
     def test___init__(self) -> None:
         self.assertEqual(0., self.ni._last_time_network_proc)
         self.assertIsNone(self.ni._fetch_task)
-        self.assertIsNone(self.ni._server_status)
+        self.assertEqual(network.StubStatus(), self.ni._server_status)
 
     def test_get_instance(self) -> None:
         instance = network.NetworkInterfaces.get_instance()
@@ -171,19 +171,24 @@ class NetworkInterfacesTestCase(SilentLogMixin, IsolatedAsyncioTestCase):
     async def test__fetch_server_status(self, mock__update_apache_status: MagicMock,
                                         mock__update_nginx_status: MagicMock) -> None:
         mock_url = "foo"
-        self.ni._server_status = None
 
         # Test response error:
         self.mock_client_request.side_effect = HTTPClientError
         await self.ni._fetch_server_status(mock_url)
-        self.assertIsNone(self.ni._server_status)
+        self.assertIs(
+            self.ni._server_status.server_type,
+            network.ServerType.unknown,
+        )
         self.mock_client_request.assert_awaited_once_with("GET", mock_url)
         self.mock_client_request.reset_mock()
 
         # Test connection error:
         self.mock_client_request.side_effect = ConnectionRefusedError
         await self.ni._fetch_server_status(mock_url)
-        self.assertIsNone(self.ni._server_status)
+        self.assertIs(
+            self.ni._server_status.server_type,
+            network.ServerType.unknown,
+        )
         self.mock_client_request.assert_awaited_once_with("GET", mock_url)
         self.mock_client_request.reset_mock()
 
@@ -191,7 +196,10 @@ class NetworkInterfacesTestCase(SilentLogMixin, IsolatedAsyncioTestCase):
         self.mock_client_request.side_effect = None
         self.mock_client_request.return_value = 404, b"foo"
         await self.ni._fetch_server_status(mock_url)
-        self.assertIsNone(self.ni._server_status)
+        self.assertIs(
+            self.ni._server_status.server_type,
+            network.ServerType.unknown,
+        )
         self.mock_client_request.assert_awaited_once_with("GET", mock_url)
         self.mock_client_request.reset_mock()
 
@@ -211,6 +219,10 @@ class NetworkInterfacesTestCase(SilentLogMixin, IsolatedAsyncioTestCase):
         mock_nginx_stats = "fake nginx stats"
         self.mock_client_request.return_value = 200, b"foo\nbar\nbaz\n" + mock_nginx_stats.encode()
         await self.ni._fetch_server_status(mock_url)
+        self.assertIs(
+            self.ni._server_status.server_type,
+            network.ServerType.nginx,
+        )
         self.mock_client_request.assert_awaited_once_with("GET", mock_url)
         self.mock_client_request.reset_mock()
         mock__update_apache_status.assert_not_called()
@@ -222,6 +234,10 @@ class NetworkInterfacesTestCase(SilentLogMixin, IsolatedAsyncioTestCase):
         self.mock_client_request.return_value = _, test_data = 200, b"<html>\nfoo\nbar"
         with self.assertRaises(network.UnknownServerStatusFormatError):
             await self.ni._fetch_server_status(mock_url)
+        self.assertIs(
+            self.ni._server_status.server_type,
+            network.ServerType.apache,
+        )
         mock__update_nginx_status.assert_not_called()
         mock__update_apache_status.assert_called_once_with(test_data.decode().split("\n"))
 
