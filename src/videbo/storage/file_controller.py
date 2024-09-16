@@ -1,10 +1,10 @@
 from __future__ import annotations
 from asyncio.tasks import gather
-from collections.abc import AsyncIterator, Iterable
+from contextlib import suppress
 from logging import getLogger
 from pathlib import Path
 from time import time
-from typing import Optional
+from typing import Optional, TYPE_CHECKING
 
 from videbo import settings
 from videbo.exceptions import LMSInterfaceError
@@ -19,6 +19,9 @@ from .distribution import DistributionController
 from .stored_file import StoredVideoFile
 from .thumbnail_cache import ThumbnailCache
 from .api.models import StorageStatus
+
+if TYPE_CHECKING:
+    from collections.abc import AsyncIterator, Iterable
 
 
 log = getLogger(__name__)
@@ -88,7 +91,8 @@ class StorageFileController(FileController[StoredVideoFile]):
 
         self.files_dir.mkdir(exist_ok=True)
         self.temp_dir.mkdir(exist_ok=True)
-        # TODO: Use other sandboxing approach
+        # TODO(daniil-berg): Remove the `temp_out_dir` attribute completely.
+        #                    https://github.com/innocampus/videbo/issues/18
         self.temp_out_dir.mkdir(exist_ok=True)
         self.temp_out_dir.chmod(0o777)
 
@@ -268,7 +272,8 @@ class StorageFileController(FileController[StoredVideoFile]):
             self.store_file_permanently(f"{path.stem}_{num}{JPG_EXT}")
             for num in range(thumbnail_count)
         )
-        # TODO: Handle the exceptions for storing thumbnails.
+        # TODO(daniil-berg): Handle the exceptions for storing thumbnails.
+        #                    https://github.com/innocampus/videbo/issues/17
         await gather(*coroutines, return_exceptions=True)
         log.info(
             f"Permanently stored {thumbnail_count} thumbnails "
@@ -317,12 +322,11 @@ class StorageFileController(FileController[StoredVideoFile]):
         coroutines = []
         for num in range(count):
             path = self.get_path(f"{video_hash}_{num}{JPG_EXT}")
-            try:
+            with suppress(KeyError):
                 del self.thumb_memory_cache[path]
-            except KeyError:
-                pass
             coroutines.append(run_in_default_executor(path.unlink))
-        # TODO: Handle the exceptions for deleting thumbnails.
+        # TODO(daniil-berg): Handle the exceptions for deleting thumbnails.
+        #                    https://github.com/innocampus/videbo/issues/16
         await gather(*coroutines, return_exceptions=True)
         log.info(f"Removed {count} thumbnails for video {video_hash}")
 
@@ -471,7 +475,7 @@ class StorageFileController(FileController[StoredVideoFile]):
             tx_max_rate=settings.tx_max_rate_mbit,
             files_total_size=self.files_total_size_mb,
             files_count=len(self),
-            free_space=await get_free_disk_space(str(settings.files_path)),
+            free_space=await get_free_disk_space(settings.files_path),
             distributor_nodes=[
                 node.base_url
                 for node in self.distribution_controller.iter_nodes()

@@ -298,7 +298,8 @@ async def handle_thumbnail_request(
     if jwt_data.thumb_id is None:
         log.warning("JWT missing `thumb_id`")
         raise HTTPBadRequest()
-    # TODO: Consider checking file serving load threshold here too
+    # TODO(daniil-berg): Consider checking file serving load threshold here too
+    #                    https://github.com/innocampus/videbo/issues/15
     hash_, ext, num = jwt_data.hash, jwt_data.file_ext, jwt_data.thumb_id
     file_controller = StorageFileController()
     if jwt_data.type == FileType.THUMBNAIL:

@@ -6,7 +6,8 @@ from videbo.storage.api.client import StorageClient as Client
 from videbo.storage.api.models import StorageFileInfo
 
 
-os.system("")  # Enables some ANSI codes on Windows machines
+# Enable some ANSI codes on Windows machines.
+os.system("")  # noqa: S605, S607
 
 GREEN = "\033[32m"
 YELLOW = "\033[33m"

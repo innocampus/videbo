@@ -554,6 +554,6 @@ class StorageFileControllerTestCase(SilentLogMixin, IsolatedAsyncioTestCase):
             output.num_current_uploads,
         )
         mock_get_free_disk_space.assert_awaited_once_with(
-            str(self.mock_settings.files_path)
+            self.mock_settings.files_path
         )
         mock_update_node_status.assert_called_once_with(output, logger=log)

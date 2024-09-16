@@ -2,20 +2,23 @@ from __future__ import annotations
 
 import logging
 from asyncio.tasks import gather
-from collections.abc import AsyncIterator
 from json.decoder import JSONDecodeError
 from time import time
-from types import TracebackType
-from typing import Any, ClassVar, Optional, TypeVar, Union, overload
+from typing import Any, ClassVar, Optional, TypeVar, Union, overload, TYPE_CHECKING
 
 from aiohttp import client as aiohttp_client
-from aiohttp.web_app import Application
 from pydantic import ValidationError
 
 from videbo.exceptions import HTTPClientError
 from videbo.misc.constants import HTTP_CODE_OK
 from videbo.misc.functions import is_subclass
 from videbo.models import BaseRequestModel, BaseResponseModel, RequestJWTData, Role, TokenIssuer
+
+if TYPE_CHECKING:
+    from collections.abc import AsyncIterator
+    from types import TracebackType
+
+    from aiohttp.web_app import Application
 
 
 __all__ = [

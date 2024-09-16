@@ -4,7 +4,7 @@ from pathlib import Path
 from typing import NoReturn, Union
 
 from aiohttp.web import Request, RouteTableDef
-from aiohttp.web_exceptions import HTTPNotFound, HTTPOk, HTTPServiceUnavailable, HTTPInternalServerError
+from aiohttp.web_exceptions import HTTPNotFound, HTTPOk, HTTPServiceUnavailable, HTTPInternalServerError, HTTPUnprocessableEntity
 from aiohttp.web_response import Response
 from aiohttp.web_fileresponse import FileResponse
 
@@ -71,6 +71,8 @@ async def get_all_files(_request: Request, _jwt_data: RequestJWTData) -> Respons
     }).json_response()
 
 
+# TODO(daniil-berg): Remove `hash` and `file_ext` from the URL path.
+#                    https://github.com/innocampus/videbo/issues/28
 @routes.post(r'/api/distributor/copy/{hash:[0-9a-f]{64}}{file_ext:\.[0-9a-z]{1,10}}')
 @ensure_auth(Role.node)
 @ensure_json_body
@@ -199,9 +201,10 @@ async def request_file(
         returned.
 
     Raises:
+        HTTPUnprocessableEntity:
+            If the `type` of the JWT payload is anything other than `video`.
         HTTPNotFound:
-            If the `type` of the JWT payload is anything other than `video`
-            or no file with the `hash` specified in the JWT is found.
+            If no file with the `hash` specified in the JWT is found.
         HTTPServiceUnavailable:
             If the node is currently downloading the requested file from another
             node, but too many other clients are also waiting for the download
@@ -211,8 +214,7 @@ async def request_file(
     file_controller = DistributorFileController()
     if jwt_data.type != FileType.VIDEO:
         log.info(f"Invalid request type: {jwt_data.type}")
-        # TODO: This should probably be a 406 instead of a 404.
-        raise HTTPNotFound()
+        raise HTTPUnprocessableEntity()
     try:
         file = await file_controller.get_file(jwt_data.hash)
     except NoSuchFile as e:

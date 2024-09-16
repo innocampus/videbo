@@ -183,10 +183,7 @@ def ensure_json_body(
             return await function(request, *args, **kwargs)
         return wrapper
 
-    if _func is None:
-        return decorator
-    else:
-        return decorator(_func)
+    return decorator if _func is None else decorator(_func)
 
 
 def file_serve_headers(download_filename: Optional[str] = None) -> StrDict:

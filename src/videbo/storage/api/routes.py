@@ -200,9 +200,8 @@ async def delete_file(request: Request, jwt_data: DeleteFileJWTData) -> Response
         request.match_info["file_ext"],
         origin=request.headers.getone("Origin", None),
     )
-    # TODO: Consider returning some sort of error, if no file with the provided
-    #       name is controlled by the node, instead of silently ignoring the
-    #       request.
+    # TODO(daniil-berg): Respond with `404`, if no such file is controlled.
+    #                    https://github.com/innocampus/videbo/issues/20
     return OK().json_response()
 
 

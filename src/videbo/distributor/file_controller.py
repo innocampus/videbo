@@ -135,7 +135,7 @@ class DistributorFileController(FileController[DistributedVideoFile]):
         Raises:
             FileNotFoundError: The files directory does not exist.
         """
-        free = await get_free_disk_space(str(self.files_dir))
+        free = await get_free_disk_space(self.files_dir)
         return max(free - settings.distribution.leave_free_space_mb, 0.)
 
     @staticmethod
@@ -201,7 +201,6 @@ class DistributorFileController(FileController[DistributedVideoFile]):
             await run_in_default_executor(file_obj.close)
         log.info(f"Copied {file} ({size_mb:.1f} MB) from {file.source_url}")
         if file.loaded_bytes != file.size:
-            # TODO: Should we delete the temporary file?
             raise UnexpectedFileSize(file)
         # Move the file to its final location.
         await run_in_default_executor(temp_path.rename, final_path)
@@ -224,6 +223,8 @@ class DistributorFileController(FileController[DistributedVideoFile]):
         try:
             await self._download_and_persist(file)
         except Exception as e:
+            # TODO(daniil-berg): Delete the file.
+            #                    https://github.com/innocampus/videbo/issues/26
             log.exception(
                 f"{e.__class__.__name__} copying {file} from {file.source_url}"
             )

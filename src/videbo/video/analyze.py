@@ -39,6 +39,10 @@ _log = getLogger(__name__)
 DEFAULT_SUBPROCESS_TIMEOUT: float = 10.0  # seconds
 
 
+# TODO(daniil-berg): Remove the `sudo_user` argument everywhere.
+#                    https://github.com/innocampus/videbo/issues/18
+
+
 async def get_video_mime_type(
     file_path: PathT,
     sudo_user: Optional[str] = None,
@@ -137,8 +141,8 @@ async def get_ffprobe_info(
     try:
         return VideoInfo.parse_raw(stdout.decode())
     except ValidationError:
-        # TODO: Passing `stderr` and discarding the `ValidationError` is wrong;
-        #       ensure validation problems are properly logged!
+        # TODO(daniil-berg): Ensure validation problems are properly logged
+        #                    https://github.com/innocampus/videbo/issues/12
         raise FFProbeError(stderr=stderr.decode()) from None
 
 

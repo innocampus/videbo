@@ -70,9 +70,13 @@ class NetworkInterfacesTestCase(SilentLogMixin, IsolatedAsyncioTestCase):
 
     @patch.object(network.InterfaceStats, "update_throughput")
     @patch.object(network, "time")
-    @patch.object(network, "open")
-    def test__fetch_proc_info(self, mock_open: MagicMock, mock_time: MagicMock,
-                              mock_update_throughput: MagicMock) -> None:
+    @patch.object(network, "PROC_NET_DEV")
+    def test__fetch_proc_info(
+        self,
+        mock_net_dev_path: MagicMock,
+        mock_time: MagicMock,
+        mock_update_throughput: MagicMock,
+    ) -> None:
         mock_time.return_value = 100.
         # Create mock net dev output:
         iface_name_1, iface_name_2 = "enp1s0", "enp2s0"
@@ -105,7 +109,9 @@ class NetworkInterfacesTestCase(SilentLogMixin, IsolatedAsyncioTestCase):
             iface_info_1,
             iface_info_2,
         ]
-        mock_open.return_value = MagicMock(__enter__=MagicMock(return_value=mock_net_dev_lines))
+        mock_net_dev_path.open.return_value = MagicMock(
+            __enter__=MagicMock(return_value=mock_net_dev_lines)
+        )
 
         self.assertDictEqual({}, self.ni._interfaces)
 

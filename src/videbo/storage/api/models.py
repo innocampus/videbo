@@ -4,7 +4,7 @@ from logging import Logger, getLogger
 from typing import Literal, Optional
 
 from pydantic.fields import Field
-from pydantic.networks import AnyHttpUrl
+from pydantic.networks import AnyHttpUrl  # noqa: TCH002
 
 from videbo import settings
 from videbo.models import (
@@ -17,7 +17,7 @@ from videbo.models import (
     Role,
     TokenIssuer,
 )
-from videbo.distributor.api.models import DistributorStatus
+from videbo.distributor.api.models import DistributorStatus  # noqa: TCH001
 
 
 __all__ = [
@@ -46,6 +46,8 @@ __all__ = [
 _log = getLogger(__name__)
 
 
+# TODO(daniil-berg): Move to `videbo.models`.
+#                    https://github.com/innocampus/videbo/issues/22
 class FileType(Enum):
     VIDEO = 'video'
     THUMBNAIL = 'thumbnail'
@@ -78,8 +80,8 @@ class DeleteFileJWTData(RequestJWTData):
     is_allowed_to_delete_file: bool
 
 
-# TODO: Since this model is used by the distributor as well,
-#       it and the `FileType` enum should probably be moved to `videbo.models`.
+# TODO(daniil-berg): Move to `videbo.models`.
+#                    https://github.com/innocampus/videbo/issues/22
 class RequestFileJWTData(RequestJWTData):
     type: FileType
     hash: str
@@ -290,7 +292,8 @@ class InvalidFormat(_Error):
         log.warning("No or invalid file in request")
 
 
-# TODO: See if we can make it consistent by replacing `result` with `status`
+# TODO(daniil-berg): Inherit from `OK`, remove `result` field.
+#                    https://github.com/innocampus/videbo/issues/21
 class FileUploaded(BaseResponseModel):
     result: Literal["ok"] = "ok"
     jwt: str

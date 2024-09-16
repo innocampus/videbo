@@ -251,7 +251,7 @@ class LMSRequestJWTData(RequestJWTData):
     role: Role = Role.node
 
     @validator('role')
-    def role_appropriate(cls, v: Role, values: dict[str, Any]) -> Role:
+    def role_appropriate(cls, v: Role, values: dict[str, Any]) -> Role:  # noqa: ARG003
         """Ensures that the role level is `node`."""
         if v != Role.node:
             raise ValueError("Tokens for accessing the LMS API must have the role `node`")

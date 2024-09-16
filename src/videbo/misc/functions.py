@@ -36,8 +36,7 @@ async def run_in_default_executor(func: Callable[..., T], *args: Any) -> T:
     return await get_running_loop().run_in_executor(None, func, *args)
 
 
-# TODO: Accept a `pathlib.Path` argument.
-async def get_free_disk_space(path: str) -> float:
+async def get_free_disk_space(path: PathT) -> float:
     """
     Returns the free disk space at the given `path` in MB.
 
@@ -90,15 +89,15 @@ def move_file(
     dst = Path(dst)
     if create_dir_mode is not None:
         dst.parent.mkdir(mode=create_dir_mode, parents=True, exist_ok=True)
-    if dst.is_file():  # delete `src` or raise error
+    if dst.is_file():  # Delete `src` or raise error.
         if safe:
             raise FileExistsError
         Path(src).unlink()
         return False
-    else:  # move `src` to `dst`
-        Path(src).rename(dst)
-        dst.chmod(chmod)
-        return True
+    # Move `src` to `dst`:
+    Path(src).rename(dst)
+    dst.chmod(chmod)
+    return True
 
 
 def copy_file(src: PathT, dst: PathT, overwrite: bool = False) -> bool:
@@ -133,8 +132,7 @@ def sanitize_filename(filename: str) -> str:
     Leaves no more than two consecutive dots in any place of the file name.
     """
     filename = re.sub(r"[^\w \-_~,;\[\]().]", "", filename, flags=re.ASCII)
-    filename = re.sub(r"\.{3,}", "..", filename)
-    return filename
+    return re.sub(r"\.{3,}", "..", filename)
 
 
 def rel_path(filename: str) -> Path:
@@ -256,6 +254,9 @@ async def create_user_subprocess(
     https://docs.python.org/3/library/asyncio-subprocess.html
 
     By default `stdout` and `stderr` are both set to `subprocess.DEVNULL`.
+
+    TODO(daniil-berg): Remove this function.
+                       https://github.com/innocampus/videbo/issues/18
     """
     if sudo_user:
         args = ("-u", sudo_user, program, *args)

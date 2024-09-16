@@ -1,20 +1,23 @@
 from __future__ import annotations
 from asyncio.tasks import gather
 from collections.abc import Awaitable, Callable, Container, Iterable, Iterator
+from contextlib import suppress
 from functools import partial
 from logging import getLogger
 from time import time
 from timeit import default_timer as timer
-from typing import Optional, Union, cast
+from typing import Optional, Union, cast, TYPE_CHECKING
 
 from videbo import settings
 from videbo.client import Client
-from videbo.distributor.api.models import DistributorStatus
 from videbo.distributor.node import DistributorNode
 from videbo.misc.periodic import Periodic
 from videbo.misc.task_manager import TaskManager
 from .exceptions import DistNodeAlreadyDisabled, UnknownDistURL
-from .stored_file import StoredVideoFile
+
+if TYPE_CHECKING:
+    from videbo.distributor.api.models import DistributorStatus
+    from .stored_file import StoredVideoFile
 
 
 log = getLogger(__name__)
@@ -171,7 +174,7 @@ class DistributionController:
             if not node.is_loading(file):
                 # We found a good node; no need to keep looking
                 return node, True
-            elif node_loads_file is None:
+            if node_loads_file is None:
                 # First node that is at least currently loading the file
                 node_loads_file = node
         # All nodes are busy, but if at least one currently loads the file,
@@ -256,10 +259,8 @@ class DistributionController:
         if node is None:
             log.warning(f"Cannot remove unknown distributor at `{base_url}`")
             raise UnknownDistURL(base_url)
-        try:
+        with suppress(DistNodeAlreadyDisabled):
             await node.disable()
-        except DistNodeAlreadyDisabled:
-            pass
         await node.set_node_state(False)
         log.info(f"Removed {node} from distribution controller")
 
@@ -283,8 +284,8 @@ class DistributionController:
             raise UnknownDistURL(base_url)
         # Call `DistributorNode.enable` or `DistributorNode.disable`:
         call = cast(Callable[[], Awaitable[None]], getattr(found_node, verb))
-        # TODO: The `await` causes a `TypeError` with `enable` because that is
-        #       not a coroutine method.
+        # TODO(daniil-berg): Fix `TypeError` caused by awaiting `enable`.
+        #                    https://github.com/innocampus/videbo/issues/19
         await call()
         log.info(f"Successfully {verb}d {found_node}")
 

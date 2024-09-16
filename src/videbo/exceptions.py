@@ -36,7 +36,6 @@ class FFProbeError(SubprocessError):
 
 class VideoError(VideboBaseException):
     """Base class for video format/codec related exceptions"""
-    pass
 
 
 class VideoNotAllowed(VideoError):

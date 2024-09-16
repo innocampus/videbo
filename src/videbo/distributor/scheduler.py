@@ -38,10 +38,7 @@ class DownloadScheduler:
             return tup
 
     def __contains__(self, item: StoredVideoFile) -> bool:
-        for file, _ in self.files_from_urls:
-            if file == item:
-                return True
-        return False
+        return any(file == item for file, _ in self.files_from_urls)
 
     def __len__(self) -> int:
         return len(self.files_from_urls)

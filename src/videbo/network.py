@@ -1,26 +1,33 @@
 from __future__ import annotations
 import re
 from asyncio import CancelledError, Task, create_task, sleep
-from collections.abc import AsyncIterator
+from contextlib import suppress
 from enum import Enum
 from logging import Logger, getLogger
+from pathlib import Path
 from time import time
-from typing import ClassVar, Optional
+from typing import ClassVar, Optional, TYPE_CHECKING
 
-from aiohttp.web_app import Application
 from pydantic import BaseModel
 
 from videbo import settings
 from videbo.client import Client
 from videbo.exceptions import HTTPClientError, UnknownServerStatusFormatError
 from videbo.misc.constants import HTTP_CODE_OK, MEGA
-from videbo.models import NodeStatus
+
+if TYPE_CHECKING:
+    from collections.abc import AsyncIterator
+
+    from aiohttp.web_app import Application
+
+    from videbo.models import NodeStatus
 
 
 log = getLogger(__name__)
 
 HTML_PATTERN = re.compile(r"\s*<(!DOCTYPE|html).*>.*")
 
+PROC_NET_DEV = Path("/proc/net/dev")
 # All regex group names except `name` must match
 # the field names of the `InterfaceStats` model exactly!
 INTERFACE_STATS_PATTERN = re.compile(
@@ -87,6 +94,8 @@ class NetworkInterfaces:
     _instance: ClassVar[Optional[NetworkInterfaces]] = None
     _interfaces: dict[str, NetworkInterface]
     _last_time_network_proc: float
+    # TODO(daniil-berg): Use a custom `Periodic` instead of the `_fetch_task`.
+    #                    https://github.com/innocampus/videbo/issues/24
     _fetch_task: Optional[Task[None]]
     _server_status: Optional[StubStatus]
 
@@ -116,14 +125,13 @@ class NetworkInterfaces:
     def _fetch_proc_info(self) -> None:
         """Fetching data from /proc/net/dev"""
         interval_seconds = time() - self._last_time_network_proc
-        with open('/proc/net/dev', 'r') as f:
+        with PROC_NET_DEV.open('r') as f:
             for line in f:
                 try:
                     rx_match, tx_match = re.finditer(INTERFACE_STATS_PATTERN, line)
                 except ValueError:
                     continue
                 name = rx_match.group("name")
-                assert isinstance(name, str)
                 if name == "lo":
                     continue
                 interface = self._interfaces.setdefault(name, NetworkInterface(name=name))
@@ -136,7 +144,6 @@ class NetworkInterfaces:
         self._last_time_network_proc += interval_seconds
 
     def _update_apache_status(self, lines_of_text: list[str]) -> bool:
-        assert isinstance(self._server_status, StubStatus)
         scan = False
         text_to_scan = ""
         for line in lines_of_text:
@@ -152,7 +159,6 @@ class NetworkInterfaces:
         return False
 
     def _update_nginx_status(self, text: str) -> bool:
-        assert isinstance(self._server_status, StubStatus)
         match = re.match(
             r"Reading:\s*(?P<reading>\d+)\s+"
             r"Writing:\s*(?P<writing>\d+)\s+"
@@ -220,7 +226,6 @@ class NetworkInterfaces:
         """Starts the fetching process"""
         if self._fetch_task is not None:
             return
-        # TODO: Consider using custom `Periodic` instead
         self._fetch_task = create_task(self._fetch_loop())
         log.info("Started fetching network resources info")
 
@@ -229,10 +234,8 @@ class NetworkInterfaces:
         if self._fetch_task is not None:
             log.debug("Stopping network resource info fetch task...")
             self._fetch_task.cancel()
-            try:
+            with suppress(CancelledError):
                 await self._fetch_task
-            except CancelledError:
-                pass
             self._fetch_task = None
             log.info("Stopped fetching network resources info")
 
@@ -283,7 +286,8 @@ class NetworkInterfaces:
             return None
         return (current_rate * 8 / 1_000_000) / settings.tx_max_rate_mbit
 
-    # TODO: Consider moving this to `NodeStatus`.
+    # TODO(daniil-berg): Move this to the `NodeStatus` class.
+    #                    https://github.com/innocampus/videbo/issues/23
     def update_node_status(self, status_obj: NodeStatus, logger: Logger = log) -> None:
         """Updates a given `NodeStatus` (subclass) instance with network interface information"""
         if self._server_status is not None:

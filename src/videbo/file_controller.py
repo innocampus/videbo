@@ -54,7 +54,6 @@ class FileController(
         self._http_client = Client()
         self._files = {}
         self._files_total_size = 0
-        # TODO: Consider moving these calls into `app_context`.
         self._load_file_list()
         self.log.info(f"Initialized {self} singleton")
 

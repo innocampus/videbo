@@ -2,7 +2,8 @@ HTTP_CODE_OK = 200
 
 JPG_EXT = ".jpg"  # for thumbnails
 
-# TODO: Introduce consistency between binary and decimal prefixes
+# TODO(daniil-berg): Introduce consistency between binary and decimal prefixes.
+#                    https://github.com/innocampus/videbo/issues/25
 MEGA = 1024 * 1024
 
 VIDEO_FILE_EXT_MIME_TYPE = {

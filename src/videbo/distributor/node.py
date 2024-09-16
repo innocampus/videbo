@@ -1,27 +1,25 @@
 from __future__ import annotations
 from logging import getLogger
-from typing import Optional
+from typing import Optional, TYPE_CHECKING
 
 from videbo import settings
 from videbo.exceptions import HTTPClientError
 from videbo.misc.constants import HTTP_CODE_OK, MEGA
 from videbo.misc.periodic import Periodic
 from videbo.misc.task_manager import TaskManager
-from videbo.models import HashedFileModel
 from videbo.storage.exceptions import (
     DistributionError,
     DistNodeAlreadyDisabled,
     DistNodeAlreadyEnabled,
     DistStatusUnknown,
 )
-from videbo.storage.stored_file import StoredVideoFile
-from videbo.types import HashedFileProtocol
 from .api.client import DistributorClient as Client
-from .api.models import (
-    DistributorStatus,
-    DistributorDeleteFilesResponse,
-)
 from .scheduler import DownloadScheduler
+
+if TYPE_CHECKING:
+    from videbo.storage.stored_file import StoredVideoFile
+    from videbo.types import HashedFileProtocol
+    from .api.models import DistributorStatus, DistributorDeleteFilesResponse
 
 
 log = getLogger(__name__)
@@ -292,7 +290,7 @@ class DistributorNode:
         """
         from videbo.storage.file_controller import StorageFileController
         storage_file_controller = StorageFileController()
-        unknown_files: list[HashedFileModel] = []
+        unknown_files = []
         try:
             code, resp_data = await self.http_client.get_files_list()
         except HTTPClientError as e:

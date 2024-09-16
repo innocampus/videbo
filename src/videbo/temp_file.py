@@ -3,12 +3,15 @@ import os
 from hashlib import sha256
 from pathlib import Path
 from tempfile import mkstemp
-from types import TracebackType
-from typing import BinaryIO, ClassVar, Literal, Optional, TypeVar
+from typing import BinaryIO, ClassVar, Literal, Optional, TypeVar, TYPE_CHECKING
 
 from videbo.exceptions import PendingWriteOperationError
 from videbo.misc.functions import move_file, run_in_default_executor
-from videbo.types import PathT
+
+if TYPE_CHECKING:
+    from types import TracebackType
+
+    from videbo.types import PathT
 
 
 __all__ = [

@@ -31,7 +31,8 @@ class DistributorStatus(NodeStatus):
     copy_files_status: list[DistributorCopyFileStatus]
 
 
-# TODO: Why not pass file hash and ext. in the POST payload as well?
+# TODO(daniil-berg): Add `hash` and `file_ext` to this payload model.
+#                    https://github.com/innocampus/videbo/issues/28
 class DistributorCopyFile(BaseRequestModel):
     from_base_url: str
     file_size: int  # in bytes

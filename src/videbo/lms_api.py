@@ -1,13 +1,9 @@
 from __future__ import annotations
 import logging
-from collections.abc import AsyncIterator, Iterator
 from typing import ClassVar, Optional, TYPE_CHECKING
 from urllib.parse import urlencode
 
-from aiohttp.web_app import Application
-
 from videbo import settings
-from videbo.client import Client
 from videbo.exceptions import HTTPClientError, LMSInterfaceError
 from videbo.misc.constants import HTTP_CODE_OK
 from videbo.models import (
@@ -17,6 +13,11 @@ from videbo.models import (
 )
 
 if TYPE_CHECKING:
+    from collections.abc import AsyncIterator, Iterator
+
+    from aiohttp.web_app import Application
+
+    from videbo.client import Client
     from videbo.storage.stored_file import StoredVideoFile as StoredFile
 
 __all__ = ['LMS']

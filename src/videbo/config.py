@@ -1,22 +1,26 @@
 from __future__ import annotations
 import logging
 import re
-from collections.abc import Callable
 from pathlib import Path
-from typing import Any, Optional, TypeVar, Union
+from typing import Any, Optional, TypeVar, Union, TYPE_CHECKING
 
 import tomli
 from pydantic import BaseModel as PydanticBaseModel
 from pydantic import BaseSettings as PydanticBaseSettings
 from pydantic.class_validators import validator
 from pydantic.config import Extra
-from pydantic.env_settings import SettingsSourceCallable
 from pydantic.fields import Field, ModelField, SHAPE_LIST, SHAPE_SET
-from pydantic.networks import AnyHttpUrl, IPvAnyAddress
+from pydantic.networks import AnyHttpUrl, IPvAnyAddress  # noqa: TCH002
 
 from videbo.misc.constants import MEGA, VIDEO_CONTAINER_FORMATS, VIDEO_MIME_TYPES
 from videbo.misc.functions import is_subclass
-from videbo.types import PathT
+
+if TYPE_CHECKING:
+    from collections.abc import Callable
+
+    from pydantic.env_settings import SettingsSourceCallable
+
+    from videbo.types import PathT
 
 
 __all__ = [
@@ -102,10 +106,10 @@ class BaseSettings(PydanticBaseSettings, SettingsBaseModel):
 
         @classmethod
         def customise_sources(
-                cls,
-                init_settings: SettingsSourceCallable,
-                env_settings: SettingsSourceCallable,
-                file_secret_settings: SettingsSourceCallable
+            cls,
+            init_settings: SettingsSourceCallable,
+            env_settings: SettingsSourceCallable,
+            file_secret_settings: SettingsSourceCallable  # noqa: ARG003
         ) -> tuple[Callable[[BaseSettings], dict[str, Any]], ...]:
             return init_settings, env_settings, config_file_settings
 
@@ -217,7 +221,7 @@ class MonitoringSettings(SettingsBaseModel):
 class Settings(BaseSettings):
     listen_address: IPvAnyAddress = '127.0.0.1'  # type: ignore[assignment]
     listen_port: int = Field(9020, ge=0, lt=2**16)
-    files_path: Path = Path('/tmp/videbo')
+    files_path: Path = Path('/tmp/videbo')  # noqa: S108
     internal_api_secret: str = ''
     external_api_secret: str = ''
     public_base_url: AnyHttpUrl = 'http://localhost:9020'  # type: ignore[assignment]
