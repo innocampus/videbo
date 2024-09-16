@@ -1,6 +1,5 @@
 import logging
 from typing import TYPE_CHECKING
-from unittest import TestCase
 
 
 __all__ = [
@@ -9,6 +8,8 @@ __all__ = [
 
 
 if TYPE_CHECKING:
+    from unittest import TestCase
+
     _Base = TestCase
 else:
     _Base = object

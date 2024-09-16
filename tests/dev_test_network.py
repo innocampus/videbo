@@ -27,3 +27,6 @@ if __name__ == '__main__':
         asyncio.run(main())
     except KeyboardInterrupt:
         print("\rStopped.")
+
+# Ignore the `print` calls in this script.
+# ruff: noqa: T201

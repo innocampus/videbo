@@ -24,7 +24,11 @@ class BytesLimitLRUTestCase(TestCase):
         self.assertDictEqual(OrderedDict(self.ITEMS_LIST), self.obj)
         self.assertEqual(self.MAX_BYTES, self.obj.max_bytes)
         with self.assertRaises(TypeError):
-            BytesLimitLRU(self.MAX_BYTES, **{'foo': b'foo', 'bar': "Not a `bytes` object; should throw an error"})
+            BytesLimitLRU(
+                self.MAX_BYTES,
+                foo=b"foo",
+                bar="Not a `bytes` object; should throw an error",
+            )
 
     def test_init_sizes(self) -> None:
         BytesLimitLRU(3, a=b'foo')

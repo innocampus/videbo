@@ -1,7 +1,7 @@
 from asyncio.subprocess import create_subprocess_exec
 from asyncio.tasks import sleep
 from filecmp import cmp
-from hashlib import md5
+from hashlib import sha256
 from pathlib import Path
 from unittest import SkipTest
 
@@ -64,9 +64,9 @@ class TwoNodesTestCase(BaseE2ETestCase):
                 f"'{self.test_settings_dist.files_path.resolve()}'"
             )
 
-        # Calculate MD5 hash of the test video file in advance:
+        # Calculate sha256 hash of the test video file in advance:
         with self.test_settings_storage.test_video_file_path.open("rb") as f:
-            self.test_file_md5 = md5(f.read()).digest()
+            self.test_file_hash = sha256(f.read()).digest()
 
         # Open log files for subprocesses:
         self.fd_log_storage = LOG_PATH_STORAGE.open("w")
@@ -273,8 +273,8 @@ class TwoNodesTestCase(BaseE2ETestCase):
             self.assertEqual(200, response.status)
             # Download bytes and check integrity:
             self.assertEqual(
-                self.test_file_md5,
-                md5(await response.content.read()).digest(),
+                self.test_file_hash,
+                sha256(await response.content.read()).digest(),
             )
             # Check that no redirects occurred:
             self.assertEqual(0, len(response.history))
@@ -305,8 +305,8 @@ class TwoNodesTestCase(BaseE2ETestCase):
             self.assertEqual(self.test_settings_dist.listen_port, response.url.port)
             # Download bytes and check integrity:
             self.assertEqual(
-                self.test_file_md5,
-                md5(await response.content.read()).digest(),
+                self.test_file_hash,
+                 sha256(await response.content.read()).digest(),
             )
 
         ##########

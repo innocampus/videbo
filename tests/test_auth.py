@@ -93,8 +93,7 @@ class AuthTestCase(IsolatedAsyncioTestCase):
                 mock_decode(*args, **kwargs)
                 if cls.error is None:
                     return mock_data_obj
-                else:
-                    raise cls.error
+                raise cls.error
 
         mock_request = MagicMock()
 

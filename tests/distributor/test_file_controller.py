@@ -30,7 +30,7 @@ class DistributorFileControllerTestCase(SilentLogMixin, IsolatedAsyncioTestCase)
         # Mock global settings:
         self.settings_patcher = patch(f"{MODULE_NAME}.settings")
         self.mock_settings = self.settings_patcher.start()
-        self.mock_settings.files_path = Path("/tmp/foo")
+        self.mock_settings.files_path = Path("/foo/bar")
 
         # Mock `Client` constructor (in the parent class):
         self.client_patcher = patch("videbo.file_controller.Client")

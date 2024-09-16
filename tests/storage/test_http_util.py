@@ -265,18 +265,16 @@ class HTTPUtilTestCase(SilentLogMixin, IsolatedAsyncioTestCase):
         mock_run_in_default_executor.reset_mock()
 
         mock_run_in_default_executor.return_value = False
-        with self.assertRaises(http_util.HTTPNotFound):
-            with self.assertLogs(http_util._log, logging.WARNING):
-                await http_util.verify_file_exists(path)
+        with self.assertRaises(http_util.HTTPNotFound), self.assertLogs(http_util._log, logging.WARNING):
+            await http_util.verify_file_exists(path)
         mock_run_in_default_executor.assert_awaited_once_with(path.is_file)
 
     def test_ensure_acceptable_load(self) -> None:
         # Should just pass:
         http_util.ensure_acceptable_load(0.89999, 0.9)
 
-        with self.assertLogs(http_util._log, logging.WARNING):
-            with self.assertRaises(http_util.HTTPServiceUnavailable):
-                http_util.ensure_acceptable_load(0.90001, 0.9)
+        with self.assertLogs(http_util._log, logging.WARNING), self.assertRaises(http_util.HTTPServiceUnavailable):
+            http_util.ensure_acceptable_load(0.90001, 0.9)
 
     @patch.object(http_util, "RedirectToDistributor")
     @patch.object(http_util, "ensure_acceptable_load")
@@ -383,9 +381,8 @@ class HTTPUtilTestCase(SilentLogMixin, IsolatedAsyncioTestCase):
         # Should redirect because storage load is above threshold:
         load += 0.001
         mock_network_interfaces.get_tx_load.return_value = load
-        with patch.object(http_util, "async_sleep") as mock_async_sleep:
-            with self.assertRaises(FakeRedirect):
-                await http_util.handle_video_request(test_request, test_file)
+        with patch.object(http_util, "async_sleep") as mock_async_sleep, self.assertRaises(FakeRedirect):
+            await http_util.handle_video_request(test_request, test_file)
         mock_dist_controller.handle_distribution.assert_called_once_with(
             test_file,
             load,
@@ -424,9 +421,8 @@ class HTTPUtilTestCase(SilentLogMixin, IsolatedAsyncioTestCase):
             hash=hash_,
             file_ext=ext,
         )
-        with self.assertRaises(http_util.HTTPBadRequest):
-            with self.assertLogs(http_util._log, logging.WARNING):
-                await http_util.handle_thumbnail_request(mock_jwt_data)
+        with self.assertRaises(http_util.HTTPBadRequest), self.assertLogs(http_util._log, logging.WARNING):
+            await http_util.handle_thumbnail_request(mock_jwt_data)
         mock_file_controller_cls.assert_not_called()
         mock_file_controller.get_thumbnail_path.assert_not_called()
         mock_cache.get_and_update.assert_not_called()

@@ -7,7 +7,8 @@ from videbo.misc import periodic
 class PeriodicTestCase(IsolatedAsyncioTestCase):
     def test___init__(self) -> None:
         async def test_function(x: int, y: int, foo: str, spam: str) -> None:
-            print(x, y, foo, spam)
+            if x == y and foo == spam:
+                raise ValueError
         test_args = (1, 2)
         test_kwargs = {"foo": "bar", "spam": "eggs"}
         obj = periodic.Periodic(test_function, *test_args, **test_kwargs)

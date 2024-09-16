@@ -808,9 +808,8 @@ class DistributorNodeTestCase(IsolatedAsyncioTestCase):
         self.mock_client1.delete.side_effect = node.HTTPClientError
 
         # HTTP error:
-        with self.assertRaises(node.DistributionError):
-            with self.assertLogs(node.log, logging.ERROR):
-                await obj._delete(*mock_files, safe=mock_safe)
+        with self.assertRaises(node.DistributionError), self.assertLogs(node.log, logging.ERROR):
+            await obj._delete(*mock_files, safe=mock_safe)
 
         self.mock_client1.delete.assert_awaited_once_with(
             *mock_files,
@@ -823,9 +822,8 @@ class DistributorNodeTestCase(IsolatedAsyncioTestCase):
         self.mock_client1.delete.return_value = 123, object()
 
         # Bad response code:
-        with self.assertRaises(node.DistributionError):
-            with self.assertLogs(node.log, logging.ERROR):
-                await obj._delete(*mock_files, safe=mock_safe)
+        with self.assertRaises(node.DistributionError), self.assertLogs(node.log, logging.ERROR):
+            await obj._delete(*mock_files, safe=mock_safe)
 
         self.mock_client1.delete.assert_awaited_once_with(
             *mock_files,
@@ -984,9 +982,8 @@ class DistributorNodeTestCase(IsolatedAsyncioTestCase):
     async def test_disable(self) -> None:
         obj = node.DistributorNode(_FOOBAR)
         obj._enabled = False
-        with self.assertRaises(node.DistNodeAlreadyDisabled) as err_ctx:
-            with self.assertLogs(node.log, logging.WARNING) as log_ctx:
-                await obj.disable()
+        with self.assertRaises(node.DistNodeAlreadyDisabled) as err_ctx, self.assertLogs(node.log, logging.WARNING) as log_ctx:
+            await obj.disable()
         self.assertIn(_FOOBAR, err_ctx.exception.text)
         self.assertIn(_FOOBAR, log_ctx.records[0].msg)
         self.mock_periodic.stop.assert_not_called()
@@ -1005,9 +1002,8 @@ class DistributorNodeTestCase(IsolatedAsyncioTestCase):
         obj = node.DistributorNode(_FOOBAR)
         obj._enabled = True
         self.enable_patcher.stop()
-        with self.assertRaises(node.DistNodeAlreadyEnabled) as err_ctx:
-            with self.assertLogs(node.log, logging.WARNING) as log_ctx:
-                obj.enable()
+        with self.assertRaises(node.DistNodeAlreadyEnabled) as err_ctx, self.assertLogs(node.log, logging.WARNING) as log_ctx:
+            obj.enable()
         self.assertIn(_FOOBAR, err_ctx.exception.text)
         self.assertIn(_FOOBAR, log_ctx.records[0].msg)
         self.mock_periodic.assert_not_called()

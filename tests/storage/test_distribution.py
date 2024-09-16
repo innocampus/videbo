@@ -106,7 +106,7 @@ class DistributionControllerTestCase(IsolatedAsyncioTestCase):
         obj = distribution.DistributionController()
 
         it = obj.filter_nodes(
-            lambda n: True if n is node1 or n is node2 else False,
+            lambda n: n is node1 or n is node2,
             exclude_nodes={node1},
         )
         self.assertIs(node2, next(it))
@@ -114,7 +114,7 @@ class DistributionControllerTestCase(IsolatedAsyncioTestCase):
             next(it)
 
         it = obj.filter_nodes(
-            lambda n: True if n is node1 or n is node2 else False,
+            lambda n: n is node1 or n is node2,
             check_nodes=[node1, node3],
         )
         self.assertIs(node1, next(it))
@@ -365,9 +365,8 @@ class DistributionControllerTestCase(IsolatedAsyncioTestCase):
 
         obj = distribution.DistributionController()
         url = "foo/bar"
-        with self.assertLogs(distribution.log, logging.WARNING):
-            with self.assertRaises(distribution.UnknownDistURL):
-                await obj.remove_dist_node(url)
+        with self.assertLogs(distribution.log, logging.WARNING), self.assertRaises(distribution.UnknownDistURL):
+            await obj.remove_dist_node(url)
         self.assertDictEqual({}, obj._dist_nodes)
         mock_unknown_err_init.assert_called_once_with(url)
 
@@ -397,9 +396,8 @@ class DistributionControllerTestCase(IsolatedAsyncioTestCase):
         obj = distribution.DistributionController()
         url = "foo/bar"
         enable = False
-        with self.assertLogs(distribution.log, logging.WARNING):
-            with self.assertRaises(distribution.UnknownDistURL):
-                await obj._enable_or_disable_node(url, enable=enable)
+        with self.assertLogs(distribution.log, logging.WARNING), self.assertRaises(distribution.UnknownDistURL):
+            await obj._enable_or_disable_node(url, enable=enable)
         mock_node.disable.assert_not_called()
         mock_get_node.assert_called_once_with(url)
         mock_unknown_err_init.assert_called_once_with(url)

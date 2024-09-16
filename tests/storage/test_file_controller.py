@@ -29,7 +29,7 @@ class StorageFileControllerTestCase(SilentLogMixin, IsolatedAsyncioTestCase):
         # Mock global settings:
         self.settings_patcher = patch(f"{MODULE_NAME}.settings")
         self.mock_settings = self.settings_patcher.start()
-        self.mock_settings.files_path = Path("/tmp/foo")
+        self.mock_settings.files_path = Path("/foo/bar")
         self.mock_settings.thumb_cache_max_mb = 0
 
         # Mock `_prepare_directories` method:

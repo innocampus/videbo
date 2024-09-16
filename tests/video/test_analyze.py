@@ -161,9 +161,8 @@ class AnalyzeTestCase(IsolatedAsyncioTestCase):
         mock_settings.video.mime_types_allowed = {"foo", "bar"}
         mock_get_video_mime_type.return_value = mime_type = "baz"
         path = "abc"
-        with self.assertRaises(analyze.MimeTypeNotAllowed):
-            with self.assertLogs(analyze._log, logging.WARNING):
-                await analyze.get_video_info(path)
+        with self.assertRaises(analyze.MimeTypeNotAllowed), self.assertLogs(analyze._log, logging.WARNING):
+            await analyze.get_video_info(path)
         mock_get_video_mime_type.assert_called_once_with(path)
         mock_mime_type_not_allowed_init.assert_called_once_with(mime_type)
         mock_get_ffprobe_info.assert_not_called()
@@ -178,9 +177,8 @@ class AnalyzeTestCase(IsolatedAsyncioTestCase):
         mock_get_ffprobe_info.side_effect = (ffprobe_err, vid_not_allowed, mock_info)
 
         # Fail due to ffprobe error:
-        with self.assertRaises(analyze.FFProbeError) as ctx:
-            with self.assertLogs(analyze._log, logging.WARNING):
-                await analyze.get_video_info(path)
+        with self.assertRaises(analyze.FFProbeError) as ctx, self.assertLogs(analyze._log, logging.WARNING):
+            await analyze.get_video_info(path)
         self.assertIs(ffprobe_err, ctx.exception)
         mock_get_video_mime_type.assert_called_once_with(path)
         mock_mime_type_not_allowed_init.assert_not_called()
@@ -190,9 +188,8 @@ class AnalyzeTestCase(IsolatedAsyncioTestCase):
         mock_get_ffprobe_info.reset_mock()
 
         # Fail due to video not allowed:
-        with self.assertRaises(analyze.VideoNotAllowed) as ctx:
-            with self.assertLogs(analyze._log, logging.WARNING):
-                await analyze.get_video_info(path)
+        with self.assertRaises(analyze.VideoNotAllowed) as ctx, self.assertLogs(analyze._log, logging.WARNING):
+            await analyze.get_video_info(path)
         self.assertIs(vid_not_allowed, ctx.exception)
         mock_get_video_mime_type.assert_called_once_with(path)
         mock_mime_type_not_allowed_init.assert_not_called()

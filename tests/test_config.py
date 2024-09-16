@@ -75,7 +75,7 @@ class BaseSettingsTestCase(TestCase):
         class TestModel(config.BaseSettings):
             foo: SubModel = default
 
-        obj = TestModel(**{"foo": None})
+        obj = TestModel(foo=None)
         self.assertEqual(default, obj.foo)
 
     def test_config_customise_sources(self) -> None:
