@@ -140,15 +140,28 @@ cache-dir = ".cache/ruff"
 
 [tool.ruff.lint]
 select = [
+    "F",    # pyflakes
     "E",    # pycodestyle errors
     "W",    # pycodestyle warnings
-    "F",    # pyflakes
+    "N",    # pep8-naming
 #    "D",    # pydocstyle
+#    "ANN",  # flake8-annotations
+    "S",    # flake8-bandit
+#    "FBT",  # flake8-boolean-trap
+    "B",    # flake8-bugbear
     "A",    # flake8-builtins
     "C",    # flake8-comprehensions
-    "B",    # flake8-bugbear
-    "N",    # pep8-naming
+    "PIE",  # flake8-pie
+    "T20",  # flake8-print
+    "RET",  # flake8-return
+    "SIM",  # flake8-simplify
+    "TD",   # flake8-todos
+    "TCH",  # flake8-type-checking
+    "ARG",  # flake8-unused-arguments
+    "PTH",  # flake8-use-pathlib
+    "ERA",  # eradicate
     "PL",   # pylint
+#    "TRY",  # tryceratops
     "RUF",  # ruff-specific
 ]
 ignore = [
@@ -157,6 +170,8 @@ ignore = [
     "D212",  # Multi-line docstring summary should start at the first line -> D213 is better
     "D401",  # First line of docstring should be in imperative mood -> no, it shouldn't
     "D407",  # Missing dashed underline after section -> different docstring style
+    "ANN101", # Missing type annotation for self in method -> unnecessary
+    "ANN102", # Missing type annotation for cls in classmethod -> unnecessary
     "N818",  # Exception name {name} should be named with an Error suffix -> no, it shouldn't
     "A003",  # Class attribute {name} is shadowing a Python builtin -> namespaces make this OK
 ]
@@ -164,6 +179,9 @@ ignore = [
 [tool.ruff.lint.per-file-ignores]
 "src/**/__init__.py" = [
     "A001",  # Variable {name} is shadowing a Python builtin
+]
+"src/videbo/cli/storage.py" = [
+    "T201",  # `print` found -> fine for the CLI output
 ]
 "tests/*.py" = [
     "D100",     # Missing docstring in public module
