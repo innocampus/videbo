@@ -1,7 +1,13 @@
+from asyncio.tasks import sleep as async_sleep
+from logging import ERROR, INFO, getLogger
 from unittest import IsolatedAsyncioTestCase
 from unittest.mock import AsyncMock, MagicMock, call, patch
 
-from videbo.misc import periodic
+from videbo.exceptions import NoRunningTask
+from videbo.misc.periodic import Periodic
+from videbo.misc.task_manager import TaskManager
+
+_log = getLogger("videbo.tests")
 
 
 class PeriodicTestCase(IsolatedAsyncioTestCase):
@@ -11,7 +17,7 @@ class PeriodicTestCase(IsolatedAsyncioTestCase):
                 raise ValueError
         test_args = (1, 2)
         test_kwargs = {"foo": "bar", "spam": "eggs"}
-        obj = periodic.Periodic(test_function, *test_args, **test_kwargs)
+        obj = Periodic(test_function, *test_args, **test_kwargs)
         self.assertIs(test_function, obj.async_func)
         self.assertTupleEqual(test_args, obj.args)
         self.assertDictEqual(test_kwargs, obj.kwargs)
@@ -21,13 +27,13 @@ class PeriodicTestCase(IsolatedAsyncioTestCase):
         self.assertIsNone(obj._task)
 
     def test_is_running(self) -> None:
-        obj = periodic.Periodic(MagicMock(__name__="foo"))
+        obj = Periodic(MagicMock(__name__="foo"))
         self.assertFalse(obj.is_running)
         obj._task = object()
         self.assertTrue(obj.is_running)
 
-    @patch.object(periodic, "sleep")
-    @patch.object(periodic, "time")
+    @patch("videbo.misc.periodic.sleep")
+    @patch("videbo.misc.periodic.time")
     async def test__loop(
         self,
         mock_time: MagicMock,
@@ -38,7 +44,7 @@ class PeriodicTestCase(IsolatedAsyncioTestCase):
         mock_func = AsyncMock(__name__="mock_func")
         test_args = (1, 2, 3)
         test_kwargs = {"foo": "bar", "spam": "eggs"}
-        obj = periodic.Periodic(mock_func, *test_args, **test_kwargs)
+        obj = Periodic(mock_func, *test_args, **test_kwargs)
 
         interval = 3.14
         limit = 2
@@ -70,8 +76,8 @@ class PeriodicTestCase(IsolatedAsyncioTestCase):
         mock_func.assert_awaited_with(*test_args, **test_kwargs)
         mock_time.assert_called_with()
 
-    @patch.object(periodic.TaskManager, "fire_and_forget")
-    @patch.object(periodic.Periodic, "_loop", new_callable=MagicMock)
+    @patch.object(TaskManager, "fire_and_forget")
+    @patch.object(Periodic, "_loop", new_callable=MagicMock)
     def test___call__(
         self,
         mock__loop: MagicMock,
@@ -79,7 +85,7 @@ class PeriodicTestCase(IsolatedAsyncioTestCase):
     ) -> None:
         mock__loop.return_value = mock_awaitable = object()
 
-        obj = periodic.Periodic(MagicMock(__name__="foo"))
+        obj = Periodic(MagicMock(__name__="foo"))
 
         interval = 31.4
         limit = 3
@@ -98,32 +104,54 @@ class PeriodicTestCase(IsolatedAsyncioTestCase):
             name=obj.task_name,
         )
 
-    @patch.object(periodic.Periodic, "_run_callbacks")
-    async def test_stop(self, mock__run_callbacks: AsyncMock) -> None:
-        obj = periodic.Periodic(MagicMock(__name__="foo"))
-        with self.assertRaises(periodic.NoRunningTask):
-            await obj.stop()
-        mock__run_callbacks.assert_not_called()
+    async def test_stop(self) -> None:
+        async def test_function() -> None:
+            _log.info("<<test_function>>")
+            await async_sleep(99999)
 
-        mock_cancel_out = object()
-        mock_cancel = MagicMock(return_value=mock_cancel_out)
-        obj._task = MagicMock(cancel=mock_cancel)
-        obj.pre_stop_callbacks = pre_cb = [MagicMock(), MagicMock()]
-        obj.post_stop_callbacks = post_cb = [MagicMock()]
+        def cb() -> None:
+            _log.info("<<cb>>")
+        async def cb_async() -> None:
+            _log.info("<<cb_async>>")
 
-        output = await obj.stop()
-        self.assertEqual(mock_cancel_out, output)
-        mock_cancel.assert_called_once_with()
-        mock__run_callbacks.assert_has_awaits([
-            call(pre_cb),
-            call(post_cb),
-        ])
+        periodic = Periodic(test_function)
+        periodic.pre_stop_callbacks.extend([cb, cb_async])
+        periodic.post_stop_callbacks.extend([cb, cb_async])
 
-    async def test__run_callbacks(self) -> None:
-        cb1, cb2, cb3 = MagicMock(), AsyncMock(), MagicMock()
-        self.assertIsNone(
-            await periodic.Periodic._run_callbacks([cb1, cb2, cb3])
+        # Calling `stop` before starting should result in an error.
+        with self.assertRaises(NoRunningTask), self.assertLogs("videbo", INFO) as log_ctx:
+            await periodic.stop()
+        self.assertEqual(1, len(log_ctx.records))
+        self.assertEqual(ERROR, log_ctx.records[0].levelno)
+        self.assertEqual("videbo.misc.task_manager", log_ctx.records[0].name)
+        self.assertIn(
+            "NoRunningTask occurred in an fire-and-forget task",
+            log_ctx.output[0],
         )
-        cb1.assert_called_once_with()
-        cb2.assert_awaited_once_with()
-        cb3.assert_called_once_with()
+
+        # We don't care about the periodicity, we just want our `test_function`
+        # to start sleeping immediately. We allow the event loop to perform a
+        # context switch here by sleeping a nominal amount of time.
+        with self.assertLogs("videbo", INFO) as log_ctx:
+            periodic(123, call_immediately=True)
+            await async_sleep(0.001)
+            self.assertTrue(periodic.is_running)
+            await periodic.stop()
+            self.assertFalse(periodic.is_running)
+        expected_log_messages = [
+            "<<test_function>>",
+            "<<cb>>",
+            "<<cb_async>>",
+            f"Cancelled {periodic.task_name}",
+            "<<cb>>",
+            "<<cb_async>>",
+            f"Stopped {periodic.task_name}",
+        ]
+        self.assertListEqual(
+            expected_log_messages,
+            [record.message for record in log_ctx.records],
+        )
+        self.assertEqual(INFO, log_ctx.records[3].levelno)
+        self.assertEqual("videbo.misc.task_manager", log_ctx.records[3].name)
+        self.assertEqual(INFO, log_ctx.records[6].levelno)
+        self.assertEqual("videbo.misc.periodic", log_ctx.records[6].name)

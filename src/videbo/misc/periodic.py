@@ -1,19 +1,23 @@
-import logging
-from asyncio import Task, sleep
-from collections.abc import Awaitable, Callable
+from __future__ import annotations
+from asyncio import CancelledError, Task, sleep
+from contextlib import suppress
 from inspect import isawaitable
+from logging import getLogger
 from time import time
-from typing import Generic, Optional, Union
+from typing import Generic, Optional, Union, TYPE_CHECKING
 from typing_extensions import ParamSpec, TypeAlias
 
 from videbo.exceptions import NoRunningTask
 from .task_manager import TaskManager
 
+if TYPE_CHECKING:
+    from collections.abc import Awaitable, Callable
 
-StopCallbackT: TypeAlias = Callable[[], Union[Awaitable[None], None]]
+    StopCallbackT: TypeAlias = Callable[[], Union[Awaitable[None], None]]
+
 _P = ParamSpec("_P")
 
-log = logging.getLogger(__name__)
+log = getLogger(__name__)
 
 
 class Periodic(Generic[_P]):
@@ -119,17 +123,45 @@ class Periodic(Generic[_P]):
             name=self.task_name,
         )
 
-    async def stop(self) -> bool:
-        """Stops the execution loop and executes all callback functions."""
+    def stop(self) -> Task[None]:
+        """
+        Schedules the cancellation of the periodic execution loop.
+
+        This method returns immediately without blocking. The periodic loop will
+        be stopped ASAP. If pre-stop callbacks have been set, those will be
+        scheduled to execute _before_ the actual loop is cancelled.
+
+        Returns:
+            The task, scheduled to run ASAP, responsible for stopping the
+            periodic execution loop. To _guarantee_ that the execution has
+            stopped, this task can optionally be awaited.
+        """
+        return TaskManager.fire_and_forget(
+            self._stop(),
+            name=f"stop-{self.task_name}",
+        )
+
+    async def _stop(self) -> None:
+        """
+        Stops the execution loop and executes all callback functions.
+
+        Raises:
+            NoRunningTask: Periodic task has already been stopped.
+        """
         if self._task is None:
             raise NoRunningTask
         log.debug(f"Stopping {self.task_name}...")
         await self._run_callbacks(self.pre_stop_callbacks)
-        out = self._task.cancel()
+        # We do not care about the `.cancel` return value here because the loop
+        # task may have had a limited number of iterations set and therefore may
+        # have already been done at this point.
+        _ = self._task.cancel()
+        # Ensure the task is done before running the post-stop callbacks.
+        with suppress(CancelledError):
+            await self._task
         self._task = None
         await self._run_callbacks(self.post_stop_callbacks)
         log.info(f"Stopped {self.task_name}")
-        return out
 
     @staticmethod
     async def _run_callbacks(callbacks: list[StopCallbackT]) -> None:
