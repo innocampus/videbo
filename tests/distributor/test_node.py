@@ -31,10 +31,7 @@ class DistributorNodeTestCase(IsolatedAsyncioTestCase):
         self.mock_dl_scheduler_cls = self.dl_scheduler_init_patcher.start()
 
         self.periodic_task_name = "foo"
-        self.mock_periodic = MagicMock(
-            task_name=self.periodic_task_name,
-            stop=AsyncMock()
-        )
+        self.mock_periodic = MagicMock(task_name=self.periodic_task_name)
         self.periodic_patcher = patch.object(
             node,
             "Periodic",
@@ -979,24 +976,24 @@ class DistributorNodeTestCase(IsolatedAsyncioTestCase):
         mock_total_space.assert_called_once_with()
         mock_remove.assert_awaited_once_with(file1, file2)
 
-    async def test_disable(self) -> None:
+    def test_disable(self) -> None:
         obj = node.DistributorNode(_FOOBAR)
         obj._enabled = False
         with self.assertRaises(node.DistNodeAlreadyDisabled) as err_ctx, self.assertLogs(node.log, logging.WARNING) as log_ctx:
-            await obj.disable()
+            obj.disable()
         self.assertIn(_FOOBAR, err_ctx.exception.text)
         self.assertIn(_FOOBAR, log_ctx.records[0].msg)
         self.mock_periodic.stop.assert_not_called()
 
         obj._enabled = True
-        await obj.disable(stop_watching=False)
+        obj.disable(stop_watching=False)
         self.assertFalse(obj._enabled)
         self.mock_periodic.stop.assert_not_called()
 
         obj._enabled = True
-        await obj.disable(stop_watching=True)
+        obj.disable(stop_watching=True)
         self.assertFalse(obj._enabled)
-        self.mock_periodic.stop.assert_awaited_once_with()
+        self.mock_periodic.stop.assert_called_once_with()
 
     def test_enable(self) -> None:
         obj = node.DistributorNode(_FOOBAR)

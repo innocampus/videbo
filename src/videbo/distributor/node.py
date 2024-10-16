@@ -515,7 +515,7 @@ class DistributorNode:
         )
         await self.remove(*to_remove)
 
-    async def disable(self, stop_watching: bool = True) -> None:
+    def disable(self, *, stop_watching: bool = True) -> None:
         """
         Disables the node, rendering it temporarily inactive.
 
@@ -529,7 +529,8 @@ class DistributorNode:
             raise DistNodeAlreadyDisabled(self.http_client.base_url)
         self._enabled = False
         if stop_watching:
-            await self._periodic_watcher.stop()
+            self._periodic_watcher.stop()
+        log.info(f"Disabled {self}")
 
     def enable(self) -> None:
         """
@@ -546,3 +547,4 @@ class DistributorNode:
         self._enabled = True
         if not self._periodic_watcher.is_running:
             self._periodic_watcher(5, call_immediately=True)
+        log.info(f"Enabled {self}")
