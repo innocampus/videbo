@@ -290,7 +290,7 @@ async def remove_dist_node(_request: Request, _jwt_data: RequestJWTData, data: D
 @ensure_auth(Role.admin)
 @ensure_json_body
 async def disable_dist_node(_request: Request, _jwt_data: RequestJWTData, data: DistributorNodeInfo) -> NoReturn:
-    await StorageFileController().distribution_controller.disable_dist_node(data.base_url)
+    StorageFileController().distribution_controller.disable_dist_node(data.base_url)
     raise HTTPOk()
 
 
@@ -298,7 +298,7 @@ async def disable_dist_node(_request: Request, _jwt_data: RequestJWTData, data: 
 @ensure_auth(Role.admin)
 @ensure_json_body
 async def enable_dist_node(_request: Request, _jwt_data: RequestJWTData, data: DistributorNodeInfo) -> NoReturn:
-    await StorageFileController().distribution_controller.enable_dist_node(data.base_url)
+    StorageFileController().distribution_controller.enable_dist_node(data.base_url)
     raise HTTPOk()
 
 

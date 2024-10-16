@@ -1,4 +1,4 @@
-import logging
+from logging import INFO, WARNING
 from time import time
 from unittest import IsolatedAsyncioTestCase
 from unittest.mock import AsyncMock, MagicMock, call, patch
@@ -50,7 +50,7 @@ class DistributionControllerTestCase(IsolatedAsyncioTestCase):
         node2 = MagicMock(free_up_space=free_up2)
         mock_iter_nodes.return_value = [node1, node2]
         obj = distribution.DistributionController()
-        with self.assertLogs(distribution.log, logging.INFO):
+        with self.assertLogs(distribution.log, INFO):
             await obj.free_up_dist_nodes()
         free_up1.assert_awaited_once_with()
         free_up2.assert_awaited_once_with()
@@ -279,7 +279,7 @@ class DistributionControllerTestCase(IsolatedAsyncioTestCase):
         mock_get_node.side_effect = dst, None
         mock_partial.side_effect = can_receive, can_provide
         tx_load = distribution.settings.distribution.max_load_file_copy + 0.01
-        with self.assertLogs(distribution.log, logging.WARNING):
+        with self.assertLogs(distribution.log, WARNING):
             output = obj.handle_distribution(mock_file, tx_load)
         self.assertIsNone(output)
         mock_sort_nodes.assert_called_once_with()
@@ -334,7 +334,7 @@ class DistributionControllerTestCase(IsolatedAsyncioTestCase):
         obj = distribution.DistributionController()
         obj._dist_nodes = {}
         url = "foo/bar"
-        with self.assertLogs(distribution.log, logging.WARNING):
+        with self.assertLogs(distribution.log, WARNING):
             obj.add_new_dist_node(url)
         self.assertDictEqual({}, obj._dist_nodes)
         mock_get_node.assert_called_once_with(url)
@@ -345,7 +345,7 @@ class DistributionControllerTestCase(IsolatedAsyncioTestCase):
 
         # Ensure a node is added, if none with the provided URL is found:
 
-        with self.assertLogs(distribution.log, logging.INFO):
+        with self.assertLogs(distribution.log, INFO):
             obj.add_new_dist_node(url)
         self.assertDictEqual({url: mock_node}, obj._dist_nodes)
         mock_get_node.assert_called_once_with(url)
@@ -358,14 +358,14 @@ class DistributionControllerTestCase(IsolatedAsyncioTestCase):
     ) -> None:
         # Ensure error is raised, if no node with the provided URL is known:
 
-        mock_disable = AsyncMock(
+        mock_disable = MagicMock(
             side_effect=distribution.DistNodeAlreadyDisabled("foo")
         )
         mock_node = MagicMock(disable=mock_disable, set_node_state=AsyncMock())
 
         obj = distribution.DistributionController()
         url = "foo/bar"
-        with self.assertLogs(distribution.log, logging.WARNING), self.assertRaises(distribution.UnknownDistURL):
+        with self.assertLogs(distribution.log, WARNING), self.assertRaises(distribution.UnknownDistURL):
             await obj.remove_dist_node(url)
         self.assertDictEqual({}, obj._dist_nodes)
         mock_unknown_err_init.assert_called_once_with(url)
@@ -378,79 +378,68 @@ class DistributionControllerTestCase(IsolatedAsyncioTestCase):
         await obj.remove_dist_node(url)
         self.assertDictEqual({}, obj._dist_nodes)
         mock_unknown_err_init.assert_not_called()
-        mock_node.disable.assert_awaited_once_with()
+        mock_node.disable.assert_called_once_with()
         mock_node.set_node_state.assert_awaited_once_with(False)
 
-    @patch.object(distribution.UnknownDistURL, "__init__", return_value=None)
     @patch.object(distribution.DistributionController, "get_node")
-    async def test__enable_or_disable_node(
-            self,
-            mock_get_node: MagicMock,
-            mock_unknown_err_init: MagicMock,
-    ) -> None:
+    async def test_disable_dist_node(self, mock_get_node: MagicMock) -> None:
         # Ensure error is raised, if no node with the provided URL is known:
-
         mock_get_node.return_value = None
-        mock_node = AsyncMock()
+        mock_node = MagicMock()
 
-        obj = distribution.DistributionController()
+        controller = distribution.DistributionController()
         url = "foo/bar"
-        enable = False
-        with self.assertLogs(distribution.log, logging.WARNING), self.assertRaises(distribution.UnknownDistURL):
-            await obj._enable_or_disable_node(url, enable=enable)
+        with self.assertLogs(distribution.log, WARNING) as log_ctx, self.assertRaises(distribution.UnknownDistURL) as err_ctx:
+            controller.disable_dist_node(url)
+        self.assertEqual(
+            f"Unknown distributor node `{url}`",
+            err_ctx.exception.text,
+        )
+        self.assertEqual(WARNING, log_ctx.records[0].levelno)
+        self.assertEqual(
+            f"Cannot disable unknown distributor at `{url}`",
+            log_ctx.records[0].message,
+        )
         mock_node.disable.assert_not_called()
         mock_get_node.assert_called_once_with(url)
-        mock_unknown_err_init.assert_called_once_with(url)
 
         mock_get_node.reset_mock()
-        mock_unknown_err_init.reset_mock()
 
         # Ensure node is disabled, if a node with the provided URL is found:
-
         mock_get_node.return_value = mock_node
-        await obj._enable_or_disable_node(url, enable=enable)
-        mock_node.disable.assert_awaited_once_with()
+        controller.disable_dist_node(url)
+        mock_node.disable.assert_called_once_with()
+        mock_get_node.assert_called_once_with(url)
+
+    @patch.object(distribution.DistributionController, "get_node")
+    async def test_enable_dist_node(self, mock_get_node: MagicMock) -> None:
+        # Ensure error is raised, if no node with the provided URL is known:
+        mock_get_node.return_value = None
+        mock_node = MagicMock()
+
+        controller = distribution.DistributionController()
+        url = "foo/bar"
+        with self.assertLogs(distribution.log, WARNING) as log_ctx, self.assertRaises(distribution.UnknownDistURL) as err_ctx:
+            controller.enable_dist_node(url)
+        self.assertEqual(
+            f"Unknown distributor node `{url}`",
+            err_ctx.exception.text,
+        )
+        self.assertEqual(WARNING, log_ctx.records[0].levelno)
+        self.assertEqual(
+            f"Cannot enable unknown distributor at `{url}`",
+            log_ctx.records[0].message,
+        )
         mock_node.enable.assert_not_called()
         mock_get_node.assert_called_once_with(url)
-        mock_unknown_err_init.assert_not_called()
 
-        mock_node.disable.reset_mock()
         mock_get_node.reset_mock()
 
-        # Ensure node is enabled, if a node with the provided URL is found:
-
-        enable = True
-        await obj._enable_or_disable_node(url, enable=enable)
-        mock_node.enable.assert_awaited_once_with()
-        mock_node.disable.assert_not_called()
+        # Ensure node is disabled, if a node with the provided URL is found:
+        mock_get_node.return_value = mock_node
+        controller.enable_dist_node(url)
+        mock_node.enable.assert_called_once_with()
         mock_get_node.assert_called_once_with(url)
-        mock_unknown_err_init.assert_not_called()
-
-    @patch.object(
-        distribution.DistributionController,
-        "_enable_or_disable_node",
-    )
-    async def test_disable_dist_node(
-        self,
-        mock__enable_or_disable_node: AsyncMock,
-    ) -> None:
-        obj = distribution.DistributionController()
-        url = "foo/bar"
-        await obj.disable_dist_node(url)
-        mock__enable_or_disable_node.assert_awaited_once_with(url, enable=False)
-
-    @patch.object(
-        distribution.DistributionController,
-        "_enable_or_disable_node",
-    )
-    async def test_enable_dist_node(
-        self,
-        mock__enable_or_disable_node: AsyncMock,
-    ) -> None:
-        obj = distribution.DistributionController()
-        url = "foo/bar"
-        await obj.enable_dist_node(url)
-        mock__enable_or_disable_node.assert_awaited_once_with(url, enable=True)
 
     @patch.object(distribution.DistributionController, "iter_nodes")
     def test_get_nodes_status(self, mock_iter_nodes: MagicMock) -> None:

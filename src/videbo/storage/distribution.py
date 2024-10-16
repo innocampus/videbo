@@ -1,12 +1,11 @@
 from __future__ import annotations
 from asyncio.tasks import gather
-from collections.abc import Awaitable, Callable, Container, Iterable, Iterator
 from contextlib import suppress
 from functools import partial
 from logging import getLogger
 from time import time
 from timeit import default_timer as timer
-from typing import Optional, Union, cast, TYPE_CHECKING
+from typing import Optional, Union, TYPE_CHECKING
 
 from videbo import settings
 from videbo.client import Client
@@ -16,6 +15,8 @@ from videbo.misc.task_manager import TaskManager
 from .exceptions import DistNodeAlreadyDisabled, UnknownDistURL
 
 if TYPE_CHECKING:
+    from collections.abc import Callable, Container, Iterable, Iterator
+
     from videbo.distributor.api.models import DistributorStatus
     from .stored_file import StoredVideoFile
 
@@ -260,36 +261,11 @@ class DistributionController:
             log.warning(f"Cannot remove unknown distributor at `{base_url}`")
             raise UnknownDistURL(base_url)
         with suppress(DistNodeAlreadyDisabled):
-            await node.disable()
+            node.disable()
         await node.set_node_state(False)
         log.info(f"Removed {node} from distribution controller")
 
-    async def _enable_or_disable_node(self, base_url: str, enable: bool) -> None:
-        """
-        Temporarily disables or enables a distributor node.
-
-        Args:
-            base_url: The URL of the node to enable/disable
-            enable: If `True`, attempts to enable, otherwise disable the node
-
-        Raises:
-            `UnknownDistURL` if no node with the specified `base_url` is found
-            `DistNodeAlreadyDisabled` if the node is already disabled
-            `DistNodeAlreadyEnabled` if the node is already enabled
-        """
-        found_node = self.get_node(base_url)
-        verb = "enable" if enable else "disable"
-        if found_node is None:
-            log.warning(f"Cannot {verb} unknown distributor at `{base_url}`")
-            raise UnknownDistURL(base_url)
-        # Call `DistributorNode.enable` or `DistributorNode.disable`:
-        call = cast(Callable[[], Awaitable[None]], getattr(found_node, verb))
-        # TODO(daniil-berg): Fix `TypeError` caused by awaiting `enable`.
-        #                    https://github.com/innocampus/videbo/issues/19
-        await call()
-        log.info(f"Successfully {verb}d {found_node}")
-
-    async def disable_dist_node(self, base_url: str) -> None:
+    def disable_dist_node(self, base_url: str) -> None:
         """
         Temporarily disables an active distributor node.
 
@@ -297,9 +273,13 @@ class DistributionController:
             `UnknownDistURL` if no node with the specified `base_url` is found
             `DistNodeAlreadyDisabled` if the node is already disabled
         """
-        await self._enable_or_disable_node(base_url, enable=False)
+        node = self.get_node(base_url)
+        if node is None:
+            log.warning(f"Cannot disable unknown distributor at `{base_url}`")
+            raise UnknownDistURL(base_url)
+        node.disable()
 
-    async def enable_dist_node(self, base_url: str) -> None:
+    def enable_dist_node(self, base_url: str) -> None:
         """
         Enables a previously inactive distributor node.
 
@@ -307,7 +287,11 @@ class DistributionController:
             `UnknownDistURL` if no node with the specified `base_url` is found
             `DistNodeAlreadyEnabled` if the node is already enabled
         """
-        await self._enable_or_disable_node(base_url, enable=True)
+        node = self.get_node(base_url)
+        if node is None:
+            log.warning(f"Cannot enable unknown distributor at `{base_url}`")
+            raise UnknownDistURL(base_url)
+        node.enable()
 
     def get_nodes_status(
         self,
