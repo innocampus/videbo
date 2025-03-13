@@ -23,8 +23,8 @@ log = getLogger(__name__)
 class Periodic(Generic[_P]):
     """Simple utility for the periodic execution of asynchronous tasks."""
     async_func: Callable[_P, Awaitable[None]]
-    args: _P.args
-    kwargs: _P.kwargs
+    args: _P.args  # type: ignore[valid-type]
+    kwargs: _P.kwargs  # type: ignore[valid-type]
     task_name: str
     pre_stop_callbacks: list[StopCallbackT]
     post_stop_callbacks: list[StopCallbackT]

@@ -13,19 +13,19 @@ from videbo import __version__, settings
 
 __all__ = [
     'DEFAULT_JWT_ALG',
-    'VideboBaseModel',
+    'BaseJWTData',
     'BaseRequestModel',
     'BaseResponseModel',
-    'TokenIssuer',
-    'Role',
-    'BaseJWTData',
-    'RequestJWTData',
-    'LMSRequestJWTData',
     'HashedFileModel',
     'HashedFilesList',
+    'LMSRequestJWTData',
+    'NodeStatus',
+    'RequestJWTData',
+    'Role',
+    'TokenIssuer',
+    'VideboBaseModel',
     'VideosMissingRequest',
     'VideosMissingResponse',
-    'NodeStatus',
 ]
 
 J = TypeVar('J', bound='BaseJWTData')

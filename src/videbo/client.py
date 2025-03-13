@@ -22,8 +22,8 @@ if TYPE_CHECKING:
 
 
 __all__ = [
-    "Client",
     "CONNECTION_ERRORS",
+    "Client",
 ]
 
 log = logging.getLogger(__name__)

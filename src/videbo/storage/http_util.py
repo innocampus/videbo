@@ -37,10 +37,10 @@ from .file_controller import StorageFileController
 __all__ = [
     "CHUNK_SIZE_DEFAULT",
     "get_video_payload",
-    "save_temp_and_get_response",
-    "handle_video_request",
-    "verify_file_exists",
     "handle_thumbnail_request",
+    "handle_video_request",
+    "save_temp_and_get_response",
+    "verify_file_exists",
 ]
 
 _log = getLogger(__name__)

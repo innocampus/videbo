@@ -8,12 +8,12 @@ from videbo.models import (
 
 
 __all__ = [
-    'DistributorCopyFileStatus',
-    'DistributorStatus',
     'DistributorCopyFile',
+    'DistributorCopyFileStatus',
     'DistributorDeleteFiles',
     'DistributorDeleteFilesResponse',
-    'DistributorFileList'
+    'DistributorFileList',
+    'DistributorStatus'
 ]
 
 

@@ -18,8 +18,8 @@ from videbo.types import ExtendedHandler
 
 
 __all__ = [
-    "extract_jwt_from_request",
     "ensure_auth",
+    "extract_jwt_from_request",
 ]
 
 

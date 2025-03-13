@@ -10,7 +10,7 @@ from pydantic import BaseSettings as PydanticBaseSettings
 from pydantic.class_validators import validator
 from pydantic.config import Extra
 from pydantic.fields import Field, ModelField, SHAPE_LIST, SHAPE_SET
-from pydantic.networks import AnyHttpUrl, IPvAnyAddress  # noqa: TCH002
+from pydantic.networks import AnyHttpUrl, IPvAnyAddress
 
 from videbo.misc.constants import MEGA, VIDEO_CONTAINER_FORMATS, VIDEO_MIME_TYPES
 from videbo.misc.functions import is_subclass
@@ -24,17 +24,17 @@ if TYPE_CHECKING:
 
 
 __all__ = [
-    'PROJECT_DIR',
+    'CONFIG_FILE_PATHS_PARAM',
     'DEFAULT_CONFIG_FILE_NAME',
     'DEFAULT_CONFIG_FILE_PATHS',
-    'CONFIG_FILE_PATHS_PARAM',
-    'WebserverSettings',
-    'LMSSettings',
-    'ThumbnailSettings',
-    'VideoSettings',
+    'PROJECT_DIR',
     'DistributionSettings',
+    'LMSSettings',
     'MonitoringSettings',
     'Settings',
+    'ThumbnailSettings',
+    'VideoSettings',
+    'WebserverSettings',
     'config_file_settings',
 ]
 

@@ -8,10 +8,10 @@ from .distributed_file import DistributedVideoFile
 
 class CopyingVideoFile(HashedFile):
     __slots__ = (
+        "_finished",
+        "loaded_bytes",
         "source_url",
         "time_started",
-        "loaded_bytes",
-        "_finished",
     )
 
     source_url: str

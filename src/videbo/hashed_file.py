@@ -7,7 +7,7 @@ FILE_NAME_PATTERN = re.compile(r"^([0-9a-f]{64})(\.[0-9a-z]{1,10})$")
 
 
 class HashedFile:
-    __slots__ = ("hash", "ext", "size")
+    __slots__ = ("ext", "hash", "size")
 
     hash: str
     ext: str

@@ -26,12 +26,12 @@ from .models import VideoInfo
 
 
 __all__ = [
-    "get_video_mime_type",
-    "get_ffprobe_info",
-    "get_video_info",
     "create_thumbnail",
     "create_thumbnail_securely",
     "generate_thumbnails",
+    "get_ffprobe_info",
+    "get_video_info",
+    "get_video_mime_type",
 ]
 
 _log = getLogger(__name__)
