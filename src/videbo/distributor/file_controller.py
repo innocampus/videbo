@@ -1,9 +1,8 @@
 from __future__ import annotations
 from logging import getLogger
-from io import FileIO
 from pathlib import Path
 from time import time
-from typing import ClassVar, cast
+from typing import ClassVar
 
 from videbo import settings
 from videbo.file_controller import FileController
@@ -181,10 +180,7 @@ class DistributorFileController(FileController[DistributedVideoFile]):
             expiration_time=int(time()) + 300,
         )
         last_update_time = 0.
-        file_obj = cast(
-            FileIO,
-            await run_in_default_executor(temp_path.open, 'wb', 0),
-        )
+        file_obj = await run_in_default_executor(temp_path.open, 'wb', 0)
         try:
             async for data in self._http_client.request_file_read(
                 file.source_url + "/file",

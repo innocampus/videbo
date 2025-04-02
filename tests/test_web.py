@@ -1,10 +1,9 @@
 import logging
 from pathlib import Path
-from typing import cast
 from unittest import IsolatedAsyncioTestCase
 from unittest.mock import AsyncMock, MagicMock, patch
 
-from pydantic import BaseModel, ValidationError
+from pydantic import ValidationError
 
 from tests.silent_log import SilentLogMixin
 from videbo import web
@@ -284,7 +283,7 @@ class WebTestCase(SilentLogMixin, IsolatedAsyncioTestCase):
 
 class CustomValidationError(ValidationError):
     def __init__(self) -> None:
-        super().__init__([MagicMock()], cast(type[BaseModel], MagicMock()))
+        super().__init__([MagicMock()], MagicMock())  # type: ignore
 
     def __str__(self) -> str:
         return "foo"

@@ -1,11 +1,11 @@
-from typing import ClassVar, Optional, cast
+from typing import ClassVar, Optional
 from unittest import IsolatedAsyncioTestCase
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import jwt
 from aiohttp.web_exceptions import HTTPBadRequest, HTTPUnauthorized, HTTPForbidden
 from multidict import CIMultiDict
-from pydantic import BaseModel, ValidationError
+from pydantic import ValidationError
 
 from videbo import auth
 from videbo.exceptions import InvalidAuthData, NotAuthorized
@@ -351,7 +351,7 @@ class MockJWTModel(MagicMock):
 
 class CustomValidationError(ValidationError):
     def __init__(self) -> None:
-        super().__init__([MagicMock()], cast(type[BaseModel], MagicMock()))
+        super().__init__([MagicMock()], MagicMock())  # type: ignore
 
     def __str__(self) -> str:
         return "foo"
