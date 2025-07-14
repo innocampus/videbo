@@ -76,7 +76,7 @@ class BytesLimitLRUTestCase(TestCase):
         # Call the setter:
         self.obj[key] = new_value
         # Ensure the correct set of key-value-pairs:
-        self.assertDictEqual(OrderedDict(self.ITEMS_LIST[1:] + [(key, new_value)]), self.obj)
+        self.assertDictEqual(OrderedDict([*self.ITEMS_LIST[1:], (key, new_value)]), self.obj)
         # As in the test of the getter method, we ensure the new item is in fact at the end now:
         self.assertEqual(key, tuple(iter(self.obj))[-1])
         # Ensure the size has not changed:

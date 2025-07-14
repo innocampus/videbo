@@ -13,7 +13,7 @@ from .file_controller import StorageFileController
 
 async def monitoring_context(_app: Application) -> AsyncIterator[None]:
     if settings.monitoring.prom_text_file:
-        from .monitoring import Monitoring
+        from .monitoring import Monitoring  # noqa: PLC0415
         await Monitoring.get_instance().run()
         yield
         await Monitoring.get_instance().stop()

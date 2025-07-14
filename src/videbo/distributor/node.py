@@ -25,7 +25,7 @@ if TYPE_CHECKING:
 log = getLogger(__name__)
 
 
-class DistributorNode:
+class DistributorNode:  # noqa: PLW1641
     """
     Provides an interface for a single distributor node.
 
@@ -288,7 +288,7 @@ class DistributorNode:
 
         A connection error or unexpected response code is logged accordingly.
         """
-        from videbo.storage.file_controller import StorageFileController
+        from videbo.storage.file_controller import StorageFileController  # noqa: PLC0415
         storage_file_controller = StorageFileController()
         unknown_files = []
         try:
