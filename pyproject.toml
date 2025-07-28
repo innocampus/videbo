@@ -67,7 +67,7 @@ dev = [
     "mkdocs-material==9.6.15",
     "mkdocstrings[python]==0.29.1",
     "mypy==1.16.1",
-    "ruff==0.12.3",
+    "ruff==0.12.5",
 ]
 
 [project.urls]
