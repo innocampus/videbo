@@ -106,13 +106,14 @@ class LMS:
                 If passed a string, any LMS with a matching URL is _not_ checked.
 
         Returns:
-            List of `HashedFileModel` instances representing the files that are regarded as _orphaned_.
+            List of hashes representing the files that are regarded as _orphaned_.
             If an `origin` was provided and that is the _only_ LMS that knows a file,
             that file will still be considered _orphaned_.
 
         Raises:
             `LMSInterfaceError` after logging it
         """
+        # Split up the files into batches of hashes to reduce request size.
         batches: list[list[str]] = []
         for i in range(0, len(files), cls.VIDEOS_CHECK_MAX_BATCH_SIZE):
             indices = slice(i, i + cls.VIDEOS_CHECK_MAX_BATCH_SIZE)
@@ -129,5 +130,9 @@ class LMS:
                     raise
                 # Continue only with videos unknown to previously checked LMS:
                 hashes = response.hashes  # noqa: PLW2901
+                if len(hashes) == 0:
+                    # All videos in the current batch were known to at least one
+                    # of the checked LMS. Continue with the next batch.
+                    break
             batches[batch_idx] = hashes
         return [video for videos in batches for video in videos]
