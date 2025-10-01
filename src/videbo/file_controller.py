@@ -20,7 +20,7 @@ F = TypeVar("F", bound=HashedFile)
 class FileController(
     Mapping[str, F],
     GenericInsightMixin[F],
-    metaclass=Singleton.from_meta(ABCMeta),  # type: ignore[misc]
+    metaclass=Singleton.from_meta(ABCMeta),  # type: ignore[metaclass]
 ):
     """
     Generic abstract base class for file controller singletons.
