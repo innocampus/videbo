@@ -58,7 +58,7 @@ dependencies = [
 
 [project.optional-dependencies]
 full = [
-    "prometheus-client==0.22.1",
+    "prometheus-client==0.23.1",
 ]
 dev = [
     "videbo[full]",
