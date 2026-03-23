@@ -64,7 +64,7 @@ dev = [
     "videbo[full]",
     "build==1.4.0",
     "coverage[toml]==7.10.7",
-    "mkdocs-material==9.7.5",
+    "mkdocs-material==9.7.6",
     "mkdocstrings[python]==0.30.1",
     "mypy==1.19.1",
     "ruff==0.15.6",
