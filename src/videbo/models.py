@@ -6,7 +6,7 @@ from typing import Any, ClassVar, Optional, TypeVar, Union
 
 import jwt
 from aiohttp.web import Response
-from pydantic import BaseModel as PydanticBaseModel, validator
+from pydantic import BaseModel as PydanticBaseModel, validator, Field
 
 from videbo import __version__, settings
 
@@ -316,6 +316,7 @@ class NodeStatus(BaseResponseModel):
     files_total_size: float  # in MB
     files_count: int
     free_space: float  # in MB
+    timestamp: float = Field(default_factory=time)
 
     class Config:
         validate_assignment = True

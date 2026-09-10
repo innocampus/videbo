@@ -376,8 +376,14 @@ class NotAllFilesDeleted(_Incomplete):
     not_deleted: list[str]
 
 
+class KnownDistributorNode(BaseResponseModel):
+    is_enabled: bool
+    is_good: bool
+    status: Optional[DistributorStatus] = None
+
+
 class DistributorStatusDict(BaseResponseModel):
-    nodes: dict[str, DistributorStatus]  # keys are base urls
+    nodes: dict[str, KnownDistributorNode]  # keys are base urls
 
 
 ########################

@@ -110,8 +110,9 @@ class Monitoring:
             self._clear_all_metrics()
             self.dist_urls = urls
         self._update_metrics(storage_status, 'storage', settings.public_base_url)
-        for url, status in dist_status_dict.items():
-            self._update_metrics(status, 'dist', url)
+        for url, node in dist_status_dict.items():
+            if node.status is not None:
+                self._update_metrics(node.status, 'dist', url)
         # TODO(daniil-berg): Make the text file path an instance attribute
         #                    https://github.com/innocampus/videbo/issues/14
         write_to_textfile(str(settings.monitoring.prom_text_file), self.registry)

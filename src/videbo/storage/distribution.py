@@ -12,12 +12,16 @@ from videbo.client import Client
 from videbo.distributor.node import DistributorNode
 from videbo.misc.periodic import Periodic
 from videbo.misc.task_manager import TaskManager
-from .exceptions import DistNodeAlreadyDisabled, UnknownDistURL
+from videbo.storage.api.models import KnownDistributorNode
+from videbo.storage.exceptions import (
+    DistNodeAlreadyDisabled,
+    DistStatusUnknown,
+    UnknownDistURL,
+)
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Container, Iterable, Iterator
 
-    from videbo.distributor.api.models import DistributorStatus
     from .stored_file import StoredVideoFile
 
 
@@ -297,9 +301,9 @@ class DistributionController:
         self,
         only_good: bool = False,
         only_enabled: bool = False,
-    ) -> dict[str, DistributorStatus]:
+    ) -> dict[str, KnownDistributorNode]:
         """
-        Returns the `DistributorStatus` objects for the controlled nodes.
+        Returns the `KnownDistributorNode` objects for the controlled nodes.
 
         Args:
             only_good (optional):
@@ -311,11 +315,18 @@ class DistributionController:
 
         Returns:
             Dictionary with node base URLs mapped ot the corresponding
-            `DistributorStatus` objects.
+            `KnownDistributorNode` objects.
         """
         output_dict = {}
         for node in self.iter_nodes():
             if (only_good and not node.is_good) or (only_enabled and not node.is_enabled):
                 continue
-            output_dict[node.base_url] = node.status
+            status = None
+            with suppress(DistStatusUnknown):
+                status = node.status
+            output_dict[node.base_url] = KnownDistributorNode(
+                is_enabled=node.is_enabled,
+                is_good=node.is_good,
+                status=status,
+            )
         return output_dict

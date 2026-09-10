@@ -1,9 +1,12 @@
 from logging import INFO, WARNING
 from time import time
 from unittest import IsolatedAsyncioTestCase
-from unittest.mock import AsyncMock, MagicMock, call, patch
+from unittest.mock import AsyncMock, MagicMock, call, patch, PropertyMock
 
+from videbo.distributor.api.models import DistributorStatus
 from videbo.storage import distribution
+from videbo.storage.api.models import KnownDistributorNode
+from videbo.storage.exceptions import DistStatusUnknown
 
 
 class DistributionControllerTestCase(IsolatedAsyncioTestCase):
@@ -443,35 +446,47 @@ class DistributionControllerTestCase(IsolatedAsyncioTestCase):
 
     @patch.object(distribution.DistributionController, "iter_nodes")
     def test_get_nodes_status(self, mock_iter_nodes: MagicMock) -> None:
-        mock_url1, mock_status1 = "foo", object()
+        mock_url1, mock_status = "foo", DistributorStatus.construct()
         mock_node1 = MagicMock(
             is_good=True,
             is_enabled=True,
             base_url=mock_url1,
-            status=mock_status1,
+            status=mock_status,
         )
-        mock_url2, mock_status2 = "bar", object()
+        mock_url2 = "bar"
         mock_node2 = MagicMock(
             is_good=False,
             is_enabled=True,
             base_url=mock_url2,
-            status=mock_status2,
+            status=None,
         )
-        mock_url3, mock_status3 = "baz", object()
+        mock_url3 = "baz"
         mock_node3 = MagicMock(
             is_good=True,
             is_enabled=False,
             base_url=mock_url3,
-            status=mock_status3,
         )
+        type(mock_node3).status = PropertyMock(side_effect=DistStatusUnknown)
         mock_iter_nodes.return_value = [mock_node1, mock_node2, mock_node3]
         obj = distribution.DistributionController()
 
         only_good = only_enabled = False
         expected_output = {
-            mock_url1: mock_status1,
-            mock_url2: mock_status2,
-            mock_url3: mock_status3,
+            mock_url1: KnownDistributorNode(
+                is_good=True,
+                is_enabled=True,
+                status=mock_status,
+            ),
+            mock_url2: KnownDistributorNode(
+                is_good=False,
+                is_enabled=True,
+                status=None,
+            ),
+            mock_url3: KnownDistributorNode(
+                is_good=True,
+                is_enabled=False,
+                status=None,
+            ),
         }
         output = obj.get_nodes_status(
             only_good=only_good,
@@ -485,8 +500,16 @@ class DistributionControllerTestCase(IsolatedAsyncioTestCase):
         only_good = True
         only_enabled = False
         expected_output = {
-            mock_url1: mock_status1,
-            mock_url3: mock_status3,
+            mock_url1: KnownDistributorNode(
+                is_good=True,
+                is_enabled=True,
+                status=mock_status,
+            ),
+            mock_url3: KnownDistributorNode(
+                is_good=True,
+                is_enabled=False,
+                status=None,
+            ),
         }
         output = obj.get_nodes_status(
             only_good=only_good,
@@ -500,8 +523,16 @@ class DistributionControllerTestCase(IsolatedAsyncioTestCase):
         only_good = False
         only_enabled = True
         expected_output = {
-            mock_url1: mock_status1,
-            mock_url2: mock_status2,
+            mock_url1: KnownDistributorNode(
+                is_good=True,
+                is_enabled=True,
+                status=mock_status,
+            ),
+            mock_url2: KnownDistributorNode(
+                is_good=False,
+                is_enabled=True,
+                status=None,
+            ),
         }
         output = obj.get_nodes_status(
             only_good=only_good,
@@ -515,7 +546,11 @@ class DistributionControllerTestCase(IsolatedAsyncioTestCase):
         only_good = True
         only_enabled = True
         expected_output = {
-            mock_url1: mock_status1,
+            mock_url1: KnownDistributorNode(
+                is_good=True,
+                is_enabled=True,
+                status=mock_status,
+            ),
         }
         output = obj.get_nodes_status(
             only_good=only_good,
