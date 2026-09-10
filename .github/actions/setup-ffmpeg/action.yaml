@@ -26,3 +26,11 @@ runs:
       id: attempt-2
       continue-on-error: true
       uses: FedericoCarboni/setup-ffmpeg@v3
+
+    # Without this, the job would proceed with no FFmpeg available,
+    # and the failure would only surface as HTTP 500 in the e2e tests:
+    - name: Verify FFmpeg installation
+      shell: bash
+      run: |
+        ffmpeg -version
+        ffprobe -version
