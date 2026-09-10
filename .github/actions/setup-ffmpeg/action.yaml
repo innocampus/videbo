@@ -5,21 +5,42 @@
 # https://github.com/federicocarboni/setup-ffmpeg/issues/19#issuecomment-2063798309
 
 name: 'Tenacious FFmpeg setup'
-description: 'Installs FFmpeg with a maximum of two retries, if setup fails for any reason'
+description: 'Installs FFmpeg with a maximum of two delayed retries, if setup fails for any reason'
 
 runs:
   using: 'composite'
   steps:
+    # `setup-ffmpeg` installs into the runner tool cache and skips the download,
+    # if it finds FFmpeg there. Restoring that directory therefore avoids the
+    # flaky fetch entirely on all runs after the first successful one.
+    # Bump the `-v1` suffix to force a new download.
+    - name: Restore FFmpeg from the tool cache
+      uses: actions/cache@v4
+      with:
+        path: ${{ runner.tool_cache }}/ffmpeg
+        key: ffmpeg-${{ runner.os }}-${{ runner.arch }}-v1
+
     - name: Setup FFmpeg
       id: attempt-0
       continue-on-error: true
       uses: FedericoCarboni/setup-ffmpeg@v3
+
+    # The fetches fail in bursts, so retrying immediately tends to fail again:
+    - name: Wait before the first retry
+      if: ${{ steps.attempt-0.outcome == 'failure' }}
+      shell: bash
+      run: sleep 15
 
     - name: Setup FFmpeg (first retry)
       if: ${{ steps.attempt-0.outcome == 'failure' }}
       id: attempt-1
       continue-on-error: true
       uses: FedericoCarboni/setup-ffmpeg@v3
+
+    - name: Wait before the second retry
+      if: ${{ steps.attempt-1.outcome == 'failure' }}
+      shell: bash
+      run: sleep 45
 
     - name: Setup FFmpeg (second retry)
       if: ${{ steps.attempt-1.outcome == 'failure' }}
