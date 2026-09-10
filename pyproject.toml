@@ -52,7 +52,7 @@ dynamic = [
 ]
 dependencies = [
     "aiohttp>=3.13",
-    "pydantic>=1.10.26,<2",
+    "pydantic>=1.10.26,<3",
     "PyJWT>=2.4",
 ]
 
