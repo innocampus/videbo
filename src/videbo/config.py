@@ -4,7 +4,7 @@ import re
 from pathlib import Path
 from typing import Any, Optional, TypeVar, Union, TYPE_CHECKING
 
-import tomli
+import tomllib
 from pydantic import BaseModel as PydanticBaseModel
 from pydantic import BaseSettings as PydanticBaseSettings
 from pydantic.class_validators import validator
@@ -300,4 +300,4 @@ def config_file_settings(settings: BaseSettings) -> dict[str, Any]:
 
 def load_toml(path: PathT) -> dict[str, Any]:
     with Path(path).open("rb") as f:
-        return tomli.load(f)
+        return tomllib.load(f)

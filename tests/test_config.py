@@ -213,7 +213,7 @@ class FunctionsTestCase(SilentLogMixin, TestCase):
         self.assertDictEqual(expected_output, output)
         mock_load_toml.assert_called_once_with(path2)
 
-    @patch.object(config.tomli, "load")
+    @patch.object(config.tomllib, "load")
     @patch.object(config.Path, "open")
     def test_load_toml(
         self,
