@@ -48,7 +48,7 @@ class AuthTestCase(IsolatedAsyncioTestCase):
             auth.extract_jwt_from_request(request)
 
     def test_jwt_kid_internal(self) -> None:
-        mock_secret = 'abc'
+        mock_secret = 'mock-secret-long-enough-for-hmac-sha256'
 
         # Missing key ID:
         token_headers: dict = {'x': 'y', 'ab': 'cd'}

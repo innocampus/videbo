@@ -22,6 +22,11 @@ from .base import BaseE2ETestCase
 
 
 settings.distribution.static_node_base_urls = []  # prevent adding nodes (and sending status requests to them)
+# Tokens are signed without an explicit key here, i.e. with these secrets.
+# They must match `config_storage.toml` and be at least 32 bytes long;
+# `PyJWT` rejects an empty HMAC key and warns about anything shorter.
+settings.internal_api_secret = "internal-api-secret-for-testing-only"
+settings.external_api_secret = "external-api-secret-for-testing-only"
 
 CONTENT_TYPE = 'Content-Type'
 
