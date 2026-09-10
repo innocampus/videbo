@@ -1,5 +1,5 @@
 from asyncio.subprocess import create_subprocess_exec
-from asyncio.tasks import sleep
+from asyncio.tasks import sleep, wait_for
 from filecmp import cmp
 from hashlib import sha256
 from pathlib import Path
@@ -105,6 +105,8 @@ class TwoNodesTestCase(BaseE2ETestCase):
         # Stop storage & distributor node subprocesses:
         self.proc_storage.terminate()
         self.proc_dist.terminate()
+        await wait_for(self.proc_storage.wait(), 5)
+        await wait_for(self.proc_dist.wait(), 5)
 
         await super().asyncTearDown()
 
