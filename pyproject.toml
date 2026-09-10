@@ -51,23 +51,22 @@ dynamic = [
     "version",
 ]
 dependencies = [
-    "aiohttp==3.13.3",
-    "pydantic==1.10.26",
-    "PyJWT==2.12.1",
+    "aiohttp>=3.13",
+    "pydantic>=1.10.26,<2",
+    "PyJWT>=2.4",
 ]
 
 [project.optional-dependencies]
 full = [
-    "prometheus-client==0.24.1",
+    "prometheus-client>=0.20",
 ]
 dev = [
     "videbo[full]",
-    "build==1.4.0",
-    "coverage[toml]==7.10.7",
-    "mkdocs-material==9.7.5",
-    "mkdocstrings[python]==0.30.1",
-    "mypy==1.19.1",
-    "ruff==0.15.6",
+    "coverage",
+    "mkdocs-material",
+    "mkdocstrings[python]",
+    "mypy",
+    "ruff>=0.2",
 ]
 
 [project.urls]
