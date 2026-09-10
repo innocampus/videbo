@@ -48,6 +48,6 @@ This will install it in <a href="https://pip.pypa.io/en/stable/topics/local-proj
 ## System dependencies
 
 * Linux
-* Python 3.9+
+* Python 3.11+
 * `sudo`
 * `ffmpeg`/`ffprobe`

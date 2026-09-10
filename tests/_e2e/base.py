@@ -84,11 +84,5 @@ class BaseE2ETestCase(SilentLogMixin, AioHTTPTestCase):
         Source: https://stackoverflow.com/a/39606065/19770795
         """
         outcome = self._outcome  # type: ignore[attr-defined]
-        if hasattr(outcome, "errors"):
-            # For Python version <=3.10
-            result = self.defaultTestResult()
-            self._feedErrorsToResult(result, outcome.errors)  # type: ignore[attr-defined]
-        else:
-            # For Python version >=3.11
-            result = outcome.result
+        result = outcome.result
         return all(test != self for test, _ in result.errors + result.failures)
