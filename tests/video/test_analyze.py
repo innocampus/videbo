@@ -22,7 +22,8 @@ class AnalyzeTestCase(IsolatedAsyncioTestCase):
             await sleep(0.01)
             return b" FOO;bar", object()
         expected_output = "foo"
-        mock_proc = MagicMock(communicate=mock_communicate)
+        # A `returncode` of `None` means the process is still running:
+        mock_proc = MagicMock(communicate=mock_communicate, returncode=0)
         mock_create_user_subprocess.return_value = mock_proc
 
         path = "spam"
@@ -48,6 +49,7 @@ class AnalyzeTestCase(IsolatedAsyncioTestCase):
         mock_create_user_subprocess.reset_mock()
 
         # Induce timeout:
+        mock_proc.returncode = None
         with self.assertRaises(analyze.FileCmdError):
             await analyze.get_video_mime_type(path, timeout_seconds=0.001)
         mock_create_user_subprocess.assert_awaited_once_with(
@@ -73,7 +75,8 @@ class AnalyzeTestCase(IsolatedAsyncioTestCase):
         async def mock_communicate() -> tuple[bytes, bytes]:
             await sleep(0.01)
             return b"foo", b"bar"
-        mock_proc = MagicMock(communicate=mock_communicate)
+        # A `returncode` of `None` means the process is still running:
+        mock_proc = MagicMock(communicate=mock_communicate, returncode=0)
         mock_create_user_subprocess.return_value = mock_proc
         mock_video_info_parse_raw.return_value = expected_output = object()
 
@@ -105,6 +108,7 @@ class AnalyzeTestCase(IsolatedAsyncioTestCase):
         mock_video_info_parse_raw.reset_mock()
 
         # Induce timeout:
+        mock_proc.returncode = None
         with self.assertRaises(analyze.FFProbeError):
             await analyze.get_ffprobe_info(path, timeout_seconds=0.001)
         mock_create_user_subprocess.assert_awaited_once_with(
@@ -127,6 +131,7 @@ class AnalyzeTestCase(IsolatedAsyncioTestCase):
         mock_ffprobe_error_init.reset_mock()
 
         # Error while parsing:
+        mock_proc.returncode = 0
         err = analyze.ValidationError(MagicMock(), MagicMock)
         mock_video_info_parse_raw.side_effect = err
         with self.assertRaises(analyze.FFProbeError):
@@ -214,7 +219,8 @@ class AnalyzeTestCase(IsolatedAsyncioTestCase):
     ) -> None:
         async def mock_wait() -> None:
             await sleep(0.01)
-        mock_proc = MagicMock(wait=mock_wait)
+        # A `returncode` of `None` means the process is still running:
+        mock_proc = MagicMock(wait=mock_wait, returncode=0)
         mock_create_user_subprocess.return_value = mock_proc
 
         video_path = "spam"
@@ -252,6 +258,7 @@ class AnalyzeTestCase(IsolatedAsyncioTestCase):
         mock_create_user_subprocess.reset_mock()
 
         # Induce timeout:
+        mock_proc.returncode = None
         with self.assertRaises(analyze.FFMpegError):
             await analyze.create_thumbnail(
                 video_path,
