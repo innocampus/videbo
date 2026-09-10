@@ -23,26 +23,23 @@ jobs:
     steps:
     - uses: actions/checkout@v6
 
-    - uses: actions/setup-python@v6
+    - uses: astral-sh/setup-uv@v10.0.1
       with:
         python-version: ${{ matrix.python-version }}
-        cache: 'pip'
-        cache-dependency-path: 'pyproject.toml'
+        enable-cache: true
 
     - name: Install dependencies
-      run: |
-        pip install -U pip
-        pip install -e '.[dev]'
+      run: uv sync --all-extras --locked
 
     - name: Run unit tests for Python ${{ matrix.python-version }}
       if: ${{ matrix.python-version != '3.14' }}
-      run: python -m tests
+      run: uv run python -m tests
 
     - name: Run unit test coverage script for Python 3.14 and save total percentage
       if: ${{ matrix.python-version == '3.14' }}
       run: |
         total=$(./scripts/cov.sh)
-        [[ $? -eq 0 ]] && echo "coverage=${total}" >> $GITHUB_ENV
+        echo "coverage=${total}" >> $GITHUB_ENV
 
     outputs:
       coverage: ${{ env.coverage }}
@@ -60,24 +57,21 @@ jobs:
     steps:
     - uses: actions/checkout@v6
 
-    - uses: actions/setup-python@v6
+    - uses: astral-sh/setup-uv@v10.0.1
       with:
         python-version: ${{ matrix.python-version }}
-        cache: 'pip'
-        cache-dependency-path: 'pyproject.toml'
+        enable-cache: true
 
     - uses: ./.github/actions/setup-ffmpeg
 
     - name: Install dependencies
-      run: |
-        pip install -U pip
-        pip install -e '.[dev]'
+      run: uv sync --all-extras --locked
 
     - name: Create temporary storage directory
       run: mkdir -p /tmp/videbo/storage
 
     - name: Run end-to-end tests for Python ${{ matrix.python-version }}
-      run: python -m tests 'e2e_test*.py'
+      run: uv run python -m tests 'e2e_test*.py'
 
   lint:
     name: Linting (Python ${{ matrix.python-version }})
@@ -92,16 +86,13 @@ jobs:
     steps:
     - uses: actions/checkout@v6
 
-    - uses: actions/setup-python@v6
+    - uses: astral-sh/setup-uv@v10.0.1
       with:
         python-version: ${{ matrix.python-version }}
-        cache: 'pip'
-        cache-dependency-path: 'pyproject.toml'
+        enable-cache: true
 
     - name: Install dependencies
-      run: |
-        pip install -U pip
-        pip install -e '.[dev]'
+      run: uv sync --all-extras --locked
 
     - name: Run linters
       run: ./scripts/lint.sh
