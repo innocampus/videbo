@@ -1,16 +1,16 @@
 #!/usr/bin/env bash
 # Runs unit tests and end-to-end-tests.
 
-# Ensure that we return to the current working directory
-# and exit the script immediately in case of an error:
-trap "cd $(realpath ${PWD}); exit 1" ERR
-# Change into project root directory:
-cd "$(dirname $(dirname $(realpath $0)))"
+source "$(dirname $(realpath $0))/_util.sh"
 
 echo 'Running unit tests...'
-coverage run
-echo -e "$(coverage report | awk '$1 == "TOTAL" {print $NF; exit}') coverage.\n"
+run coverage run
+typeset percentage
+typeset color
+percentage="$(run coverage report | awk '$1 == "TOTAL" {print $NF}')"
+[[ $percentage == "100%" ]] && color="${bold_green}" || color="${yellow}"
+echo -e "${color}${percentage} coverage${color_reset}\n"
 
 echo 'Running end-to-end tests...'
-python -m tests 'e2e_test*.py'
+run python -m tests 'e2e_test*.py'
 echo

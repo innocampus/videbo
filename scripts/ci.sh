@@ -1,13 +1,9 @@
 #!/usr/bin/env bash
 # Runs full CI pipeline (test, check, lint).
 
-# Ensure that we return to the current working directory
-# and exit the script immediately in case of an error:
-trap "cd $(realpath ${PWD}); exit 1" ERR
-# Change into project root directory:
-cd "$(dirname $(dirname $(realpath $0)))"
+source "$(dirname $(realpath $0))/_util.sh"
 
 bash ./scripts/test.sh
 bash ./scripts/lint.sh
 
-echo 'All checks passed!'
+echo -e "${background_black}${bold_green}✅ 🎉 All checks passed!${color_reset}"
