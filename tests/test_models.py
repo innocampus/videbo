@@ -1,7 +1,7 @@
 from time import time
 from unittest import TestCase
 from unittest.mock import MagicMock, PropertyMock, patch
-from typing import Optional
+from typing import Optional, TYPE_CHECKING
 
 import jwt
 from pydantic import ValidationError
@@ -11,6 +11,35 @@ from videbo import models
 
 TESTED_MODULE_PATH = 'videbo.models'
 SETTINGS_PATH = TESTED_MODULE_PATH + '.settings'
+
+
+if TYPE_CHECKING:
+    _Base = TestCase
+else:
+    _Base = object
+
+
+class MockJWTSecretsMixin(_Base):
+    """
+    Patches the `settings` object in `videbo.models` with non-empty secrets.
+
+    Necessary for any test that encodes or decodes a token: `PyJWT` rejects
+    an empty HMAC key, and both secrets default to an empty string.
+    """
+
+    def setUp(self) -> None:
+        super().setUp()
+        # Settings mocking:
+        self.settings_patcher = patch(SETTINGS_PATH)
+        self.mock_settings = self.settings_patcher.start()
+        self.internal_secret = 'internal-test-secret-with-enough-bytes'
+        self.external_secret = 'external-test-secret-with-enough-bytes'
+        self.mock_settings.internal_api_secret = self.internal_secret
+        self.mock_settings.external_api_secret = self.external_secret
+
+    def tearDown(self) -> None:
+        super().tearDown()
+        self.settings_patcher.stop()
 
 
 class BaseResponseModelTestCase(TestCase):
@@ -36,21 +65,7 @@ class BaseResponseModelTestCase(TestCase):
         mock__log_response.assert_called_once_with(models._log)
 
 
-class BaseJWTDataTestCase(TestCase):
-    def setUp(self) -> None:
-        super().setUp()
-        # Settings mocking:
-        self.settings_patcher = patch(SETTINGS_PATH)
-        self.mock_settings = self.settings_patcher.start()
-        self.internal_secret = 'secretA'
-        self.external_secret = 'secretB'
-        self.mock_settings.internal_api_secret = self.internal_secret
-        self.mock_settings.external_api_secret = self.external_secret
-
-    def tearDown(self) -> None:
-        super().tearDown()
-        self.settings_patcher.stop()
-
+class BaseJWTDataTestCase(MockJWTSecretsMixin, TestCase):
     def test_iss_is_enum_member(self) -> None:
         kwargs: dict = {'exp': 1, 'iss': models.TokenIssuer.internal}
         obj = models.BaseJWTData(**kwargs)
@@ -111,7 +126,7 @@ class BaseJWTDataTestCase(TestCase):
         self.assertDictEqual(data, decoded)
 
         # Check that it uses the provided key:
-        key = "secret"
+        key = "explicitly-provided-key-of-enough-bytes"
         obj = models.BaseJWTData(exp=exp, iss=iss)
         token = obj.encode(key=key)
         expected = jwt.encode(data, key, algorithm=models.DEFAULT_JWT_ALG, headers={'kid': iss.value})
@@ -137,7 +152,7 @@ class BaseJWTDataTestCase(TestCase):
         self.assertIsInstance(obj, models.BaseJWTData)
         self.assertDictEqual(data, obj.dict())
 
-        key = "secret"
+        key = "explicitly-provided-key-of-enough-bytes"
         token = jwt.encode(data, key, algorithm=models.DEFAULT_JWT_ALG, headers={'kid': iss.value})
         obj = models.BaseJWTData.decode(token, internal=internal, key=key)
         self.assertIsInstance(obj, models.BaseJWTData)
@@ -189,7 +204,7 @@ class RequestJWTDataTestCase(TestCase):
             models.RequestJWTData(exp=1, iss=models.TokenIssuer.external, role=models.Role.node)
 
 
-class LMSRequestJWTDataTestCase(TestCase):
+class LMSRequestJWTDataTestCase(MockJWTSecretsMixin, TestCase):
     def test_role_appropriate(self) -> None:
         obj = models.LMSRequestJWTData(exp=1)
         self.assertDictEqual(

@@ -1,7 +1,7 @@
 files_path = "/tmp/videbo_test_storage"
 listen_port = 9021
-internal_api_secret = "secret"
-external_api_secret = "secure"
+internal_api_secret = "internal-api-secret-for-testing-only"
+external_api_secret = "external-api-secret-for-testing-only"
 public_base_url = "http://localhost:9021"
 dev_mode = true
 
