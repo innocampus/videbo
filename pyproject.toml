@@ -10,7 +10,7 @@ name = "videbo"
 description = "Video hosting server for learning management systems"
 authors = [
     { name = "Martin Gauk", email = "gauk@math.tu-berlin.de" },
-    { name = "Daniil Fajnberg", email = "mail@daniil.fajnberg.de" },
+    { name = "Daniel Fainberg", email = "d.fainberg@tu-berlin.de" },
 ]
 maintainers = [
     { name = "ISIS Team", email = "info@isis.tu-berlin.de" },
