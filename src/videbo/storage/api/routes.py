@@ -3,6 +3,7 @@ from pathlib import Path
 from typing import NoReturn, Optional, Union
 
 from aiohttp.web_exceptions import (
+    HTTPBadRequest,
     HTTPForbidden,
     HTTPInternalServerError,
     HTTPNotAcceptable,
@@ -321,7 +322,10 @@ async def get_files_list(request: Request, _jwt_data: RequestJWTData) -> Respons
     if request.query:
         orphaned_arg = request.query.get('orphaned')
         if orphaned_arg:
-            orphaned = str_to_bool(orphaned_arg)
+            try:
+                orphaned = str_to_bool(orphaned_arg)
+            except ValueError:
+                raise HTTPBadRequest() from None
     files = [
         StorageFileInfo.from_orm(file)
         async for file
