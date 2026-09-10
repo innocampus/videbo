@@ -1,7 +1,7 @@
 import os
-from distutils.util import strtobool
 
 from videbo.misc.constants import HTTP_CODE_OK, MEGA
+from videbo.misc.functions import str_to_bool
 from videbo.storage.api.client import StorageClient as Client
 from videbo.storage.api.models import StorageFileInfo
 
@@ -77,7 +77,7 @@ async def find_orphaned_files(
             and one more confirmation prompt is issued before deletion.
             If `True`, confirmation is assumed and all prompts are skipped.
     """
-    if not yes_all and not strtobool(input(
+    if not yes_all and not str_to_bool(input(
         "You are about to start searching for orphaned files. This may "
         "request each LMS for knowledge of all the stored files. Depending "
         "on the number of files stored and the number of LMS registered, "
@@ -106,7 +106,7 @@ async def find_orphaned_files(
             f"use the command with the {BOLD}--delete{RESET} flag."
         )
         return
-    if yes_all or strtobool(
+    if yes_all or str_to_bool(
         input("Are you sure, you want to delete them? (yes/no) ")
     ):
         await delete_orphaned_files(client, *data.files)

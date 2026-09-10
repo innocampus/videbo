@@ -1,4 +1,3 @@
-from distutils.util import strtobool
 from logging import getLogger
 from pathlib import Path
 from typing import NoReturn, Optional, Union
@@ -17,7 +16,7 @@ from aiohttp.web_response import Response
 from videbo import settings
 from videbo.auth import ensure_auth
 from videbo.exceptions import FFMpegError
-from videbo.misc.functions import rel_path
+from videbo.misc.functions import rel_path, str_to_bool
 from videbo.models import RequestJWTData, Role
 from videbo.route_def import RouteTableDef
 from videbo.temp_file import TempFile
@@ -322,7 +321,7 @@ async def get_files_list(request: Request, _jwt_data: RequestJWTData) -> Respons
     if request.query:
         orphaned_arg = request.query.get('orphaned')
         if orphaned_arg:
-            orphaned = bool(strtobool(orphaned_arg.lower()))
+            orphaned = str_to_bool(orphaned_arg)
     files = [
         StorageFileInfo.from_orm(file)
         async for file

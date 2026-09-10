@@ -274,3 +274,22 @@ def is_subclass(
     if not isinstance(__cls, type):
         return False
     return issubclass(__cls, __class_or_tuple)
+
+
+def str_to_bool(value: str) -> bool:
+    """
+    Converts a string representation of truth to `True` or `False`.
+
+    The values "y", "yes", "t", "true", "on", and "1" are considered `True`;
+    the values "n", "no", "f", "false", "off", and "0" are considered `False`.
+    Case-insensitive.
+
+    Raises:
+        `ValueError` if `value` is anything unexpected.
+    """
+    value = value.lower()
+    if value in ("y", "yes", "t", "true", "on", "1"):
+        return True
+    if value in ("n", "no", "f", "false", "off", "0"):
+        return False
+    raise ValueError(f"invalid truth value {value!r}")
