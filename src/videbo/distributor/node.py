@@ -387,10 +387,11 @@ class DistributorNode:  # noqa: PLW1641
                 try:
                     file, from_url = self._files_awaiting_download.next()
                 except DownloadScheduler.NothingScheduled:
-                    return
-                TaskManager.fire_and_forget(
-                    self._copy(file, from_url=from_url)
-                )
+                    pass
+                else:
+                    TaskManager.fire_and_forget(
+                        self._copy(file, from_url=from_url)
+                    )
 
     async def _delete(
         self,
