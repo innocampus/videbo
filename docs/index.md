@@ -40,7 +40,12 @@ The latter includes monitoring capabilities for the <a href="https://github.com/
 
 To install **Videbo** for development and/or testing from the checked-out code repository, run the following from the repository root:
 ```shell
-pip install -e '.[dev]'
+uv sync --all-extras
+```
+
+Without `uv`: (needs pip `25.1` or higher)
+```shell
+pip install -e '.[full]' --group dev
 ```
 
 This will install it in <a href="https://pip.pypa.io/en/stable/topics/local-project-installs/#editable-installs" target="_blank" class="external-link">editable mode</a> and also install all dev-dependencies.
