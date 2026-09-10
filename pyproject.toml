@@ -60,8 +60,9 @@ dependencies = [
 full = [
     "prometheus-client>=0.20",
 ]
+
+[dependency-groups]
 dev = [
-    "videbo[full]",
     "coverage",
     "mkdocs-material",
     "mkdocstrings[python]",

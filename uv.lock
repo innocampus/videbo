@@ -1367,32 +1367,36 @@ dependencies = [
 ]
 
 [package.optional-dependencies]
+full = [
+    { name = "prometheus-client" },
+]
+
+[package.dev-dependencies]
 dev = [
     { name = "coverage" },
     { name = "mkdocs-material" },
     { name = "mkdocstrings", extra = ["python"] },
     { name = "mypy" },
-    { name = "prometheus-client" },
     { name = "ruff" },
-]
-full = [
-    { name = "prometheus-client" },
 ]
 
 [package.metadata]
 requires-dist = [
     { name = "aiohttp", specifier = ">=3.13" },
-    { name = "coverage", marker = "extra == 'dev'" },
-    { name = "mkdocs-material", marker = "extra == 'dev'" },
-    { name = "mkdocstrings", extras = ["python"], marker = "extra == 'dev'" },
-    { name = "mypy", marker = "extra == 'dev'" },
     { name = "prometheus-client", marker = "extra == 'full'", specifier = ">=0.20" },
     { name = "pydantic", specifier = ">=1.10.26,<2" },
     { name = "pyjwt", specifier = ">=2.4" },
-    { name = "ruff", marker = "extra == 'dev'", specifier = ">=0.2" },
-    { name = "videbo", extras = ["full"], marker = "extra == 'dev'" },
 ]
-provides-extras = ["full", "dev"]
+provides-extras = ["full"]
+
+[package.metadata.requires-dev]
+dev = [
+    { name = "coverage" },
+    { name = "mkdocs-material" },
+    { name = "mkdocstrings", extras = ["python"] },
+    { name = "mypy" },
+    { name = "ruff", specifier = ">=0.2" },
+]
 
 [[package]]
 name = "watchdog"
