@@ -21,7 +21,7 @@ jobs:
         - '3.13'
         - '3.14'
     steps:
-    - uses: actions/checkout@v6
+    - uses: actions/checkout@v7
 
     - uses: astral-sh/setup-uv@v10.0.1
       with:
@@ -55,7 +55,7 @@ jobs:
         - '3.13'
         - '3.14'
     steps:
-    - uses: actions/checkout@v6
+    - uses: actions/checkout@v7
 
     - uses: astral-sh/setup-uv@v10.0.1
       with:
@@ -84,7 +84,7 @@ jobs:
         - '3.13'
         - '3.14'
     steps:
-    - uses: actions/checkout@v6
+    - uses: actions/checkout@v7
 
     - uses: astral-sh/setup-uv@v10.0.1
       with:
