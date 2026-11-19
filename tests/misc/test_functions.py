@@ -1,3 +1,4 @@
+import os
 from pathlib import Path
 from shutil import rmtree
 from subprocess import DEVNULL
@@ -102,6 +103,51 @@ class FunctionsTestCase(IsolatedAsyncioTestCase):
 
             # Destination file exists; do nothing:
             self.assertFalse(functions.copy_file(src, dst))
+        finally:
+            rmtree(test_dir)
+
+    @patch.object(os, "close", wraps=os.close)
+    @patch.object(os, "fsync")
+    def test_fsync_path(
+        self,
+        mock_fsync: MagicMock,
+        mock_close: MagicMock,
+    ) -> None:
+        test_dir = mkdtemp(prefix="videbo_test")
+        try:
+            test_file = Path(test_dir, "foo")
+            test_file.touch()  # Calls `os.close` internally.
+            mock_close.reset_mock()
+
+            for path in (test_dir, test_file):
+                with self.subTest(path=path):
+                    # OK case.
+                    functions.fsync_path(path)
+                    mock_fsync.assert_called_once()
+                    fd = mock_fsync.call_args[0][0]
+                    self.assertIsInstance(fd, int)
+                    mock_close.assert_called_once_with(fd)
+
+                    mock_fsync.reset_mock()
+                    mock_close.reset_mock()
+
+                    # The `fsync` OS call fails.
+                    mock_fsync.side_effect = OSError
+                    with self.assertRaises(OSError):
+                        functions.fsync_path(path)
+                    mock_fsync.assert_called_once()
+                    fd = mock_fsync.call_args[0][0]
+                    self.assertIsInstance(fd, int)
+                    mock_close.assert_called_once_with(fd)
+
+                    mock_fsync.reset_mock(side_effect=True)
+                    mock_close.reset_mock()
+
+            # A path to a nonexistent file is passed.
+            with self.assertRaises(FileNotFoundError):
+                functions.fsync_path(Path(test_dir, "bar"))
+            mock_fsync.assert_not_called()
+            mock_close.assert_not_called()
         finally:
             rmtree(test_dir)
 

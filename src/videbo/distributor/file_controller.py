@@ -9,6 +9,7 @@ from videbo.file_controller import FileController
 from videbo.hashed_file import HashedFile
 from videbo.misc.constants import MEGA
 from videbo.misc.functions import (
+    fsync_path,
     get_free_disk_space,
     rel_path,
     run_in_default_executor,
@@ -163,7 +164,8 @@ class DistributorFileController(FileController[DistributedVideoFile]):
             OSError:
                 The destination directory did not yet exist and could not be
                 created or writing to the temporary file failed or the fully
-                downloaded file could not be moved to its persistent location.
+                downloaded file could not be moved to its persistent location
+                or syncing the file or its final directory to disk failed.
         """
         free_space = await self.get_free_space()
         size_mb = file.size / MEGA
@@ -180,7 +182,7 @@ class DistributorFileController(FileController[DistributedVideoFile]):
             expiration_time=int(time()) + 300,
         )
         last_update_time = 0.
-        file_obj = await run_in_default_executor(temp_path.open, 'wb', 0)
+        file_obj = await run_in_default_executor(temp_path.open, 'wb')
         try:
             async for data in self._http_client.request_file_read(
                 file.source_url + "/file",
@@ -193,13 +195,17 @@ class DistributorFileController(FileController[DistributedVideoFile]):
                 if (time() - last_update_time) > self.COPY_STATUS_UPDATE_PERIOD:
                     last_update_time = time()
                     self._log_copy_status(file, size_mb)
+            if file.loaded_bytes != file.size:
+                raise UnexpectedFileSize(file)
+            # Flush the buffer and actually sync the full file to the disk.
+            await run_in_default_executor(file_obj.flush)
+            await run_in_default_executor(fsync_path, temp_path)
         finally:  # pragma: no cover
             await run_in_default_executor(file_obj.close)
         log.info(f"Copied {file} ({size_mb:.1f} MB) from {file.source_url}")
-        if file.loaded_bytes != file.size:
-            raise UnexpectedFileSize(file)
-        # Move the file to its final location.
+        # Move the file to its final location and fsync its storage directory.
         await run_in_default_executor(temp_path.rename, final_path)
+        await run_in_default_executor(fsync_path, final_path.parent)
         # There must be no context switch by the event loop between marking the
         # file copying as finished and adding it to the controller.
         self._add_file(file.as_finished())

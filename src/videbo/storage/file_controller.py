@@ -11,7 +11,13 @@ from videbo.exceptions import LMSInterfaceError
 from videbo.file_controller import FileController
 from videbo.lms_api import LMS
 from videbo.misc.constants import JPG_EXT
-from videbo.misc.functions import get_free_disk_space, move_file, rel_path, run_in_default_executor
+from videbo.misc.functions import (
+    fsync_path,
+    get_free_disk_space,
+    move_file,
+    rel_path,
+    run_in_default_executor,
+)
 from videbo.misc.periodic import Periodic
 from videbo.misc.task_manager import TaskManager
 from videbo.network import NetworkInterfaces
@@ -235,6 +241,7 @@ class StorageFileController(FileController[StoredVideoFile]):
         source = self.get_path(file_name, temp=True)
         destination = self.get_path(file_name)
         await run_in_default_executor(move_file, source, destination, 0o755)
+        await run_in_default_executor(fsync_path, destination.parent)
         return destination
 
     async def store_permanently(

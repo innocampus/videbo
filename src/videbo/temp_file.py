@@ -6,7 +6,7 @@ from tempfile import mkstemp
 from typing import BinaryIO, ClassVar, Literal, Optional, TypeVar, TYPE_CHECKING
 
 from videbo.exceptions import PendingWriteOperationError
-from videbo.misc.functions import move_file, run_in_default_executor
+from videbo.misc.functions import fsync_path, move_file, run_in_default_executor
 
 if TYPE_CHECKING:
     from types import TracebackType
@@ -193,6 +193,10 @@ class TempFile:
         """
         if self._is_writing:
             raise PendingWriteOperationError
+        # Flush the buffer (if still open) and sync the full file to the disk.
+        if self._file_handle is not None:
+            await run_in_default_executor(self._file_handle.flush)
+        await run_in_default_executor(fsync_path, self._path)
         target_path = self._path.with_stem(
             self.digest if file_name_stem is None else file_name_stem
         )
@@ -201,6 +205,8 @@ class TempFile:
         if target_dir:
             target_path = Path(target_dir, target_path.name)
         self._is_writing = True  # Don't allow any additional writes.
+        # Move the file to its final location and fsync its storage directory.
         await run_in_default_executor(move_file, self._path, target_path)
+        await run_in_default_executor(fsync_path, target_path.parent)
         self._path = target_path
         return target_path

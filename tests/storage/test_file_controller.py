@@ -10,7 +10,7 @@ from tests.silent_log import SilentLogMixin
 from videbo.exceptions import LMSInterfaceError
 from videbo.lms_api import LMS
 from videbo.misc.constants import JPG_EXT, MEGA
-from videbo.misc.functions import move_file
+from videbo.misc.functions import fsync_path, move_file
 from videbo.network import NetworkInterfaces
 from videbo.storage.api.models import StorageStatus
 from videbo.storage.file_controller import StorageFileController, log
@@ -278,12 +278,11 @@ class StorageFileControllerTestCase(SilentLogMixin, IsolatedAsyncioTestCase):
         expected_source = Path(temp_dir, "abcdef")
         expected_destination = Path(files_dir, "ab", "abcdef")
         self.assertEqual(expected_destination, output)
-        mock_run_in_default_executor.assert_awaited_once_with(
-            move_file,
-            expected_source,
-            expected_destination,
-            0o755,
-        )
+        mock_run_in_default_executor.assert_has_awaits([
+            call(move_file, expected_source, expected_destination, 0o755),
+            call(fsync_path, expected_destination.parent),
+        ])
+        self.assertEqual(2, mock_run_in_default_executor.await_count)
 
     @patch(f"{MODULE_NAME}.StoredVideoFile.from_path")
     @patch.object(StorageFileController, "store_file_permanently")

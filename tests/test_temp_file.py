@@ -1,6 +1,6 @@
 from pathlib import Path
 from unittest import IsolatedAsyncioTestCase
-from unittest.mock import AsyncMock, MagicMock, PropertyMock, patch
+from unittest.mock import AsyncMock, MagicMock, PropertyMock, call, patch
 
 from videbo import temp_file
 
@@ -202,6 +202,7 @@ class TempFileTestCase(IsolatedAsyncioTestCase):
         obj = temp_file.TempFile(0, "")
         obj._is_writing = True
         obj._path = initial_path = Path("foo", "bar.baz")
+        obj._file_handle = None
 
         # Error when `_is_writing` is `True`:
         with self.assertRaises(temp_file.PendingWriteOperationError):
@@ -218,17 +219,20 @@ class TempFileTestCase(IsolatedAsyncioTestCase):
         self.assertEqual(expected_target_path, output)
         self.assertEqual(expected_target_path, obj._path)
         mock_digest.assert_called_once_with()
-        mock_run_in_default_executor.assert_awaited_once_with(
-            temp_file.move_file,
-            initial_path,
-            expected_target_path,
-        )
+        mock_run_in_default_executor.assert_has_awaits([
+            call(temp_file.fsync_path, initial_path),
+            call(temp_file.move_file, initial_path, expected_target_path),
+            call(temp_file.fsync_path, expected_target_path.parent),
+        ])
+        self.assertEqual(3, mock_run_in_default_executor.await_count)
         self.assertTrue(obj._is_writing)
 
         mock_digest.reset_mock()
         mock_run_in_default_executor.reset_mock()
         obj._is_writing = False
         obj._path = initial_path
+        # File handle still open; its buffer must be flushed before syncing:
+        obj._file_handle = mock_handle = MagicMock()
 
         # Target should be in a new directory with a new extension,
         # and with a specified file name stem:
@@ -247,9 +251,11 @@ class TempFileTestCase(IsolatedAsyncioTestCase):
         self.assertEqual(expected_target_path, output)
         self.assertEqual(expected_target_path, obj._path)
         mock_digest.assert_not_called()
-        mock_run_in_default_executor.assert_awaited_once_with(
-            temp_file.move_file,
-            initial_path,
-            expected_target_path,
-        )
+        mock_run_in_default_executor.assert_has_awaits([
+            call(mock_handle.flush),
+            call(temp_file.fsync_path, initial_path),
+            call(temp_file.move_file, initial_path, expected_target_path),
+            call(temp_file.fsync_path, expected_target_path.parent),
+        ])
+        self.assertEqual(4, mock_run_in_default_executor.await_count)
         self.assertTrue(obj._is_writing)

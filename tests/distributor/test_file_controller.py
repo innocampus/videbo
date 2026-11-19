@@ -3,7 +3,7 @@ from pathlib import Path
 from tempfile import mkdtemp
 from time import time
 from unittest import IsolatedAsyncioTestCase
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, call, patch
 
 from tests.silent_log import SilentLogMixin
 from videbo.distributor.api.models import DistributorStatus
@@ -102,7 +102,6 @@ class DistributorFileControllerTestCase(SilentLogMixin, IsolatedAsyncioTestCase)
             output,
         )
 
-
     async def test_get_file(self) -> None:
         file_controller = DistributorFileController()
         # File is present:
@@ -142,6 +141,7 @@ class DistributorFileControllerTestCase(SilentLogMixin, IsolatedAsyncioTestCase)
         self.assertEqual(expected_output, output)
         mock_get_free_disk_space.assert_awaited_once()
 
+    @patch(f"{MODULE_NAME}.fsync_path")
     @patch(f"{MODULE_NAME}.RequestFileJWTData.node_default")
     @patch.object(DistributorFileController, "get_free_space")
     @patch.object(DistributorFileController, "get_path")
@@ -150,6 +150,7 @@ class DistributorFileControllerTestCase(SilentLogMixin, IsolatedAsyncioTestCase)
         mock_get_path: MagicMock,
         mock_get_free_space: AsyncMock,
         mock_jwt_node_default: MagicMock,
+        mock_fsync_path: MagicMock,
     ) -> None:
         # Mock asynchronous response data stream from client:
         mock_data = [b"abcd", b"abcd", b"abcd", b"abcd"]
@@ -168,9 +169,19 @@ class DistributorFileControllerTestCase(SilentLogMixin, IsolatedAsyncioTestCase)
         mock_jwt_node_default.return_value = mock_jwt = object()
         test_dir = Path(mkdtemp(prefix="videbo_test"))
         try:
+            # Set specific path objects to be returned by the `get_path` method.
             temp_path = Path(test_dir, "spam", "foo.bar.tmp")
             final_path = Path(test_dir, "eggs", "foo.bar")
             mock_get_path.side_effect = (temp_path, final_path)
+            # Record the state the mocked `fsync_path` finds for each path:
+            fsync_states = {}
+            mock_fsync_path.side_effect = lambda path: fsync_states.update({
+                path: {
+                    "data": temp_path.read_bytes() if temp_path.exists() else None,
+                    "renamed": final_path.exists(),
+                    "registered": "foo" in file_controller,
+                },
+            })
 
             # Not enough space for our mock file:
             mock_get_free_space.return_value = 10. / MEGA
@@ -181,6 +192,7 @@ class DistributorFileControllerTestCase(SilentLogMixin, IsolatedAsyncioTestCase)
             self.assertEqual(0, file_controller._files_total_size)
             mock_get_path.assert_not_called()
             mock_jwt_node_default.assert_not_called()
+            mock_fsync_path.assert_not_called()
 
             # Successful download and move:
             mock_get_free_space.return_value = 10.
@@ -212,12 +224,34 @@ class DistributorFileControllerTestCase(SilentLogMixin, IsolatedAsyncioTestCase)
                 timeout=2. * 60 * 60,
             )
             mock_file.as_finished.assert_called_once_with()
+            mock_fsync_path.assert_has_calls(
+                [call(temp_path), call(final_path.parent)],
+            )
+            self.assertDictEqual(
+                {
+                    # File data synced (flushed) before renaming:
+                    temp_path: {
+                        "data": b"abcdabcdabcdabcd",
+                        "renamed": False,
+                        "registered": False,
+                    },
+                    # Directory synced after renaming, before registering:
+                    final_path.parent: {
+                        "data": None,
+                        "renamed": True,
+                        "registered": False,
+                    },
+                },
+                fsync_states,
+            )
 
             file_controller._files.clear()
             file_controller._files_total_size = 0
             temp_path.unlink(missing_ok=True)
             final_path.unlink(missing_ok=True)
             mock_file.as_finished.reset_mock()
+            mock_fsync_path.reset_mock()
+            fsync_states.clear()
 
             # File size does not match download size:
             mock_file.size = 15
@@ -227,6 +261,7 @@ class DistributorFileControllerTestCase(SilentLogMixin, IsolatedAsyncioTestCase)
             self.assertTrue(temp_path.is_file())
             self.assertFalse(final_path.is_file())
             mock_file.as_finished.assert_not_called()
+            mock_fsync_path.assert_not_called()
         finally:
             shutil.rmtree(test_dir)
 

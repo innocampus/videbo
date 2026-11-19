@@ -123,6 +123,31 @@ def copy_file(src: PathT, dst: PathT, overwrite: bool = False) -> bool:
     return False
 
 
+def fsync_path(path: PathT) -> None:
+    """
+    Calls on the OS to sync the specified file or directory to the disk.
+
+    For a regular file, this flushes all of its data that the OS has cached,
+    regardless of which file descriptor it was written through.
+    For a directory, this flushes its entries, e.g. after a file was renamed.
+
+    Args:
+        path:
+            File or directory to fsync.
+
+    Raises:
+        FileNotFoundError:
+            `path` does not exist.
+        OSError:
+            Opening or syncing `path` failed otherwise.
+    """
+    fd = os.open(path, os.O_RDONLY)
+    try:
+        os.fsync(fd)
+    finally:
+        os.close(fd)
+
+
 def sanitize_filename(filename: str) -> str:
     """
     Returns a sanitized version of `filename` string suitable for file names.
