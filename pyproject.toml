@@ -2,7 +2,7 @@
 # Python packaging settings: #
 
 [build-system]
-requires = ["setuptools"]
+requires = ["setuptools>=77"]  # SPDX `license` expression (PEP 639)
 build-backend = "setuptools.build_meta"
 
 [project]
@@ -23,7 +23,7 @@ keywords = [
     "streaming",
     "video",
 ]
-license = { text = "GNU General Public License v3 or later (GPLv3+)" }
+license = "GPL-3.0-or-later"
 classifiers = [
     "Development Status :: 4 - Beta",
     "Programming Language :: Python :: 3 :: Only",
@@ -32,7 +32,6 @@ classifiers = [
     "Programming Language :: Python :: 3.13",
     "Programming Language :: Python :: 3.14",
     "Operating System :: POSIX",
-    "License :: OSI Approved :: GNU General Public License v3 or later (GPLv3+)",
     "Intended Audience :: Developers",
     "Intended Audience :: Education",
     "Intended Audience :: System Administrators",
