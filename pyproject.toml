@@ -7,7 +7,7 @@ build-backend = "uv_build"
 
 [project]
 name = "videbo"
-version = "0.8.0"
+version = "0.9.0"
 description = "Video hosting server for learning management systems"
 readme = "README.md"
 authors = [
