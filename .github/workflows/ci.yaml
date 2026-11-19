@@ -20,6 +20,7 @@ jobs:
         - '3.12'
         - '3.13'
         - '3.14'
+        - '3.15'
     steps:
     - uses: actions/checkout@v7
 
@@ -32,11 +33,11 @@ jobs:
       run: uv sync --all-extras --locked
 
     - name: Run unit tests for Python ${{ matrix.python-version }}
-      if: ${{ matrix.python-version != '3.14' }}
+      if: ${{ matrix.python-version != '3.15' }}
       run: uv run python -m tests
 
-    - name: Run unit test coverage script for Python 3.14 and save total percentage
-      if: ${{ matrix.python-version == '3.14' }}
+    - name: Run unit test coverage script for Python 3.15 and save total percentage
+      if: ${{ matrix.python-version == '3.15' }}
       run: |
         total=$(./scripts/cov.sh)
         echo "coverage=${total}" >> $GITHUB_ENV
@@ -54,6 +55,7 @@ jobs:
         - '3.12'
         - '3.13'
         - '3.14'
+        - '3.15'
     steps:
     - uses: actions/checkout@v7
 
