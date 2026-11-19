@@ -2,12 +2,14 @@
 # Python packaging settings: #
 
 [build-system]
-requires = ["setuptools>=77"]  # SPDX `license` expression (PEP 639)
-build-backend = "setuptools.build_meta"
+requires = ["uv_build>=0.13.9,<0.14"]
+build-backend = "uv_build"
 
 [project]
 name = "videbo"
+version = "0.8.0"
 description = "Video hosting server for learning management systems"
+readme = "README.md"
 authors = [
     { name = "Martin Gauk", email = "gauk@math.tu-berlin.de" },
     { name = "Daniel Fainberg", email = "d.fainberg@tu-berlin.de" },
@@ -46,10 +48,6 @@ classifiers = [
     "Topic :: Multimedia",
     "Topic :: Multimedia :: Video",
 ]
-dynamic = [
-    "readme",
-    "version",
-]
 dependencies = [
     "aiohttp>=3.13",
     "pydantic>=1.10.26,<2",
@@ -74,10 +72,6 @@ dev = [
 repository = "https://github.com/innocampus/videbo"
 bug_tracker = "https://github.com/innocampus/videbo/issues"
 documentation = "https://innocampus.github.io/videbo"
-
-[tool.setuptools.dynamic]
-readme = { file = ["README.md"] }
-version = { attr = "videbo.__version__" }
 
 
 #########################

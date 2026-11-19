@@ -14,15 +14,18 @@ See the GNU General Public License for more details.
 You should have received a copy of the GNU General Public License along with videbo.
 If not, see <https://www.gnu.org/licenses/>."""
 
-__version__ = "0.8.0"
-
 __doc__ = """
 Top-level global settings object for convenient import.
 
 Settings are re-initialized in the `__main__` script.
 """
 
+from importlib.metadata import version as _version
+
 from .config import Settings as _Settings
+
+
+__version__ = _version(__name__)
 
 
 settings: _Settings = _Settings()
